@@ -37,7 +37,9 @@ async function waitForIOSBoot(udid: string): Promise<void> {
     const result = await spawnCommand('xcrun', ['simctl', 'list', 'devices', 'booted', '--json']);
     if (result.success) {
       const parsed = JSON.parse(result.stdout) as { devices: Record<string, SimDevice[]> };
-      const booted = Object.values(parsed.devices).flat().some((d) => d.udid === udid);
+      const booted = Object.values(parsed.devices)
+        .flat()
+        .some((d) => d.udid === udid);
       if (booted) return;
     }
     await sleep(POLL_MS);
@@ -74,7 +76,10 @@ async function startIOS(osVersion: string | undefined, opts: OutputOptions): Pro
 
   if (candidates.length === 0) {
     const hint = osVersion ? ` for iOS ${osVersion}` : '';
-    printError(`No available iOS simulator found${hint}. Install one via Xcode → Settings → Platforms.`, opts);
+    printError(
+      `No available iOS simulator found${hint}. Install one via Xcode → Settings → Platforms.`,
+      opts
+    );
     return 1;
   }
 
@@ -108,7 +113,10 @@ async function startIOS(osVersion: string | undefined, opts: OutputOptions): Pro
 async function listAVDs(): Promise<string[]> {
   const result = await spawnCommand('emulator', ['-list-avds']);
   if (!result.success) throw new Error(`emulator -list-avds failed: ${result.stderr}`);
-  return result.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  return result.stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
 }
 
 async function waitForAndroidBoot(avdName: string): Promise<string> {
@@ -132,12 +140,20 @@ async function waitForAndroidBoot(avdName: string): Promise<string> {
       const status = parts[1];
       if (id && status === 'device' && !connectedBefore.has(id)) {
         // Check boot completed
-        const boot = await spawnCommand('adb', ['-s', id, 'shell', 'getprop', 'sys.boot_completed']);
+        const boot = await spawnCommand('adb', [
+          '-s',
+          id,
+          'shell',
+          'getprop',
+          'sys.boot_completed',
+        ]);
         if (boot.stdout.trim() === '1') return id;
       }
     }
   }
-  throw new Error(`Android emulator (${avdName}) did not appear within ${ANDROID_BOOT_TIMEOUT_MS / 1000}s`);
+  throw new Error(
+    `Android emulator (${avdName}) did not appear within ${ANDROID_BOOT_TIMEOUT_MS / 1000}s`
+  );
 }
 
 async function startAndroid(avdName: string | undefined, opts: OutputOptions): Promise<number> {

@@ -1,8 +1,12 @@
 # Conductor
 
-A token-efficient CLI for mobile UI testing, designed for AI agents.
+[![CI](https://github.com/DouweBos/conductor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DouweBos/conductor/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@houwert/conductor)](https://www.npmjs.com/package/@houwert/conductor)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Inspired by [`@playwright/cli`](https://github.com/microsoft/playwright-cli), Conductor is a TypeScript reimplementation and partial fork of Maestro that talks directly to bundled native drivers — no external CLI installation required. It was built as part of an experiment to integrate Maestro-like testing frameworks as skills for Claude to validate features during implementation.
+A token-efficient CLI for mobile UI interactions, designed for AI agents.
+
+Conductor is a TypeScript reimplementation and partial fork of Maestro that talks directly to bundled native drivers. It was built as part of an experiment to integrate Maestro-like testing frameworks as skills for Claude to validate features during implementation. And as a way to have an agent team navigate the UI of their apps automatically and write up test plans + maestro flows for their apps with minimal supervision.
 
 ## Claude Skills
 
