@@ -1,0 +1,10 @@
+appId: com.example.app
+---
+- scroll:
+    direction: DOWN
+- scroll:
+    direction: UP
+- swipe:
+    direction: LEFT
+- swipe:
+    direction: RIGHT

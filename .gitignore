@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-tests/
+*.js.map
+.DS_Store
+.gradle/
+build/
+*.xcuserstate
+xcuserdata/
+DerivedData/
+**/derived-data/
+packages/cli/drivers/
+.claude/

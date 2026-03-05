@@ -1,0 +1,18 @@
+{
+  "name": "conductor",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "build": "make build",
+    "build:cli": "pnpm --filter @houwert/conductor build",
+    "dev:cli": "pnpm --filter @houwert/conductor dev",
+    "test": "pnpm --filter @houwert/conductor test",
+    "lint": "pnpm --filter @houwert/conductor lint",
+    "lint:fix": "pnpm --filter @houwert/conductor lint:fix",
+    "changeset": "changeset",
+    "changeset:version": "changeset version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0"
+  }
+}

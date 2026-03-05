@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Upgrade npm for Trusted Publishing support
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --ignore-scripts
+
+      - name: Apply changesets
+        run: pnpm changeset version
+
+      - name: Build
+        run: make build
+
+      - name: Commit and tag
+        run: |
+          VERSION=$(node -p "require('./packages/cli/package.json').version")
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changesets to release"
+            exit 0
+          fi
+          git commit -m "chore: release v${VERSION}"
+          git tag "v${VERSION}"
+          git push origin main
+          git push origin "v${VERSION}"
+
+      - name: Publish to npm
+        working-directory: packages/cli
+        run: npm publish --provenance --access public

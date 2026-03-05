@@ -1,0 +1,8 @@
+appId: com.example.app
+env:
+  BUTTON: Submit
+  MESSAGE: Hello World
+---
+- tapOn: "${BUTTON}"
+- inputText: "${MESSAGE}"
+- assertVisible: "${MESSAGE}"

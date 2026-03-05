@@ -1,0 +1,52 @@
+{
+  "name": "@houwert/conductor",
+  "version": "0.1.0",
+  "description": "CLI tool for mobile app interactions — optimized for AI agents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DouweBos/conductor"
+  },
+  "homepage": "https://github.com/DouweBos/conductor",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "conductor": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist/",
+    "drivers/",
+    "skills/",
+    "proto/",
+    ".claude-plugin/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "tsc -p tests/tsconfig.json && node dist-tests/tests/all-tests.js",
+    "lint": "eslint src && prettier --check src",
+    "lint:fix": "eslint src --fix && prettier --write src",
+    "postinstall": "node dist/postinstall.js"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.15",
+    "js-yaml": "^4.1.1",
+    "minimist": "^1.2.8"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/minimist": "^1.2.5",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^10.0.2",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.56.1"
+  }
+}

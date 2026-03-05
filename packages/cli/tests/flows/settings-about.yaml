@@ -1,0 +1,9 @@
+appId: com.apple.Preferences
+---
+- launchApp
+- assertVisible: 'General'
+- tapOn: 'General'
+- assertVisible: 'About'
+- tapOn: 'About'
+- assertVisible: 'iOS Version'
+- pressKey: 'Home'

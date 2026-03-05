@@ -1,0 +1,5 @@
+appId: com.example.app
+---
+- tapOn: "Submit"
+- inputText: "Hello"
+- assertVisible: "Hello"

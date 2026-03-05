@@ -1,0 +1,6 @@
+{
+  "name": "conductor",
+  "description": "CLI for mobile UI testing, designed for AI agents",
+  "repository": "https://github.com/houwert/conductor",
+  "author": { "name": "Houwert" }
+}
