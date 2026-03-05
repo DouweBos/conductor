@@ -49,6 +49,9 @@ jobs:
           git push origin main
           git push origin "v${VERSION}"
 
+      - name: Copy README into package
+        run: cp README.md packages/cli/README.md
+
       - name: Publish to npm
         working-directory: packages/cli
         run: npm publish --provenance --access public
