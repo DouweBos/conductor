@@ -49,6 +49,7 @@ let driverPlatform: 'ios' | 'android' = 'ios';
 const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
 
 let _restartInProgress = false;
+let _driverStarted = false;
 
 async function ensureDriverRunning(): Promise<void> {
   if (_restartInProgress) return;
@@ -126,7 +127,7 @@ async function main(): Promise<void> {
       /* ok */
     }
 
-    if (sessionName !== 'default') {
+    if (_driverStarted) {
       dlog(`Stopping driver on port ${driverPort}`);
       try {
         if (driverPlatform === 'ios') {
@@ -186,6 +187,7 @@ async function main(): Promise<void> {
           dlog(`Platform: ${platform}, port: ${driverPort}`);
 
           if (await isPortOpen(driverPort)) {
+            _driverStarted = true;
             dlog(`Driver already running on port ${driverPort}`);
             return;
           }
@@ -205,6 +207,7 @@ async function main(): Promise<void> {
             } else {
               await startAndroidDriver(sessionName, driverPort);
             }
+            _driverStarted = true;
             dlog(`Driver started successfully`);
           } catch (err) {
             dlog(`Driver startup error: ${err instanceof Error ? err.message : String(err)}`);
