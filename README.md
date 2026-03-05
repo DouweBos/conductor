@@ -51,7 +51,16 @@ skills/conductor/
     └── flow-syntax.md     # Maestro YAML flow syntax reference
 ```
 
-Claude learns every available command, how to coordinate across devices, and how to write and run Maestro YAML flows. See [`packages/cli/skills/conductor/SKILL.md`](./packages/cli/skills/conductor/SKILL.md) for the full reference.
+Claude learns every available command, how to coordinate across devices, and how to write and run Maestro YAML flows. See [`skills/conductor/SKILL.md`](./skills/conductor/SKILL.md) for the full reference.
+
+### Install modes
+
+| Command | What it does |
+|---|---|
+| `npm install -g @houwert/conductor` | Registers global plugin automatically (via postinstall) |
+| `conductor install` | Re-register or update the global plugin |
+| `conductor install --skills` | Copy skills into `.claude/skills/conductor/` in the current project |
+| `conductor install --check` | Print current install status without modifying anything |
 
 ### 📱 What Claude can do
 
@@ -101,6 +110,7 @@ make build-cli          # CLI TypeScript only
 make build-ios-driver   # iOS XCTest driver
 make build-android-driver # Android instrumentation driver
 make package-cli        # Bundle drivers into CLI package
+make copy-skills        # Copy skills/ into packages/cli/skills/ (build artifact)
 ```
 
 ## 🗂️ Repository structure
