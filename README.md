@@ -1,142 +1,26 @@
-# Conductor
+<div align="center">
+
+<img src="assets/banner.png" alt="Conductor" width="800" />
+
+# 🎼 Conductor
+
+**Give Claude hands. Let it drive your app.**
 
 [![CI](https://github.com/DouweBos/conductor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DouweBos/conductor/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@houwert/conductor)](https://www.npmjs.com/package/@houwert/conductor)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A token-efficient CLI for mobile UI interactions, designed for AI agents.
+</div>
 
-Conductor is a TypeScript reimplementation and partial fork of Maestro that talks directly to bundled native drivers. It was built as part of an experiment to integrate Maestro-like testing frameworks as skills for Claude to validate features during implementation. And as a way to have an agent team navigate the UI of their apps automatically and write up test plans + maestro flows for their apps with minimal supervision.
+---
 
-## Claude Skills
+Conductor is a token-efficient CLI for mobile UI interactions, built for AI agents. It's a TypeScript reimplementation and partial fork of [Maestro](https://maestro.mobile.dev) that bundles its own native drivers — no external CLI, no setup friction, no nonsense.
 
-Conductor's primary purpose is to give Claude the ability to interact with mobile apps. It ships with a skill that teaches Claude every available command, how to use them, and how to run multi-agent parallel tests across devices.
+It started as an experiment: what if Claude could tap through your app while it's writing the code? Turns out that's extremely useful. Now it's a proper tool.
 
-### Install into a project
+## ✨ What it does
 
-From the root of any project that uses Claude Code, run:
-
-```bash
-conductor install --skills
-```
-
-This copies the skill files into `.claude/skills/conductor/` in the current directory. Claude Code picks them up automatically and gains the ability to launch apps, tap elements, inspect the UI hierarchy, take screenshots, and run flows — all without leaving the coding session.
-
-### What gets installed
-
-```
-.claude/skills/conductor/
-├── SKILL.md               # Full command reference and agent workflow guide
-└── references/
-    └── flow-syntax.md     # Maestro YAML flow syntax reference
-```
-
-### What Claude can do with this skill
-
-- Launch and stop apps on iOS simulators and Android emulators
-- Tap, type, scroll, swipe, and press keys
-- Inspect the live UI hierarchy to find element text and accessibility IDs
-- Assert that elements are visible or absent
-- Take screenshots and open deep links
-- Run Maestro YAML flows
-- Manage multiple devices in parallel across concurrent agents
-
-See [`packages/cli/skills/conductor/SKILL.md`](./packages/cli/skills/conductor/SKILL.md) for the full reference.
-
-## Repository Structure
-
-```
-conductor/
-├── packages/
-│   ├── cli/              # TypeScript CLI tool (@conductor/cli)
-│   ├── android-driver/   # Android driver (Kotlin/Gradle)
-│   └── ios-driver/       # iOS driver (Xcode/Swift)
-├── Makefile              # Top-level build orchestration
-└── pnpm-workspace.yaml
-```
-
-## Building Locally
-
-### Prerequisites
-
-- **Node.js** and **pnpm** (v9)
-- **Android:** Android SDK with `adb` on `PATH`
-- **iOS:** Xcode with command-line tools installed
-
-### Full build (CLI + drivers)
-
-```bash
-make build
-```
-
-This runs the following steps in order:
-
-1. Builds the iOS driver with `xcodebuild`
-2. Builds the Android driver with Gradle
-3. Packages both drivers into `packages/cli/drivers/`
-4. Compiles the CLI TypeScript
-5. (Optional) Links the CLI globally
-
-```bash
-cd packages/cli
-pnpm link --global
-```
-
-This makes the `conductor` command available in your shell.
-
-### Build individual components
-
-```bash
-# CLI only (requires drivers already built and packaged)
-make build-cli
-
-# iOS driver only
-make build-ios-driver
-
-# Android driver only
-make build-android-driver
-
-# Package drivers into the CLI (after building both drivers)
-make package-cli
-```
-
-### CLI only (no driver rebuild)
-
-If the native drivers are already built and packaged, you can work on the CLI alone:
-
-```bash
-cd packages/cli
-pnpm install
-pnpm build
-```
-
-## Installing the CLI
-
-After building, link the CLI globally:
-
-```bash
-cd packages/cli
-pnpm link --global
-```
-
-This makes the `conductor` command available in your shell.
-
-## Usage
-
-### Start a device
-
-```bash
-conductor start-device --platform ios
-conductor start-device --platform android
-```
-
-### List connected devices
-
-```bash
-conductor list-devices
-```
-
-### Launch an app and interact
+Conductor gives Claude Code the ability to interact with iOS simulators and Android emulators directly from a coding session. It can navigate UI, inspect the live hierarchy, take screenshots, run flows, and manage multiple devices in parallel across concurrent agents.
 
 ```bash
 conductor launch-app com.example.myapp
@@ -146,43 +30,100 @@ conductor assert-visible "Dashboard"
 conductor screenshot --output /tmp/screen.png
 ```
 
-### Inspect the UI hierarchy
+One agent writes the feature. Another taps through the app. They talk. It works. 🤝
+
+## 🚀 Quick start
 
 ```bash
-conductor inspect
+npm install -g @houwert/conductor
 ```
 
-### Run a Maestro YAML flow
+That's it. The postinstall script registers Conductor as a Claude Code plugin automatically — Claude gains full mobile UI control without any extra steps.
+
+## 🧠 Claude Skills
+
+The plugin registers itself globally in `~/.claude/plugins/` and ships two skill files:
+
+```
+skills/conductor/
+├── SKILL.md               # Full command reference and agent workflow guide
+└── references/
+    └── flow-syntax.md     # Maestro YAML flow syntax reference
+```
+
+Claude learns every available command, how to coordinate across devices, and how to write and run Maestro YAML flows. See [`packages/cli/skills/conductor/SKILL.md`](./packages/cli/skills/conductor/SKILL.md) for the full reference.
+
+### 📱 What Claude can do
+
+| Capability | Commands |
+|---|---|
+| App lifecycle | `launch-app`, `stop-app` |
+| Interaction | `tap`, `type`, `scroll`, `swipe`, `press-key` |
+| Inspection | `inspect`, `screenshot` |
+| Assertions | `assert-visible`, `assert-not-visible` |
+| Navigation | `open-link` |
+| Flows | `run-flow` (Maestro YAML) |
+| Devices | `start-device`, `list-devices` |
+
+## 🔨 Building locally
+
+### Prerequisites
+
+- Node.js + pnpm v9
+- **iOS:** Xcode with command-line tools
+- **Android:** Android SDK with `adb` on `PATH`
+
+### Full build
 
 ```bash
-conductor run-flow ./flows/login.yaml
+make build
 ```
 
-## Development
+Builds the iOS driver (xcodebuild), the Android driver (Gradle), packages both into the CLI, and compiles TypeScript. Then link it globally:
 
-### Run the TypeScript compiler in watch mode
+```bash
+cd packages/cli && pnpm link --global
+```
+
+### CLI only
+
+If the drivers are already built and packaged:
 
 ```bash
 cd packages/cli
-pnpm dev
+pnpm install && pnpm build
 ```
 
-### Lint and format
+### Individual targets
 
 ```bash
-cd packages/cli
-pnpm lint
-pnpm format
+make build-cli          # CLI TypeScript only
+make build-ios-driver   # iOS XCTest driver
+make build-android-driver # Android instrumentation driver
+make package-cli        # Bundle drivers into CLI package
 ```
 
-### Run tests
+## 🗂️ Repository structure
+
+```
+conductor/
+├── packages/
+│   ├── cli/              # TypeScript CLI (@houwert/conductor)
+│   ├── android-driver/   # Kotlin/Gradle instrumentation driver
+│   └── ios-driver/       # Swift/Xcode XCTest driver
+└── Makefile
+```
+
+## 🛠️ Development
 
 ```bash
-cd packages/cli
-pnpm test
+pnpm dev     # TypeScript watch mode
+pnpm lint    # ESLint + Prettier check
+pnpm lint:fix  # Auto-fix formatting
+pnpm test    # Run test suite
 ```
 
-## Requirements
+## 📋 Requirements
 
+- **iOS:** Xcode with a booted simulator
 - **Android:** `adb` on `PATH` with a running emulator or connected device
-- **iOS:** Xcode with a running simulator
