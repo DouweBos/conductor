@@ -1,6 +1,9 @@
 {
   "name": "conductor",
+  "version": "0.2.0",
   "description": "CLI for mobile UI testing, designed for AI agents",
   "repository": "https://github.com/houwert/conductor",
-  "author": { "name": "Houwert" }
+  "author": { "name": "Houwert" },
+  "category": "service",
+  "skills": ["conductor"]
 }

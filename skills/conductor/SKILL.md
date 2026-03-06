@@ -1,3 +1,13 @@
+---
+name: conductor
+version: 0.2.0
+description: "Token-efficient CLI for mobile UI testing (iOS simulator + Android emulator), designed for AI agents"
+metadata.openclaw:
+  category: service
+  requires:
+    bins: [conductor]
+---
+
 # conductor
 
 A token-efficient CLI for Conductor mobile UI testing, designed for AI agents.

@@ -112,6 +112,8 @@ Commands:
   session [--clear] [--list]          Show, clear, or list device sessions
   cheat-sheet                         Print command reference
   install                             Install/reinstall Claude Code plugin
+  install --skills                    Copy skills into local .claude/skills/
+  install --check                     Print current install status without modifying anything
   daemon-start                        Start background daemon (manages driver process)
   daemon-stop [--all]                 Stop background daemon (--all stops every session's daemon)
   daemon-status                       Show daemon status
@@ -138,6 +140,7 @@ async function main(): Promise<void> {
       'list',
       'verbose',
       'skills',
+      'check',
       'all',
       'acquire',
       'release',
@@ -427,7 +430,7 @@ async function main(): Promise<void> {
       break;
 
     case 'install':
-      exitCode = await installSkills(opts);
+      exitCode = await installSkills(opts, argv['skills'] as boolean, argv['check'] as boolean);
       break;
 
     case 'daemon-start':
