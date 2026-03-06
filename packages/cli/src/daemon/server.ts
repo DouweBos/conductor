@@ -25,6 +25,7 @@ import {
   isPortOpen,
   isSimulatorBooted,
 } from '../drivers/bootstrap.js';
+import { AndroidDriver } from '../drivers/android.js';
 
 const sessionName = process.argv[2] ?? 'default';
 
@@ -53,7 +54,17 @@ let _driverStarted = false;
 
 async function ensureDriverRunning(): Promise<void> {
   if (_restartInProgress) return;
-  const alive = await isPortOpen(driverPort);
+
+  let alive: boolean;
+  if (driverPlatform === 'android') {
+    const probe = new AndroidDriver(sessionName, driverPort);
+    await probe.connect();
+    alive = await probe.isAlive().catch(() => false);
+    probe.close();
+  } else {
+    alive = await isPortOpen(driverPort);
+  }
+
   if (!alive) {
     if (driverPlatform === 'ios' && !(await isSimulatorBooted(sessionName))) {
       dlog(`Simulator ${sessionName} is not booted — skipping driver restart`);
@@ -133,7 +144,7 @@ async function main(): Promise<void> {
         if (driverPlatform === 'ios') {
           await stopIOSDriver(sessionName);
         } else {
-          await stopAndroidDriver(sessionName);
+          await stopAndroidDriver(sessionName, driverPort);
         }
       } catch (err) {
         dlog(`Stop driver error: ${err instanceof Error ? err.message : String(err)}`);
@@ -186,7 +197,16 @@ async function main(): Promise<void> {
           driverPort = await getDriverPort(platform, sessionName);
           dlog(`Platform: ${platform}, port: ${driverPort}`);
 
-          if (await isPortOpen(driverPort)) {
+          let driverAlive: boolean;
+          if (platform === 'android') {
+            const probe = new AndroidDriver(sessionName, driverPort);
+            await probe.connect();
+            driverAlive = await probe.isAlive().catch(() => false);
+            probe.close();
+          } else {
+            driverAlive = await isPortOpen(driverPort);
+          }
+          if (driverAlive) {
             _driverStarted = true;
             dlog(`Driver already running on port ${driverPort}`);
             return;

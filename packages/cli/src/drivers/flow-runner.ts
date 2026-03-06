@@ -404,11 +404,12 @@ const ANDROID_KEYCODES: Record<string, number> = {
   VOLUME_UP: 24,
   VOLUME_DOWN: 25,
   POWER: 26,
-  DPAD_UP: 19,
-  DPAD_DOWN: 20,
-  DPAD_LEFT: 21,
-  DPAD_RIGHT: 22,
-  DPAD_CENTER: 23,
+  // Android TV remote D-pad keys only
+  'REMOTE DPAD UP': 19,
+  'REMOTE DPAD DOWN': 20,
+  'REMOTE DPAD LEFT': 21,
+  'REMOTE DPAD RIGHT': 22,
+  'REMOTE DPAD CENTER': 23,
 };
 
 // ── Executor ──────────────────────────────────────────────────────────────────
