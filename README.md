@@ -66,13 +66,13 @@ Claude learns every available command, how to coordinate across devices, and how
 
 | Capability | Commands |
 |---|---|
-| App lifecycle | `launch-app`, `stop-app` |
-| Interaction | `tap`, `type`, `scroll`, `swipe`, `press-key` |
-| Inspection | `inspect`, `screenshot` |
+| App lifecycle | `launch-app`, `stop-app`, `foreground-app` |
+| Interaction | `tap`, `type`, `scroll`, `scroll-until-visible`, `swipe`, `press-key`, `erase-text`, `hide-keyboard` |
+| Inspection | `inspect`, `screenshot`, `list-apps` |
 | Assertions | `assert-visible`, `assert-not-visible` |
-| Navigation | `open-link` |
-| Flows | `run-flow` (Maestro YAML) |
-| Devices | `start-device`, `list-devices` |
+| Navigation | `open-link`, `back` |
+| Flows | `run-flow`, `run-flow-inline`, `run-parallel` |
+| Devices | `start-device`, `list-devices`, `set-location`, `set-orientation` |
 
 ## 🔨 Building locally
 
