@@ -109,13 +109,12 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
 
   let driver: AnyDriver;
 
-  if (!(await isPortOpen(port))) {
-    log(`Driver not running — starting daemon for ${deviceId}...`);
-    await startDaemon(deviceId);
-    await waitForPort(port);
-  }
-
   if (platform === 'ios') {
+    if (!(await isPortOpen(port))) {
+      log(`Driver not running — starting daemon for ${deviceId}...`);
+      await startDaemon(deviceId);
+      await waitForPort(port);
+    }
     const iosDriver = new IOSDriver(port, '127.0.0.1', deviceId);
     if (!(await iosDriver.isAlive())) {
       throw new Error(
@@ -125,6 +124,29 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
     }
     driver = iosDriver;
   } else {
+    // Ensure the daemon is running — it handles APK install and driver startup.
+    await startDaemon(deviceId);
+
+    // Poll isAlive() directly instead of isPortOpen(): with ADB port forwarding the
+    // local port appears open as soon as `adb forward` runs, before the gRPC server
+    // on the device is ready, making isPortOpen() unreliable as a readiness signal.
+    const ANDROID_READY_TIMEOUT_MS = 180_000;
+    const deadline = Date.now() + ANDROID_READY_TIMEOUT_MS;
+    let alive = false;
+    while (Date.now() < deadline) {
+      const probe = new AndroidDriver(deviceId, port);
+      await probe.connect();
+      alive = await probe.isAlive().catch(() => false);
+      probe.close();
+      if (alive) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    if (!alive) {
+      throw new Error(
+        `Android gRPC driver on port ${port} is not responding.\n` +
+          `Make sure the Conductor driver APK is installed: conductor install --device ${deviceId}`
+      );
+    }
     const androidDriver = new AndroidDriver(deviceId, port);
     await androidDriver.connect();
     driver = androidDriver;

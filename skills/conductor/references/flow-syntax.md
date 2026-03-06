@@ -51,6 +51,7 @@ appId: com.example.myapp
 - pressKey: Enter
 - pressKey: Backspace
 - pressKey: Home
+- pressKey: Remote Dpad Down  # Android TV only; also Up, Left, Right, Center, Remote Media Play Pause, Remote Media Stop, Remote Media Next, Remote Media Previous, Remote Media Rewind, Remote Media Fast Forward, Remote System Navigation Up, Remote System Navigation Down, Remote Button A, Remote Button B, Remote Menu, TV Input, TV Input HDMI 1/2/3
 - pasteText: "pasted content" # paste text into focused field
 - copyTextFrom: "Element"     # copy element's text to output.textContent
 ```

@@ -169,9 +169,9 @@ conductor back
 
 ### `press-key <key>`
 
-Press a hardware or keyboard key. Valid keys: `Enter`, `Backspace`, `Home`, `End`, `Tab`, `Delete`, `Escape`, `VolumeUp`, `VolumeDown`, `Power`, `Lock`, `Back`, `Camera`, `Search`.
+Press a hardware or keyboard key. Valid keys: `Enter`, `Backspace`, `Home`, `End`, `Tab`, `Delete`, `Escape`, `VolumeUp`, `VolumeDown`, `Power`, `Lock`, `Back`, `Camera`, `Search`, `Remote Dpad Up`, `Remote Dpad Down`, `Remote Dpad Left`, `Remote Dpad Right`, `Remote Dpad Center`.
 
-Not all keys are supported on all platforms — unsupported keys are silently ignored (e.g. `Back` on iOS).
+Not all keys are supported on all platforms — unsupported keys are silently ignored (e.g. `Back` on iOS). The `Remote Dpad *` keys are Android TV only.
 
 ```bash
 conductor press-key Enter

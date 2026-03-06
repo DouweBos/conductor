@@ -388,7 +388,7 @@ export async function startAndroidDriver(
   );
 }
 
-export async function stopAndroidDriver(deviceId: string): Promise<void> {
+export async function stopAndroidDriver(deviceId: string, port = ANDROID_BASE_PORT): Promise<void> {
   await spawnAndWait('adb', [
     '-s',
     deviceId,
@@ -397,7 +397,7 @@ export async function stopAndroidDriver(deviceId: string): Promise<void> {
     'force-stop',
     'dev.houwert.conductor',
   ]).catch(() => {});
-  await spawnAndWait('adb', ['-s', deviceId, 'forward', '--remove', 'tcp:3763']).catch(() => {});
+  await spawnAndWait('adb', ['-s', deviceId, 'forward', '--remove', `tcp:${port}`]).catch(() => {});
 }
 
 /**
