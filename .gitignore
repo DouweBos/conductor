@@ -10,4 +10,5 @@ xcuserdata/
 DerivedData/
 **/derived-data/
 packages/cli/drivers/
+packages/cli/skills/
 .claude/
