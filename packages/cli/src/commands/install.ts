@@ -136,6 +136,9 @@ export function installPlugin(): string {
   let installed: { plugins: { name: string; version: string; path: string }[] } = { plugins: [] };
   if (fs.existsSync(installedPluginsPath)) {
     installed = JSON.parse(fs.readFileSync(installedPluginsPath, 'utf8')) as typeof installed;
+    if (!Array.isArray(installed.plugins)) {
+      installed.plugins = [];
+    }
   }
 
   installed.plugins = installed.plugins.filter((p) => p.name !== 'conductor');

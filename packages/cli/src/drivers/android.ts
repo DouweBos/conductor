@@ -56,34 +56,35 @@ export class AndroidDriver {
     });
   }
 
-  async close(): Promise<void> {
+  close(): void {
     if (this.client) {
-      await new Promise<void>((resolve) => this.client.close(() => resolve()));
+      this.client.close();
       this.client = null;
     }
   }
 
-  async isAlive(): Promise<boolean> {
-    try {
-      await this.deviceInfo();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private call<T>(method: string, req: unknown): Promise<T> {
+  private call<T>(method: string, req: unknown, timeoutMs = 30000): Promise<T> {
     return new Promise((resolve, reject) => {
       if (!this.client) {
         reject(new Error('AndroidDriver: not connected'));
         return;
       }
+      const deadline = new Date(Date.now() + timeoutMs);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (this.client as any)[method](req, (err: grpc.ServiceError | null, resp: T) => {
+      (this.client as any)[method](req, { deadline }, (err: grpc.ServiceError | null, resp: T) => {
         if (err) reject(err);
         else resolve(resp);
       });
     });
+  }
+
+  async isAlive(): Promise<boolean> {
+    try {
+      await this.call<{ widthPixels: number; heightPixels: number }>('deviceInfo', {}, 5000);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async deviceInfo(): Promise<AndroidDeviceInfo> {
