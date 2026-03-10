@@ -1,3 +1,5 @@
+export const HELP = `  foreground-app                      Print bundle ID / package of the foreground app`;
+
 import { getDriver, spawnCommand, detectFirstDevice } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

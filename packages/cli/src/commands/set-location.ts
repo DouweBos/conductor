@@ -1,3 +1,5 @@
+export const HELP = `  set-location --lat <n> --lng <n>    Set GPS coordinates`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 
