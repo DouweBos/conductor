@@ -1,3 +1,7 @@
+export const HELP = `  device-pool --list                  List all devices and pool status
+  device-pool --acquire               Claim a free device (prints device ID)
+  device-pool --release <id>          Release a device back to the pool`;
+
 /**
  * device-pool: Manage a pool of available devices for concurrent multi-agent use.
  *

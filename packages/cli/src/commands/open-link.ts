@@ -1,3 +1,5 @@
+export const HELP = `  open-link <url>                     Open a URL / deep link`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 

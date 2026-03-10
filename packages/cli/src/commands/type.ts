@@ -1,3 +1,5 @@
+export const HELP = `  type <text>                         Type text into focused field`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 

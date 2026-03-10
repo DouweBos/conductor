@@ -1,3 +1,5 @@
+export const HELP = `  set-orientation <portrait|landscape> Set device orientation`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 

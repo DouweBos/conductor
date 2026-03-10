@@ -1,3 +1,6 @@
+export const HELP = `  run-flow-inline <yaml>              Run inline YAML commands
+    --benchmark                       Print elapsed time for each command and total flow time`;
+
 import { runInlineFlow } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 

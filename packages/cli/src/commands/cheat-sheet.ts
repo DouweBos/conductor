@@ -1,3 +1,5 @@
+export const HELP = `  cheat-sheet                         Print command reference`;
+
 import fs from 'fs/promises';
 import path from 'path';
 
