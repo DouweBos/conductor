@@ -1,3 +1,9 @@
+export const HELP = `  launch-app <appId>                  Launch app (saves to session)
+    --clear-state                     Clear app data/state before launching
+    --clear-keychain                  Clear keychain before launching
+    --no-stop-app                     Do not stop the app before launching (resume instead of restart)
+    --argument key=value              Set launch argument (repeatable)`;
+
 import { runDirect } from '../runner.js';
 import { updateSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';

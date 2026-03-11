@@ -1,3 +1,9 @@
+export const HELP = `  scroll-until-visible <element>      Scroll until element is visible
+    --id <id>                         Match by accessibility id instead of text
+    --text <text>                     Match by text only (not id)
+    --direction <down|up|left|right>  Scroll direction (default: down)
+    --timeout <ms>                    Max time in milliseconds (default: 30000)`;
+
 import { getDriver } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

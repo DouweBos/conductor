@@ -1,133 +1,103 @@
 #!/usr/bin/env node
 import minimist from 'minimist';
 import { setVerbose } from './verbose.js';
-import { listDevices } from './commands/list-devices.js';
-import { launchApp } from './commands/launch-app.js';
-import { stopApp } from './commands/stop-app.js';
-import { tap } from './commands/tap.js';
-import { typeText } from './commands/type.js';
-import { back } from './commands/back.js';
-import { scroll } from './commands/scroll.js';
-import { swipe } from './commands/swipe.js';
-import { assertVisible } from './commands/assert-visible.js';
-import { screenshot } from './commands/screenshot.js';
-import { inspect } from './commands/inspect.js';
-import { runFlow } from './commands/run-flow.js';
-import { runFlowInline } from './commands/run-flow-inline.js';
-import { pressKey } from './commands/press-key.js';
-import { sessionCmd } from './commands/session.js';
-import { cheatSheet } from './commands/cheat-sheet.js';
-import { daemonStart, daemonStop, daemonStatusCmd } from './commands/daemon.js';
-import { installSkills } from './commands/install.js';
-import { devicePool } from './commands/device-pool.js';
-import { runParallel } from './commands/run-parallel.js';
-import { foregroundApp } from './commands/foreground-app.js';
-import { listApps } from './commands/list-apps.js';
-import { eraseText } from './commands/erase-text.js';
-import { assertNotVisible } from './commands/assert-not-visible.js';
-import { openLink } from './commands/open-link.js';
-import { hideKeyboard } from './commands/hide-keyboard.js';
-import { scrollUntilVisible } from './commands/scroll-until-visible.js';
-import { setLocation } from './commands/set-location.js';
-import { setOrientation } from './commands/set-orientation.js';
-import { startDevice } from './commands/start-device.js';
+import {
+  listDevices,
+  discoverBootedDevices,
+  HELP as listDevicesHelp,
+} from './commands/list-devices.js';
+import { launchApp, HELP as launchAppHelp } from './commands/launch-app.js';
+import { stopApp, HELP as stopAppHelp } from './commands/stop-app.js';
+import { tap, HELP as tapHelp } from './commands/tap.js';
+import { typeText, HELP as typeHelp } from './commands/type.js';
+import { back, HELP as backHelp } from './commands/back.js';
+import { scroll, HELP as scrollHelp } from './commands/scroll.js';
+import { swipe, HELP as swipeHelp } from './commands/swipe.js';
+import { assertVisible, HELP as assertVisibleHelp } from './commands/assert-visible.js';
+import { screenshot, HELP as screenshotHelp } from './commands/screenshot.js';
+import { inspect, HELP as inspectHelp } from './commands/inspect.js';
+import { runFlow, HELP as runFlowHelp } from './commands/run-flow.js';
+import { runFlowInline, HELP as runFlowInlineHelp } from './commands/run-flow-inline.js';
+import { pressKey, HELP as pressKeyHelp } from './commands/press-key.js';
+import { sessionCmd, HELP as sessionHelp } from './commands/session.js';
+import { cheatSheet, HELP as cheatSheetHelp } from './commands/cheat-sheet.js';
+import {
+  daemonStart,
+  daemonStop,
+  daemonStatusCmd,
+  HELP_DAEMON_START as daemonStartHelp,
+  HELP_DAEMON_STOP as daemonStopHelp,
+  HELP_DAEMON_STATUS as daemonStatusHelp,
+} from './commands/daemon.js';
+import { installSkills, HELP as installHelp } from './commands/install.js';
+import { devicePool, HELP as devicePoolHelp } from './commands/device-pool.js';
+import { runParallel, HELP as runParallelHelp } from './commands/run-parallel.js';
+import { foregroundApp, HELP as foregroundAppHelp } from './commands/foreground-app.js';
+import { listApps, HELP as listAppsHelp } from './commands/list-apps.js';
+import { copyApp, HELP as copyAppHelp } from './commands/copy-app.js';
+import { eraseText, HELP as eraseTextHelp } from './commands/erase-text.js';
+import { assertNotVisible, HELP as assertNotVisibleHelp } from './commands/assert-not-visible.js';
+import { openLink, HELP as openLinkHelp } from './commands/open-link.js';
+import { hideKeyboard, HELP as hideKeyboardHelp } from './commands/hide-keyboard.js';
+import {
+  scrollUntilVisible,
+  HELP as scrollUntilVisibleHelp,
+} from './commands/scroll-until-visible.js';
+import { setLocation, HELP as setLocationHelp } from './commands/set-location.js';
+import { setOrientation, HELP as setOrientationHelp } from './commands/set-orientation.js';
+import { startDevice, HELP as startDeviceHelp } from './commands/start-device.js';
 import { detectFirstDevice } from './runner.js';
 import { checkForUpdates } from './update-check.js';
 
-const HELP = `
-Usage: conductor <command> [args] [options]
+const COMMAND_HELP: Record<string, string> = {
+  'start-device': startDeviceHelp,
+  'list-devices': listDevicesHelp,
+  'foreground-app': foregroundAppHelp,
+  'list-apps': listAppsHelp,
+  'copy-app': copyAppHelp,
+  'launch-app': launchAppHelp,
+  'stop-app': stopAppHelp,
+  tap: tapHelp,
+  type: typeHelp,
+  'erase-text': eraseTextHelp,
+  back: backHelp,
+  'press-key': pressKeyHelp,
+  'hide-keyboard': hideKeyboardHelp,
+  scroll: scrollHelp,
+  swipe: swipeHelp,
+  'scroll-until-visible': scrollUntilVisibleHelp,
+  'assert-visible': assertVisibleHelp,
+  'assert-not-visible': assertNotVisibleHelp,
+  'open-link': openLinkHelp,
+  'set-location': setLocationHelp,
+  'set-orientation': setOrientationHelp,
+  screenshot: screenshotHelp,
+  inspect: inspectHelp,
+  'run-flow': runFlowHelp,
+  'run-flow-inline': runFlowInlineHelp,
+  session: sessionHelp,
+  'cheat-sheet': cheatSheetHelp,
+  install: installHelp,
+  'daemon-start': daemonStartHelp,
+  'daemon-stop': daemonStopHelp,
+  'daemon-status': daemonStatusHelp,
+  'device-pool': devicePoolHelp,
+  'run-parallel': runParallelHelp,
+};
 
-Commands:
-  start-device --platform <ios|android>  Boot a simulator or emulator
-    --os-version <n>                  iOS version (e.g. 18) or Android API level (e.g. 33)
-    --avd <name>                      Android AVD name (default: first available)
-  list-devices                        List connected devices/simulators
-  foreground-app                      Print bundle ID / package of the foreground app
-  list-apps                           List installed app IDs / package names
-  launch-app <appId>                  Launch app (saves to session)
-    --clear-state                     Clear app data/state before launching
-    --clear-keychain                  Clear keychain before launching
-    --no-stop-app                     Do not stop the app before launching (resume instead of restart)
-    --argument key=value              Set launch argument (repeatable)
-  stop-app [<appId>]                  Stop app
-  tap <element>                       Tap element by text or id
-    --id <id>                         Match by accessibility id instead of text
-    --text <text>                     Match by text only (not id)
-    --index <n>                       Pick the nth match (0-based)
-    --long-press                      Hold instead of tap
-    --double-tap                      Double-tap the element
-    --optional                        Do not fail if element is not found
-    --focused                         Match only focused elements
-    --enabled / --no-enabled          Match by enabled state
-    --checked / --no-checked          Match by checked state
-    --selected / --no-selected        Match by selected state
-    --below <text>                    Match element below the given reference
-    --above <text>                    Match element above the given reference
-    --left-of <text>                  Match element left of the given reference
-    --right-of <text>                 Match element right of the given reference
-    --verbose                         Log all candidates and chosen element
-  type <text>                         Type text into focused field
-  erase-text [n]                      Erase n characters (default: 50)
-  back                                Press back button
-  press-key <key>                     Press a key (Enter, Backspace, Home, ...)
-  hide-keyboard                       Dismiss the on-screen keyboard
-  scroll [--direction down|up|left|right]
-  swipe --direction <UP|DOWN|LEFT|RIGHT>
-    --start <x,y>                     Start coordinate (0–1 normalised or absolute px)
-    --end <x,y>                       End coordinate (0–1 normalised or absolute px)
-    --duration <ms>                   Swipe duration in milliseconds (default: 500)
-  scroll-until-visible <element>      Scroll until element is visible
-    --id <id>                         Match by accessibility id instead of text
-    --text <text>                     Match by text only (not id)
-    --direction <down|up|left|right>  Scroll direction (default: down)
-    --timeout <ms>                    Max time in milliseconds (default: 30000)
-  assert-visible <element>            Assert element is visible
-    --id <id>                         Match by accessibility id instead of text
-    --text <text>                     Match by text only (not id)
-    --index <n>                       Pick the nth match (0-based)
-    --timeout <ms>                    Max wait time in milliseconds
-    --optional                        Do not fail if element is not found
-    --focused                         Match only focused elements
-    --enabled / --no-enabled          Match by enabled state
-    --checked / --no-checked          Match by checked state
-    --selected / --no-selected        Match by selected state
-    --below <text>                    Match element below the given reference
-    --above <text>                    Match element above the given reference
-    --left-of <text>                  Match element left of the given reference
-    --right-of <text>                 Match element right of the given reference
-  assert-not-visible <element>        Assert element is absent from screen
-    --id <id>                         Match by accessibility id instead of text
-    --text <text>                     Match by text only (not id)
-    --timeout <ms>                    Max check time in milliseconds (default: 1000)
-  open-link <url>                     Open a URL / deep link
-  set-location --lat <n> --lng <n>    Set GPS coordinates
-  set-orientation <portrait|landscape> Set device orientation
-  screenshot [--output <path>]        Take screenshot
-  inspect                             Print UI hierarchy
-  run-flow <file> [--device <id>]     Run a Maestro YAML flow file
-    --env KEY=VALUE                   Inject env var (repeatable; overrides flow env block)
-    --benchmark                       Print elapsed time for each command and total flow time
-  run-flow-inline <yaml>              Run inline YAML commands
-    --benchmark                       Print elapsed time for each command and total flow time
-  session [--clear] [--list]          Show, clear, or list device sessions
-  cheat-sheet                         Print command reference
-  install                             Install/reinstall Claude Code plugin
-  install --skills                    Copy skills into local .claude/skills/
-  install --check                     Print current install status without modifying anything
-  daemon-start                        Start background daemon (manages driver process)
-  daemon-stop [--all]                 Stop background daemon (--all stops every session's daemon)
-  daemon-status                       Show daemon status
-  device-pool --list                  List all devices and pool status
-  device-pool --acquire               Claim a free device (prints device ID)
-  device-pool --release <id>          Release a device back to the pool
-  run-parallel --flows-dir <path>     Run flows in parallel across all devices
-
-Options:
+const OPTIONS_HELP = `Options:
   --device <id>     Target device ID (also keys the session and daemon)
+  --device-name <n> Target device by name (resolved to ID via list-devices)
   --json            Output as machine-readable JSON
   --verbose, -v     Log daemon calls, fallbacks, and raw output
-  --help, -h        Show this help
-`.trim();
+  --help, -h        Show this help`;
+
+const HELP = `Usage: conductor <command> [args] [options]
+
+Commands:
+${Object.values(COMMAND_HELP).join('\n')}
+
+${OPTIONS_HELP}`;
 
 async function main(): Promise<void> {
   checkForUpdates();
@@ -172,6 +142,11 @@ async function main(): Promise<void> {
       'platform',
       'os-version',
       'avd',
+      'name',
+      'device-name',
+      'device-type',
+      'from',
+      'to',
     ],
     alias: { h: 'help', v: 'verbose' },
   });
@@ -184,10 +159,36 @@ async function main(): Promise<void> {
   // The device ID is the natural key for both the session file and the daemon.
   // Use --device if given, otherwise detect the first booted device, otherwise 'default'.
   const explicitDevice = argv['device'] as string | undefined;
-  const sessionName: string = explicitDevice ?? (await detectFirstDevice()) ?? 'default';
+  const deviceName = argv['device-name'] as string | undefined;
+
+  if (explicitDevice && deviceName) {
+    console.error('Error: --device and --device-name are mutually exclusive.');
+    process.exit(1);
+  }
+
+  let sessionName: string;
+  if (deviceName) {
+    const devices = await discoverBootedDevices();
+    const match = devices.find((d) => d.name === deviceName);
+    if (!match) {
+      console.error(
+        `Error: No device found with name "${deviceName}". Run \`conductor list-devices\` to see available devices.`
+      );
+      process.exit(1);
+    }
+    sessionName = match.id;
+  } else {
+    sessionName = explicitDevice ?? (await detectFirstDevice()) ?? 'default';
+  }
 
   if (!command || argv['help']) {
-    console.log(HELP);
+    if (command && argv['help'] && COMMAND_HELP[command]) {
+      console.log(
+        `Usage: conductor ${command} [options]\n\n${COMMAND_HELP[command]}\n\n${OPTIONS_HELP}`
+      );
+    } else {
+      console.log(HELP);
+    }
     process.exit(0);
   }
 
@@ -198,6 +199,8 @@ async function main(): Promise<void> {
       exitCode = await startDevice(argv['platform'] as string | undefined, opts, {
         osVersion: argv['os-version'] as string | undefined,
         avd: argv['avd'] as string | undefined,
+        name: argv['name'] as string | undefined,
+        deviceType: argv['device-type'] as string | undefined,
       });
       break;
 
@@ -212,6 +215,14 @@ async function main(): Promise<void> {
     case 'list-apps':
       exitCode = await listApps(opts, sessionName);
       break;
+
+    case 'copy-app': {
+      const bundleId = rest[0] ?? '';
+      const from = argv['from'] as string | undefined;
+      const to = argv['to'] as string | undefined;
+      exitCode = await copyApp(bundleId, from ?? '', to ?? '', opts);
+      break;
+    }
 
     case 'launch-app': {
       const appId = rest[0] ?? '';

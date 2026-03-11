@@ -1,3 +1,18 @@
+export const HELP = `  assert-visible <element>            Assert element is visible
+    --id <id>                         Match by accessibility id instead of text
+    --text <text>                     Match by text only (not id)
+    --index <n>                       Pick the nth match (0-based)
+    --timeout <ms>                    Max wait time in milliseconds
+    --optional                        Do not fail if element is not found
+    --focused                         Match only focused elements
+    --enabled / --no-enabled          Match by enabled state
+    --checked / --no-checked          Match by checked state
+    --selected / --no-selected        Match by selected state
+    --below <text>                    Match element below the given reference
+    --above <text>                    Match element above the given reference
+    --left-of <text>                  Match element left of the given reference
+    --right-of <text>                 Match element right of the given reference`;
+
 import { getDriver } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

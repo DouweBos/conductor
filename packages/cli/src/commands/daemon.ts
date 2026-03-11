@@ -1,3 +1,7 @@
+export const HELP_DAEMON_START = `  daemon-start                        Start background daemon (manages driver process)`;
+export const HELP_DAEMON_STOP = `  daemon-stop [--all]                 Stop background daemon (--all stops every session's daemon)`;
+export const HELP_DAEMON_STATUS = `  daemon-status                       Show daemon status`;
+
 import { startDaemon, stopDaemon, daemonStatus, listDaemonSessions } from '../daemon/client.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 

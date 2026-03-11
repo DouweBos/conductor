@@ -1,3 +1,8 @@
+export const HELP = `  assert-not-visible <element>        Assert element is absent from screen
+    --id <id>                         Match by accessibility id instead of text
+    --text <text>                     Match by text only (not id)
+    --timeout <ms>                    Max check time in milliseconds (default: 1000)`;
+
 import { getDriver } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

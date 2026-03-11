@@ -1,3 +1,5 @@
+export const HELP = `  screenshot [--output <path>]        Take screenshot`;
+
 import path from 'path';
 import fs from 'fs/promises';
 import { runDirect } from '../runner.js';

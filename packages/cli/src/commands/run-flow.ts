@@ -1,3 +1,7 @@
+export const HELP = `  run-flow <file> [--device <id>]     Run a Maestro YAML flow file
+    --env KEY=VALUE                   Inject env var (repeatable; overrides flow env block)
+    --benchmark                       Print elapsed time for each command and total flow time`;
+
 import path from 'path';
 import { getDriver } from '../runner.js';
 import { parseFlowFile, executeFlow } from '../drivers/flow-runner.js';

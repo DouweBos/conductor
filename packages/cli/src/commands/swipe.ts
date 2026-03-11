@@ -1,3 +1,9 @@
+export const HELP = `  swipe
+    --direction <UP|DOWN|LEFT|RIGHT>  Swipe direction (default: down)
+    --start <x,y>                     Start coordinate (0–1 normalised or absolute px)
+    --end <x,y>                       End coordinate (0–1 normalised or absolute px)
+    --duration <ms>                   Swipe duration in milliseconds (default: 500)`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
