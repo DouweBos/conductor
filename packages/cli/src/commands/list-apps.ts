@@ -1,3 +1,5 @@
+export const HELP = `  list-apps                           List installed app IDs / package names`;
+
 import { spawnCommand, detectFirstDevice } from '../runner.js';
 import { getSession } from '../session.js';
 import { printData, printError, OutputOptions } from '../output.js';

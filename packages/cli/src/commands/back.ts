@@ -1,3 +1,5 @@
+export const HELP = `  back                                Press back button`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

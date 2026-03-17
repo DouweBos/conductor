@@ -1,3 +1,7 @@
+export const HELP = `  install                             Install/reinstall Claude Code plugin
+  install --skills                    Copy skills into local .claude/skills/
+  install --check                     Print current install status without modifying anything`;
+
 import fs from 'fs';
 import os from 'os';
 import path from 'path';

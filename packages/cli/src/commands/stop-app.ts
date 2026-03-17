@@ -1,3 +1,5 @@
+export const HELP = `  stop-app [<appId>]                  Stop app`;
+
 import { runDirect } from '../runner.js';
 import { getSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';

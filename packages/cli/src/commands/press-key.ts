@@ -1,3 +1,5 @@
+export const HELP = `  press-key <key>                     Press a key (Enter, Backspace, Home, ...)`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

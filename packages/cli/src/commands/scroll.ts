@@ -1,3 +1,5 @@
+export const HELP = `  scroll [--direction down|up|left|right]`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

@@ -1,3 +1,5 @@
+export const HELP = `  erase-text [n]                      Erase n characters (default: 50)`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

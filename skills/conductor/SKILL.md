@@ -20,6 +20,7 @@ conductor <command> [args] [options]
 
 Global options:
 - `--device <id>` — target device ID; also keys the session and daemon (auto-detected if omitted)
+- `--device-name <name>` — target a booted device by its human-readable name (resolved to ID from booted devices); mutually exclusive with `--device`
 - `--help` — show help
 - `--json` — machine-readable JSON output (avoid unless you need structured parsing)
 - `--verbose / -v` — log daemon calls, driver fallbacks, and raw output
@@ -30,7 +31,7 @@ Global options:
 
 ### `list-devices`
 
-List connected Android emulators and iOS simulators.
+List connected Android emulators and iOS simulators. Shows both booted (running) devices and available (shutdown) simulators/emulators that can be started with `start-device`.
 
 ```bash
 conductor list-devices
@@ -38,9 +39,16 @@ conductor list-devices
 
 Output:
 ```
-android    device     emulator-5554  Pixel_6_API_33
-ios        booted     ABC123-DEF456  iPhone 15
+Booted devices:
+  android  device     emulator-5554  Pixel_6_API_33
+  ios      booted     ABC123-DEF456  iPhone 15
+
+Available devices:
+  ios      shutdown   DEF789-ABC012  iPhone 16 Pro
+  android  available  Pixel_7_API_34  Pixel_7_API_34
 ```
+
+Exits with code 0 if any booted or available devices exist, 1 only if both lists are empty.
 
 ---
 
@@ -63,6 +71,22 @@ List all installed app IDs (bundle IDs on iOS, package names on Android), sorted
 conductor list-apps
 conductor list-apps --device emulator-5554
 ```
+
+---
+
+### `copy-app <bundleId>`
+
+Copy an installed app from one iOS simulator to another. Useful when you have a compiled `.app` bundle on one simulator and want to install it on others without recompiling.
+
+```bash
+conductor copy-app com.example.myapp --from C59D3241-FB6A-4E3B-AE7B-A82D3C933889 --to 86B1BC33-7D83-47FF-AAFE-1BD70FC53038
+```
+
+Flags:
+- `--from <id>` — source device ID (must be an iOS simulator)
+- `--to <id>` — target device ID (must be an iOS simulator)
+
+Both flags are required. The command reads the `.app` bundle path from the source simulator and installs it on the target.
 
 ---
 
@@ -669,6 +693,8 @@ Boot an iOS simulator or Android emulator. Creates the Simulator window and wait
 conductor start-device --platform ios
 conductor start-device --platform android
 conductor start-device --platform ios --os-version 18
+conductor start-device --platform ios --device-type "iPhone 16 Pro"
+conductor start-device --platform ios --name "Test Device"
 conductor start-device --platform android --avd Pixel_6_API_33
 ```
 
@@ -676,8 +702,10 @@ Flags:
 - `--platform <ios|android>` — required
 - `--os-version <n>` — filter by OS version (iOS: e.g. `18`; Android: API level e.g. `33`)
 - `--avd <name>` — Android AVD name to launch (default: first available AVD)
+- `--name <name>` — set a custom name on the simulator after boot (iOS only)
+- `--device-type <name>` — iOS device type to boot (e.g. `"iPhone 16 Pro"`); if no existing simulator matches, one is created automatically
 
-iOS picks the first available iPhone simulator matching the OS version filter (or any if unfiltered). Android launches the named AVD, or the first AVD found.
+iOS picks the first available iPhone simulator matching the OS version and device type filters (or any if unfiltered). Android launches the named AVD, or the first AVD found.
 
 ---
 

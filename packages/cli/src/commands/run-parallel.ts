@@ -1,3 +1,5 @@
+export const HELP = `  run-parallel --flows-dir <path>     Run flows in parallel across all devices`;
+
 /**
  * run-parallel: Run Maestro YAML flows in parallel across all booted simulators.
  *

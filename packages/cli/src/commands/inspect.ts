@@ -1,3 +1,5 @@
+export const HELP = `  inspect                             Print UI hierarchy`;
+
 import { getDriver } from '../runner.js';
 import { printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

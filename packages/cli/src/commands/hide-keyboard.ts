@@ -1,3 +1,5 @@
+export const HELP = `  hide-keyboard                       Dismiss the on-screen keyboard`;
+
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';

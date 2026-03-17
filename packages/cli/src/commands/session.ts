@@ -1,3 +1,5 @@
+export const HELP = `  session [--clear] [--list]          Show, clear, or list device sessions`;
+
 import { getSession, clearSession, sessionFilePath, listSessions } from '../session.js';
 import { printData, printSuccess, OutputOptions } from '../output.js';
 
