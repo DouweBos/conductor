@@ -13,3 +13,5 @@ DerivedData/
 packages/cli/drivers/
 packages/cli/skills/
 .claude/
+*.profraw
+*.profdata
