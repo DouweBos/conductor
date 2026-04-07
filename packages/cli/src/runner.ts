@@ -115,7 +115,7 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
       await startDaemon(deviceId);
       await waitForPort(port);
     }
-    const iosDriver = new IOSDriver(port, '127.0.0.1', deviceId);
+    const iosDriver = new IOSDriver(port, '127.0.0.1', deviceId, 'ios');
     if (!(await iosDriver.isAlive())) {
       throw new Error(
         `iOS XCTest driver on port ${port} is not responding.\n` +
@@ -123,6 +123,20 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
       );
     }
     driver = iosDriver;
+  } else if (platform === 'tvos') {
+    if (!(await isPortOpen(port))) {
+      log(`tvOS driver not running — starting daemon for ${deviceId}...`);
+      await startDaemon(deviceId);
+      await waitForPort(port);
+    }
+    const tvosDriver = new IOSDriver(port, '127.0.0.1', deviceId, 'tvos');
+    if (!(await tvosDriver.isAlive())) {
+      throw new Error(
+        `tvOS XCTest driver on port ${port} is not responding.\n` +
+          `Run: conductor daemon-start --device ${deviceId}`
+      );
+    }
+    driver = tvosDriver;
   } else {
     // Ensure the daemon is running — it handles APK install and driver startup.
     await startDaemon(deviceId);

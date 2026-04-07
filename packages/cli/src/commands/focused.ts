@@ -1,4 +1,5 @@
-export const HELP = `  focused                             Print metadata of the currently focused element`;
+export const HELP = `  focused [--poll [interval_ms]]       Print metadata of the currently focused element
+                                       --poll continuously watches for focus changes (default 500ms)`;
 
 import { getDriver } from '../runner.js';
 import { printError, OutputOptions } from '../output.js';
@@ -180,39 +181,83 @@ function formatAndroidNode(node: {
   };
 }
 
-export async function focused(opts: OutputOptions = {}, sessionName = 'default'): Promise<number> {
+async function queryFocused(
+  driver: IOSDriver | AndroidDriver
+): Promise<Record<string, unknown> | null> {
+  if (driver instanceof IOSDriver) {
+    const hierarchy = await driver.viewHierarchy(false);
+    const node = findFocusedIOS(hierarchy.axElement);
+    return node ? formatIOSElement(node) : null;
+  } else if (driver instanceof AndroidDriver) {
+    const xml = await driver.viewHierarchy();
+    const nodes = parseAndroidHierarchy(xml);
+    const node = nodes.find((n) => n.focused);
+    return node ? formatAndroidNode(node) : null;
+  }
+  throw new Error('Unknown driver type');
+}
+
+export interface FocusedOptions {
+  poll?: boolean;
+  interval?: number;
+}
+
+export async function focused(
+  opts: OutputOptions = {},
+  sessionName = 'default',
+  { poll = false, interval = 500 }: FocusedOptions = {}
+): Promise<number> {
   try {
     const driver = await getDriver(sessionName);
-    let data: Record<string, unknown> | null = null;
 
-    if (driver instanceof IOSDriver) {
-      const hierarchy = await driver.viewHierarchy(false);
-      const node = findFocusedIOS(hierarchy.axElement);
-      if (node) data = formatIOSElement(node);
-    } else if (driver instanceof AndroidDriver) {
-      const xml = await driver.viewHierarchy();
-      const nodes = parseAndroidHierarchy(xml);
-      const node = nodes.find((n) => n.focused);
-      if (node) data = formatAndroidNode(node);
-    } else {
-      throw new Error('Unknown driver type');
-    }
+    if (!poll) {
+      const data = await queryFocused(driver);
 
-    if (!data) {
+      if (!data) {
+        if (opts.json) {
+          console.log(JSON.stringify({ status: 'ok', focused: null }));
+        } else {
+          console.log('No element is currently focused');
+        }
+        return 0;
+      }
+
       if (opts.json) {
-        console.log(JSON.stringify({ status: 'ok', focused: null }));
+        console.log(JSON.stringify({ status: 'ok', focused: data }));
       } else {
-        console.log('No element is currently focused');
+        console.log(JSON.stringify(data, null, 2));
       }
       return 0;
     }
 
-    if (opts.json) {
-      console.log(JSON.stringify({ status: 'ok', focused: data }));
-    } else {
-      console.log(JSON.stringify(data, null, 2));
+    // --poll mode: repeatedly query and log on change
+    let lastJson = '';
+
+    const onSignal = () => process.exit(0);
+    process.on('SIGINT', onSignal);
+    process.on('SIGTERM', onSignal);
+
+    while (true) {
+      const data = await queryFocused(driver);
+      const currentJson = JSON.stringify(data);
+
+      if (currentJson !== lastJson) {
+        lastJson = currentJson;
+        if (!data) {
+          if (opts.json) {
+            console.log(JSON.stringify({ status: 'ok', focused: null }));
+          } else {
+            console.log('No element is currently focused');
+          }
+        } else if (opts.json) {
+          console.log(JSON.stringify({ status: 'ok', focused: data }));
+        } else {
+          console.log(JSON.stringify(data, null, 2));
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, interval));
     }
-    return 0;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     printError(`focused — failed\n${msg}`, opts);

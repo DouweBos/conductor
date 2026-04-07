@@ -8,7 +8,10 @@ import { AndroidDriver } from '../drivers/android.js';
 export async function back(opts: OutputOptions = {}, sessionName = 'default'): Promise<number> {
   const result = await runDirect(async (driver) => {
     if (driver instanceof IOSDriver) {
-      // iOS has no universal "back" concept — this is a no-op (same as maestro IOSDriver.backPress)
+      if (driver.platform === 'tvos') {
+        await driver.pressButton('menu');
+      }
+      // Plain iOS has no universal "back" concept — this is a no-op (same as maestro IOSDriver.backPress)
     } else if (driver instanceof AndroidDriver) {
       await driver.back(); // adb shell input keyevent 4
     }

@@ -1,9 +1,9 @@
 export const HELP = `  start-device
-    --platform <ios|android>          Boot a simulator or emulator
-    --os-version <n>                  iOS version (e.g. 18) or Android API level (e.g. 33)
+    --platform <ios|android|tvos>     Boot a simulator or emulator
+    --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
     --avd <name>                      Android AVD name (default: first available)
-    --name <name>                     Set a custom name on the simulator after boot (iOS only)
-    --device-type <name>              iOS device type (e.g. "iPhone 16 Pro"); creates if needed`;
+    --name <name>                     Set a custom name on the simulator after boot (iOS/tvOS only)
+    --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K"); creates if needed`;
 
 import { spawn } from 'child_process';
 import { spawnCommand } from '../runner.js';
@@ -276,6 +276,188 @@ async function startIOS(
   return 0;
 }
 
+// ── tvOS ──────────────────────────────────────────────────────────────────────
+
+async function createTvOSSimulator(deviceType: string, osVersion?: string): Promise<string> {
+  const deviceTypes = await listDeviceTypes();
+  const runtimes = await listRuntimes();
+
+  const matchedType = deviceTypes.find((dt) => dt.name.toLowerCase() === deviceType.toLowerCase());
+  if (!matchedType) {
+    const tvTypes = deviceTypes
+      .filter((dt) => dt.name.toLowerCase().includes('apple tv'))
+      .map((dt) => dt.name);
+    throw new Error(
+      `Unknown device type "${deviceType}". Available Apple TV types:\n  ${tvTypes.join('\n  ')}`
+    );
+  }
+
+  // Filter to available tvOS runtimes
+  let candidates = runtimes.filter(
+    (r) => r.isAvailable && r.identifier.startsWith('com.apple.CoreSimulator.SimRuntime.tvOS')
+  );
+
+  if (osVersion) {
+    candidates = candidates.filter((r) => r.version.startsWith(osVersion));
+  }
+
+  if (candidates.length === 0) {
+    const hint = osVersion ? ` matching version ${osVersion}` : '';
+    throw new Error(
+      `No available tvOS runtime found${hint}. Install one via Xcode → Settings → Platforms.`
+    );
+  }
+
+  // Sort by version descending to pick the latest
+  candidates.sort((a, b) => runtimeVersionNumber(b.version) - runtimeVersionNumber(a.version));
+
+  // Filter by device type compatibility if min/max runtime version is specified
+  const compatible = candidates.filter((r) => {
+    const ver = runtimeVersionNumber(r.version);
+    if (matchedType.minRuntimeVersion && ver < matchedType.minRuntimeVersion) return false;
+    if (matchedType.maxRuntimeVersion && ver > matchedType.maxRuntimeVersion) return false;
+    return true;
+  });
+
+  const runtime = compatible.length > 0 ? compatible[0] : candidates[0];
+
+  const createResult = await spawnCommand('xcrun', [
+    'simctl',
+    'create',
+    deviceType,
+    matchedType.identifier,
+    runtime.identifier,
+  ]);
+  if (!createResult.success) {
+    throw new Error(`Failed to create tvOS simulator: ${createResult.stderr.trim()}`);
+  }
+
+  return createResult.stdout.trim(); // UDID
+}
+
+async function startTvOS(
+  osVersion: string | undefined,
+  opts: OutputOptions,
+  name?: string,
+  deviceType?: string
+): Promise<number> {
+  let devices: Record<string, SimDevice[]>;
+  try {
+    devices = await listIOSSimulators();
+  } catch (e) {
+    printError(`Failed to list simulators: ${e instanceof Error ? e.message : String(e)}`, opts);
+    return 1;
+  }
+
+  // Filter to available tvOS simulators, optionally by OS version and device type.
+  const candidates: { runtime: string; device: SimDevice }[] = [];
+  for (const [runtime, sims] of Object.entries(devices)) {
+    if (!runtime.includes('tvOS')) continue;
+    if (osVersion && !runtime.includes(osVersion)) continue;
+    for (const sim of sims) {
+      if (deviceType && sim.name.toLowerCase() !== deviceType.toLowerCase()) continue;
+      if (sim.isAvailable && sim.state !== 'Booted') {
+        candidates.push({ runtime, device: sim });
+      }
+      // If already booted, just report it
+      if (sim.isAvailable && sim.state === 'Booted') {
+        if (!osVersion || runtime.includes(osVersion)) {
+          if (name) {
+            try {
+              await renameIOSSimulator(sim.udid, name);
+            } catch (e) {
+              printError(e instanceof Error ? e.message : String(e), opts);
+              return 1;
+            }
+          }
+          const displayName = name ?? sim.name;
+          printSuccess(`Simulator already booted: ${displayName} (${sim.udid})`, opts);
+          return 0;
+        }
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    // If a device type was requested, try to create the simulator
+    if (deviceType) {
+      console.log(`No existing tvOS simulator found for "${deviceType}". Creating one...`);
+      let udid: string;
+      try {
+        udid = await createTvOSSimulator(deviceType, osVersion);
+      } catch (e) {
+        printError(e instanceof Error ? e.message : String(e), opts);
+        return 1;
+      }
+
+      console.log(`Created simulator: ${deviceType} (${udid}). Booting...`);
+      try {
+        await bootIOSSimulator(udid);
+        await waitForIOSBoot(udid);
+      } catch (e) {
+        printError(e instanceof Error ? e.message : String(e), opts);
+        return 1;
+      }
+
+      if (name) {
+        try {
+          await renameIOSSimulator(udid, name);
+        } catch (e) {
+          printError(e instanceof Error ? e.message : String(e), opts);
+          return 1;
+        }
+      }
+
+      spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
+
+      const displayName = name ?? deviceType;
+      printSuccess(`Booted: ${displayName} (${udid})`, opts);
+      return 0;
+    }
+
+    const hint = osVersion ? ` for tvOS ${osVersion}` : '';
+    printError(
+      `No available tvOS simulator found${hint}. Install one via Xcode → Settings → Platforms.`,
+      opts
+    );
+    return 1;
+  }
+
+  // Prefer "Apple TV" models
+  const sorted = candidates.sort((a, b) => {
+    const ai = a.device.name.toLowerCase().includes('apple tv') ? 0 : 1;
+    const bi = b.device.name.toLowerCase().includes('apple tv') ? 0 : 1;
+    return ai - bi;
+  });
+
+  const { device } = sorted[0];
+  console.log(`Booting simulator: ${device.name} (${device.udid})...`);
+
+  try {
+    await bootIOSSimulator(device.udid);
+    await waitForIOSBoot(device.udid);
+  } catch (e) {
+    printError(e instanceof Error ? e.message : String(e), opts);
+    return 1;
+  }
+
+  if (name) {
+    try {
+      await renameIOSSimulator(device.udid, name);
+    } catch (e) {
+      printError(e instanceof Error ? e.message : String(e), opts);
+      return 1;
+    }
+  }
+
+  // Open the Simulator.app so the window appears
+  spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
+
+  const displayName = name ?? device.name;
+  printSuccess(`Booted: ${displayName} (${device.udid})`, opts);
+  return 0;
+}
+
 // ── Android ───────────────────────────────────────────────────────────────────
 
 async function listAVDs(): Promise<string[]> {
@@ -379,10 +561,12 @@ export async function startDevice(
   switch (platform.toLowerCase()) {
     case 'ios':
       return startIOS(flags.osVersion, opts, flags.name, flags.deviceType);
+    case 'tvos':
+      return startTvOS(flags.osVersion, opts, flags.name, flags.deviceType);
     case 'android':
       return startAndroid(flags.avd, opts);
     default:
-      printError(`Unknown platform "${platform}". Use ios or android.`, opts);
+      printError(`Unknown platform "${platform}". Use ios, android, or tvos.`, opts);
       return 1;
   }
 }

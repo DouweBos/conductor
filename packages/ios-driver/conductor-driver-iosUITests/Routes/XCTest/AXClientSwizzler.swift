@@ -17,7 +17,15 @@ struct AXClientSwizzler {
     }
 
     static let setup: Void = {
-        let axClientiOSClass: AnyClass = objc_getClass("XCAXClient_iOS") as! AnyClass
+        #if os(tvOS)
+        let className = "XCAXClient_tvOS"
+        #else
+        let className = "XCAXClient_iOS"
+        #endif
+        guard let axClientiOSClass = objc_getClass(className) as? AnyClass else {
+            NSLog("[\(className)] class not found — skipping AXClient swizzle")
+            return
+        }
         let defaultParametersSelector = Selector(("defaultParameters"))
         let original = class_getInstanceMethod(axClientiOSClass, defaultParametersSelector)!
 

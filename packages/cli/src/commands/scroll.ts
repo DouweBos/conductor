@@ -18,6 +18,13 @@ export async function scroll(
   }
 
   const result = await runDirect(async (driver) => {
+    if (driver instanceof IOSDriver && driver.platform === 'tvos') {
+      throw new Error(
+        'scroll is not supported on tvOS — Apple TV uses focus-based navigation.\n' +
+          'Use press-key to navigate (e.g. conductor press-key down).'
+      );
+    }
+
     const coords = swipeCoords(direction);
     if (driver instanceof IOSDriver) {
       const info = await driver.deviceInfo();

@@ -111,6 +111,93 @@
 		C2DB03C0028C821C6F580B2C /* XCAXClient_iOS+FBSnapshotReqParams.m in Sources */ = {isa = PBXBuildFile; fileRef = 526111792DE5E8E5007C356B /* XCAXClient_iOS+FBSnapshotReqParams.m */; };
 		D2244FD4EDCE31D1BAFD0549 /* SnapshotParametersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69198CA2D2E1AAFBD06FEB38 /* SnapshotParametersTests.swift */; };
 		F328D3E62A2A98E7000546D3 /* StringExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F328D3E52A2A98E7000546D3 /* StringExtensions.swift */; };
+		TVOS00012DF24A0000000001 /* ConductorDriverApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = TVOS00112DF24A0000000011 /* ConductorDriverApp.swift */; };
+		TVOS00022DF24A0000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TVOS00122DF24A0000000012 /* ContentView.swift */; };
+		TVOS00032DF24A0000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 52049BDF293503A200807AA3 /* Assets.xcassets */; };
+		TVOS00042DF24A0000000004 /* XCUICoordinate.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA802D6DCC600015FAB3 /* XCUICoordinate.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS00052DF24A0000000005 /* XCUIApplicationImpl.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA7E2D6DCC600015FAB3 /* XCUIApplicationImpl.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS00062DF24A0000000006 /* XCUIApplication+FBQuiescence.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FAB22D6DD54F0015FAB3 /* XCUIApplication+FBQuiescence.h */; };
+		TVOS00072DF24A0000000007 /* XCUIApplicationProcess.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA7F2D6DCC600015FAB3 /* XCUIApplicationProcess.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS00082DF24A0000000008 /* XCUIDevice.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA812D6DCC600015FAB3 /* XCUIDevice.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS00092DF24A0000000009 /* XCUIApplication.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA7D2D6DCC600015FAB3 /* XCUIApplication.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS000A2DF24A000000000A /* XCAXClient_iOS+FBSnapshotReqParams.h in Headers */ = {isa = PBXBuildFile; fileRef = 526111772DE5E8D0007C356B /* XCAXClient_iOS+FBSnapshotReqParams.h */; };
+		TVOS000B2DF24A000000000B /* XCUIApplication+Helper.h in Headers */ = {isa = PBXBuildFile; fileRef = 521C1F082D80184D0024EE42 /* XCUIApplication+Helper.h */; };
+		TVOS000C2DF24A000000000C /* _XCTestImplementation.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA2D2D6DCC600015FAB3 /* _XCTestImplementation.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS000D2DF24A000000000D /* FBLogger.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FAAA2D6DD3A20015FAB3 /* FBLogger.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS000E2DF24A000000000E /* XCTestManager_ManagerInterface-Protocol.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA622D6DCC600015FAB3 /* XCTestManager_ManagerInterface-Protocol.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS000F2DF24A000000000F /* FBConfiguration.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FAAE2D6DD4100015FAB3 /* FBConfiguration.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS00102DF24A0000000010 /* XCAXClient_iOS.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA402D6DCC600015FAB3 /* XCAXClient_iOS.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS00912DF24A0000000091 /* XCTestDaemonsProxy.h in Headers */ = {isa = PBXBuildFile; fileRef = 521C1F0D2D8051890024EE42 /* XCTestDaemonsProxy.h */; };
+		TVOS00922DF24A0000000092 /* XCAccessibilityElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 521C1F042D8016950024EE42 /* XCAccessibilityElement.h */; };
+		TVOS00132DF24A0000000013 /* CDStructures.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA332D6DCC600015FAB3 /* CDStructures.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		TVOS00142DF24A0000000014 /* conductor-driver-iosUITests-Bridging-Header.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA922D6DCF2C0015FAB3 /* conductor-driver-iosUITests-Bridging-Header.h */; };
+		TVOS00152DF24A0000000015 /* XCUIApplicationProcess+FBQuiescence.h in Headers */ = {isa = PBXBuildFile; fileRef = 52D8FA9B2D6DCFAF0015FAB3 /* XCUIApplicationProcess+FBQuiescence.h */; };
+		TVOS00162DF24A0000000016 /* AXClientProxy.h in Headers */ = {isa = PBXBuildFile; fileRef = 521C1F022D8014340024EE42 /* AXClientProxy.h */; };
+		TVOS00172DF24A0000000017 /* ViewHierarchyHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 610D58F82A45B5DA00B4BBEB /* ViewHierarchyHandler.swift */; };
+		TVOS00182DF24A0000000018 /* KeyboardHandlerRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F0B1B22B3C26DF00C6471A /* KeyboardHandlerRequest.swift */; };
+		TVOS00192DF24A0000000019 /* RunnerDaemonProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 612DE4112984114B003C2BE0 /* RunnerDaemonProxy.swift */; };
+		TVOS001A2DF24A000000001A /* PressButtonHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFEA29C863BB005D1FC5 /* PressButtonHandler.swift */; };
+		TVOS001B2DF24A000000001B /* SystemPermissionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94826F4329DB082100795E9B /* SystemPermissionHelper.swift */; };
+		TVOS001C2DF24A000000001C /* FBLogger.m in Sources */ = {isa = PBXBuildFile; fileRef = 52D8FAAB2D6DD3A20015FAB3 /* FBLogger.m */; };
+		TVOS001D2DF24A000000001D /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6124329F2A4DA72F00F5F619 /* Logger.swift */; };
+		TVOS001E2DF24A000000001E /* TerminateAppRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 521C1F132D86D3840024EE42 /* TerminateAppRequest.swift */; };
+		TVOS001F2DF24A000000001F /* GetRunningAppRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9407362D2940CA1600A72E99 /* GetRunningAppRequest.swift */; };
+		TVOS00202DF24A0000000020 /* AXClientProxy.m in Sources */ = {isa = PBXBuildFile; fileRef = 521C1F062D8017460024EE42 /* AXClientProxy.m */; };
+		TVOS00212DF24A0000000021 /* EraseTextHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFEC29C88926005D1FC5 /* EraseTextHandler.swift */; };
+		TVOS00222DF24A0000000022 /* TouchRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32ECCB252980449200A1A0A0 /* TouchRequest.swift */; };
+		TVOS00232DF24A0000000023 /* XCAXClient_iOS+FBSnapshotReqParams.m in Sources */ = {isa = PBXBuildFile; fileRef = 526111792DE5E8E5007C356B /* XCAXClient_iOS+FBSnapshotReqParams.m */; };
+		TVOS00242DF24A0000000024 /* StatusResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F33A932AE6823100692902 /* StatusResponse.swift */; };
+		TVOS00252DF24A0000000025 /* LaunchAppRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A9C73D2D7A631400545435 /* LaunchAppRequest.swift */; };
+		TVOS00262DF24A0000000026 /* LaunchAppHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A9C73B2D7A62AF00545435 /* LaunchAppHandler.swift */; };
+		TVOS00272DF24A0000000027 /* AXClientSwizzler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 610D58FA2A49E3CA00B4BBEB /* AXClientSwizzler.swift */; };
+		TVOS00282DF24A0000000028 /* StringExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F328D3E52A2A98E7000546D3 /* StringExtensions.swift */; };
+		TVOS00292DF24A0000000029 /* SetOrientationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8E0ABB2CD562D000E9D439 /* SetOrientationHandler.swift */; };
+		TVOS002A2DF24A000000002A /* EraseTextRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFEE29C8961F005D1FC5 /* EraseTextRequest.swift */; };
+		TVOS002B2DF24A000000002B /* XCTestDaemonsProxy.m in Sources */ = {isa = PBXBuildFile; fileRef = 521C1F0F2D8051F20024EE42 /* XCTestDaemonsProxy.m */; };
+		TVOS002C2DF24A000000002C /* SwipeRouteHandlerV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61A79B9629DF0B8A00C38882 /* SwipeRouteHandlerV2.swift */; };
+		TVOS002D2DF24A000000002D /* KeyboardHandlerResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F0B1B42B3C27F700C6471A /* KeyboardHandlerResponse.swift */; };
+		TVOS002E2DF24A000000002E /* StatusHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52047F772A7A638E00BF982D /* StatusHandler.swift */; };
+		TVOS002F2DF24A000000002F /* SetOrientationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8E0ABD2CD562F200E9D439 /* SetOrientationRequest.swift */; };
+		TVOS00302DF24A0000000030 /* SetPermissionsRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 945DD44A29D6F5D8004D8ECF /* SetPermissionsRequest.swift */; };
+		TVOS00312DF24A0000000031 /* KeyModifierFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 613E87DE299BE78400FF8551 /* KeyModifierFlags.swift */; };
+		TVOS00322DF24A0000000032 /* TerminateAppHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 521C1F112D86CE8A0024EE42 /* TerminateAppHandler.swift */; };
+		TVOS00332DF24A0000000033 /* XCUIElement+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94A90DDD298AE72A006EB769 /* XCUIElement+Extensions.swift */; };
+		TVOS00342DF24A0000000034 /* SetPermissionsHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 945DD44C29D6F73B004D8ECF /* SetPermissionsHandler.swift */; };
+		TVOS00352DF24A0000000035 /* PressKeyHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFE629C7AB0C005D1FC5 /* PressKeyHandler.swift */; };
+		TVOS00362DF24A0000000036 /* DeviceInfoHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFF029C8C01F005D1FC5 /* DeviceInfoHandler.swift */; };
+		TVOS00372DF24A0000000037 /* RunningAppRouteHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943A9087293F5EAA00C85136 /* RunningAppRouteHandler.swift */; };
+		TVOS00382DF24A0000000038 /* PointerEventPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 613E87D6299A64BD00FF8551 /* PointerEventPath.swift */; };
+		TVOS00392DF24A0000000039 /* ScreenSizeHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9811C9082C49751D00DDACA0 /* ScreenSizeHelper.swift */; };
+		TVOS003A2DF24A000000003A /* TextInputHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9468FA7C2AA741F100254AA3 /* TextInputHelper.swift */; };
+		TVOS003B2DF24A000000003B /* EventTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFF629D34FEA005D1FC5 /* EventTarget.swift */; };
+		TVOS003C2DF24A000000003C /* EventRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 612DE413298426EF003C2BE0 /* EventRecord.swift */; };
+		TVOS003D2DF24A000000003D /* TouchRouteHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32ECCB27298044C200A1A0A0 /* TouchRouteHandler.swift */; };
+		TVOS003E2DF24A000000003E /* RouteHandlerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943A9080293F5C2500C85136 /* RouteHandlerFactory.swift */; };
+		TVOS003F2DF24A000000003F /* TimeoutHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 941AE8EE2A77D4B20097C02A /* TimeoutHelper.swift */; };
+		TVOS00402DF24A0000000040 /* ViewHierarchyRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6124329B2A4B368100F5F619 /* ViewHierarchyRequest.swift */; };
+		TVOS00412DF24A0000000041 /* PressKeyRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFE429C7AAB3005D1FC5 /* PressKeyRequest.swift */; };
+		TVOS00422DF24A0000000042 /* DeviceInfoResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFF229C8C040005D1FC5 /* DeviceInfoResponse.swift */; };
+		TVOS00432DF24A0000000043 /* ScreenDiffHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94256BAC298D39DE00CDB55D /* ScreenDiffHandler.swift */; };
+		TVOS00442DF24A0000000044 /* XCUIApplication+Helper.m in Sources */ = {isa = PBXBuildFile; fileRef = 521C1F0A2D801A350024EE42 /* XCUIApplication+Helper.m */; };
+		TVOS00452DF24A0000000045 /* XCTestHTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 949535FB299FD67E00FD0159 /* XCTestHTTPServer.swift */; };
+		TVOS00462DF24A0000000046 /* XCUIApplicationProcess+FBQuiescence.m in Sources */ = {isa = PBXBuildFile; fileRef = 52D8FA9C2D6DCFAF0015FAB3 /* XCUIApplicationProcess+FBQuiescence.m */; };
+		TVOS00472DF24A0000000047 /* InputTextRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32097964297092A800340282 /* InputTextRequest.swift */; };
+		TVOS00482DF24A0000000048 /* conductor_driver_iosUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52049BF7293503A200807AA3 /* conductor_driver_iosUITests.swift */; };
+		TVOS00492DF24A0000000049 /* FBConfiguration.m in Sources */ = {isa = PBXBuildFile; fileRef = 52D8FAAF2D6DD4100015FAB3 /* FBConfiguration.m */; };
+		TVOS004A2DF24A000000004A /* PressButtonRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61C0AFE829C86378005D1FC5 /* PressButtonRequest.swift */; };
+		TVOS004B2DF24A000000004B /* AXElement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6124329D2A4DA5BB00F5F619 /* AXElement.swift */; };
+		TVOS004C2DF24A000000004C /* SwipeRouteHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32762AF72965E2A200FB69BD /* SwipeRouteHandler.swift */; };
+		TVOS004D2DF24A000000004D /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 522785802A54410D008DBC0A /* AppError.swift */; };
+		TVOS004E2DF24A000000004E /* InputTextRouteHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320979622970925500340282 /* InputTextRouteHandler.swift */; };
+		TVOS004F2DF24A000000004F /* RunningApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52E35D422A654F67001D97A8 /* RunningApp.swift */; };
+		TVOS00502DF24A0000000050 /* ScreenshotHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9494CBD02982F719009C987C /* ScreenshotHandler.swift */; };
+		TVOS00512DF24A0000000051 /* SwipeRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32762AF92966DC8300FB69BD /* SwipeRequest.swift */; };
+		TVOS00522DF24A0000000052 /* KeyboardRouteHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F0B1B02B3C25BC00C6471A /* KeyboardRouteHandler.swift */; };
+		TVOS00532DF24A0000000053 /* XCUIApplication+FBQuiescence.m in Sources */ = {isa = PBXBuildFile; fileRef = 52D8FAB32D6DD54F0015FAB3 /* XCUIApplication+FBQuiescence.m */; };
+		TVOS00542DF24A0000000054 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 612DE40129801F71003C2BE0 /* XCTest.framework */; };
+		TVOS00552DF24A0000000055 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = TVOS00652DF24A0000000065 /* FlyingFox */; };
+		TVOS00562DF24A0000000056 /* ConductorDriverLib.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BBBB00202DF24A0000000020 /* ConductorDriverLib.framework */; };
+		TVOS00572DF24A0000000057 /* ConductorDriverLib.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BBBB00202DF24A0000000020 /* ConductorDriverLib.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -142,6 +229,20 @@
 			remoteGlobalIDString = BBBB00A02DF24A00000000A0;
 			remoteInfo = ConductorDriverLib;
 		};
+		TVOS00582DF24A0000000058 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 52049BCB2935039F00807AA3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = TVOS00602DF24A0000000060;
+			remoteInfo = "conductor-driver-tvos";
+		};
+		TVOS00592DF24A0000000059 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 52049BCB2935039F00807AA3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BBBB00A02DF24A00000000A0;
+			remoteInfo = ConductorDriverLib;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -152,6 +253,17 @@
 			dstSubfolderSpec = 10;
 			files = (
 				BBBB00092DF24A0000000009 /* ConductorDriverLib.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS005A2DF24A000000005A /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				TVOS00572DF24A0000000057 /* ConductorDriverLib.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -360,6 +472,10 @@
 		BBBB00212DF24A0000000021 /* ConductorDriverLibTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ConductorDriverLibTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EF8504E3A6C0E75E273B4538 /* conductor-driver-iosTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "conductor-driver-iosTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F328D3E52A2A98E7000546D3 /* StringExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringExtensions.swift; sourceTree = "<group>"; };
+		TVOS00112DF24A0000000011 /* ConductorDriverApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConductorDriverApp.swift; sourceTree = "<group>"; };
+		TVOS00122DF24A0000000012 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		TVOS005B2DF24A000000005B /* conductor-driver-tvos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "conductor-driver-tvos.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		TVOS005C2DF24A000000005C /* conductor-driver-tvosUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "conductor-driver-tvosUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -400,6 +516,23 @@
 			buildActionMask = 2147483647;
 			files = (
 				39F002647AA68C9B8DC39E61 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS005D2DF24A000000005D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS005E2DF24A000000005E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TVOS00542DF24A0000000054 /* XCTest.framework in Frameworks */,
+				TVOS00552DF24A0000000055 /* FlyingFox in Frameworks */,
+				TVOS00562DF24A0000000056 /* ConductorDriverLib.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -446,6 +579,8 @@
 				BBBB00202DF24A0000000020 /* ConductorDriverLib.framework */,
 				BBBB00212DF24A0000000021 /* ConductorDriverLibTests.xctest */,
 				EF8504E3A6C0E75E273B4538 /* conductor-driver-iosTests.xctest */,
+				TVOS005B2DF24A000000005B /* conductor-driver-tvos.app */,
+				TVOS005C2DF24A000000005C /* conductor-driver-tvosUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -460,6 +595,8 @@
 				52049BDF293503A200807AA3 /* Assets.xcassets */,
 				52049BE1293503A200807AA3 /* LaunchScreen.storyboard */,
 				52049BE4293503A200807AA3 /* Info.plist */,
+				TVOS00112DF24A0000000011 /* ConductorDriverApp.swift */,
+				TVOS00122DF24A0000000012 /* ContentView.swift */,
 			);
 			path = "conductor-driver-ios";
 			sourceTree = "<group>";
@@ -811,6 +948,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		TVOS005F2DF24A000000005F /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TVOS00042DF24A0000000004 /* XCUICoordinate.h in Headers */,
+				TVOS00052DF24A0000000005 /* XCUIApplicationImpl.h in Headers */,
+				TVOS00062DF24A0000000006 /* XCUIApplication+FBQuiescence.h in Headers */,
+				TVOS00072DF24A0000000007 /* XCUIApplicationProcess.h in Headers */,
+				TVOS00082DF24A0000000008 /* XCUIDevice.h in Headers */,
+				TVOS00092DF24A0000000009 /* XCUIApplication.h in Headers */,
+				TVOS000A2DF24A000000000A /* XCAXClient_iOS+FBSnapshotReqParams.h in Headers */,
+				TVOS000B2DF24A000000000B /* XCUIApplication+Helper.h in Headers */,
+				TVOS000C2DF24A000000000C /* _XCTestImplementation.h in Headers */,
+				TVOS000D2DF24A000000000D /* FBLogger.h in Headers */,
+				TVOS000E2DF24A000000000E /* XCTestManager_ManagerInterface-Protocol.h in Headers */,
+				TVOS000F2DF24A000000000F /* FBConfiguration.h in Headers */,
+				TVOS00102DF24A0000000010 /* XCAXClient_iOS.h in Headers */,
+				TVOS00912DF24A0000000091 /* XCTestDaemonsProxy.h in Headers */,
+				TVOS00922DF24A0000000092 /* XCAccessibilityElement.h in Headers */,
+				TVOS00132DF24A0000000013 /* CDStructures.h in Headers */,
+				TVOS00142DF24A0000000014 /* conductor-driver-iosUITests-Bridging-Header.h in Headers */,
+				TVOS00152DF24A0000000015 /* XCUIApplicationProcess+FBQuiescence.h in Headers */,
+				TVOS00162DF24A0000000016 /* AXClientProxy.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
@@ -906,6 +1069,47 @@
 			productReference = BBBB00212DF24A0000000021 /* ConductorDriverLibTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		TVOS00602DF24A0000000060 /* conductor-driver-tvos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TVOS00702DF24A0000000070 /* Build configuration list for PBXNativeTarget "conductor-driver-tvos" */;
+			buildPhases = (
+				TVOS00632DF24A0000000063 /* Sources */,
+				TVOS005D2DF24A000000005D /* Frameworks */,
+				TVOS00642DF24A0000000064 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "conductor-driver-tvos";
+			productName = "conductor-driver-ios";
+			productReference = TVOS005B2DF24A000000005B /* conductor-driver-tvos.app */;
+			productType = "com.apple.product-type.application";
+		};
+		TVOS00612DF24A0000000061 /* conductor-driver-tvosUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TVOS00712DF24A0000000071 /* Build configuration list for PBXNativeTarget "conductor-driver-tvosUITests" */;
+			buildPhases = (
+				TVOS005F2DF24A000000005F /* Headers */,
+				TVOS00622DF24A0000000062 /* Sources */,
+				TVOS005E2DF24A000000005E /* Frameworks */,
+				TVOS00662DF24A0000000066 /* Resources */,
+				TVOS005A2DF24A000000005A /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				TVOS00672DF24A0000000067 /* PBXTargetDependency */,
+				TVOS00682DF24A0000000068 /* PBXTargetDependency */,
+			);
+			name = "conductor-driver-tvosUITests";
+			packageProductDependencies = (
+				TVOS00652DF24A0000000065 /* FlyingFox */,
+			);
+			productName = "conductor-driver-iosUITests";
+			productReference = TVOS005C2DF24A000000005C /* conductor-driver-tvosUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -931,6 +1135,13 @@
 						CreatedOnToolsVersion = 16.2;
 						TestTargetID = BBBB00A02DF24A00000000A0;
 					};
+					TVOS00602DF24A0000000060 = {
+						CreatedOnToolsVersion = 16.2;
+					};
+					TVOS00612DF24A0000000061 = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = TVOS00602DF24A0000000060;
+					};
 				};
 			};
 			buildConfigurationList = 52049BCE2935039F00807AA3 /* Build configuration list for PBXProject "conductor-driver-ios" */;
@@ -954,6 +1165,8 @@
 				BBBB00A02DF24A00000000A0 /* ConductorDriverLib */,
 				BBBB00A12DF24A00000000A1 /* ConductorDriverLibTests */,
 				85861EAEA94A3C855AED94AD /* conductor-driver-iosTests */,
+				TVOS00602DF24A0000000060 /* conductor-driver-tvos */,
+				TVOS00612DF24A0000000061 /* conductor-driver-tvosUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -977,6 +1190,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A4C710470E989DA1B8CF25A3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS00642DF24A0000000064 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TVOS00032DF24A0000000003 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS00662DF24A0000000066 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1097,6 +1325,83 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		TVOS00632DF24A0000000063 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TVOS00012DF24A0000000001 /* ConductorDriverApp.swift in Sources */,
+				TVOS00022DF24A0000000002 /* ContentView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TVOS00622DF24A0000000062 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TVOS00172DF24A0000000017 /* ViewHierarchyHandler.swift in Sources */,
+				TVOS00182DF24A0000000018 /* KeyboardHandlerRequest.swift in Sources */,
+				TVOS00192DF24A0000000019 /* RunnerDaemonProxy.swift in Sources */,
+				TVOS001A2DF24A000000001A /* PressButtonHandler.swift in Sources */,
+				TVOS001B2DF24A000000001B /* SystemPermissionHelper.swift in Sources */,
+				TVOS001C2DF24A000000001C /* FBLogger.m in Sources */,
+				TVOS001D2DF24A000000001D /* Logger.swift in Sources */,
+				TVOS001E2DF24A000000001E /* TerminateAppRequest.swift in Sources */,
+				TVOS001F2DF24A000000001F /* GetRunningAppRequest.swift in Sources */,
+				TVOS00202DF24A0000000020 /* AXClientProxy.m in Sources */,
+				TVOS00212DF24A0000000021 /* EraseTextHandler.swift in Sources */,
+				TVOS00222DF24A0000000022 /* TouchRequest.swift in Sources */,
+				TVOS00232DF24A0000000023 /* XCAXClient_iOS+FBSnapshotReqParams.m in Sources */,
+				TVOS00242DF24A0000000024 /* StatusResponse.swift in Sources */,
+				TVOS00252DF24A0000000025 /* LaunchAppRequest.swift in Sources */,
+				TVOS00262DF24A0000000026 /* LaunchAppHandler.swift in Sources */,
+				TVOS00272DF24A0000000027 /* AXClientSwizzler.swift in Sources */,
+				TVOS00282DF24A0000000028 /* StringExtensions.swift in Sources */,
+				TVOS00292DF24A0000000029 /* SetOrientationHandler.swift in Sources */,
+				TVOS002A2DF24A000000002A /* EraseTextRequest.swift in Sources */,
+				TVOS002B2DF24A000000002B /* XCTestDaemonsProxy.m in Sources */,
+				TVOS002C2DF24A000000002C /* SwipeRouteHandlerV2.swift in Sources */,
+				TVOS002D2DF24A000000002D /* KeyboardHandlerResponse.swift in Sources */,
+				TVOS002E2DF24A000000002E /* StatusHandler.swift in Sources */,
+				TVOS002F2DF24A000000002F /* SetOrientationRequest.swift in Sources */,
+				TVOS00302DF24A0000000030 /* SetPermissionsRequest.swift in Sources */,
+				TVOS00312DF24A0000000031 /* KeyModifierFlags.swift in Sources */,
+				TVOS00322DF24A0000000032 /* TerminateAppHandler.swift in Sources */,
+				TVOS00332DF24A0000000033 /* XCUIElement+Extensions.swift in Sources */,
+				TVOS00342DF24A0000000034 /* SetPermissionsHandler.swift in Sources */,
+				TVOS00352DF24A0000000035 /* PressKeyHandler.swift in Sources */,
+				TVOS00362DF24A0000000036 /* DeviceInfoHandler.swift in Sources */,
+				TVOS00372DF24A0000000037 /* RunningAppRouteHandler.swift in Sources */,
+				TVOS00382DF24A0000000038 /* PointerEventPath.swift in Sources */,
+				TVOS00392DF24A0000000039 /* ScreenSizeHelper.swift in Sources */,
+				TVOS003A2DF24A000000003A /* TextInputHelper.swift in Sources */,
+				TVOS003B2DF24A000000003B /* EventTarget.swift in Sources */,
+				TVOS003C2DF24A000000003C /* EventRecord.swift in Sources */,
+				TVOS003D2DF24A000000003D /* TouchRouteHandler.swift in Sources */,
+				TVOS003E2DF24A000000003E /* RouteHandlerFactory.swift in Sources */,
+				TVOS003F2DF24A000000003F /* TimeoutHelper.swift in Sources */,
+				TVOS00402DF24A0000000040 /* ViewHierarchyRequest.swift in Sources */,
+				TVOS00412DF24A0000000041 /* PressKeyRequest.swift in Sources */,
+				TVOS00422DF24A0000000042 /* DeviceInfoResponse.swift in Sources */,
+				TVOS00432DF24A0000000043 /* ScreenDiffHandler.swift in Sources */,
+				TVOS00442DF24A0000000044 /* XCUIApplication+Helper.m in Sources */,
+				TVOS00452DF24A0000000045 /* XCTestHTTPServer.swift in Sources */,
+				TVOS00462DF24A0000000046 /* XCUIApplicationProcess+FBQuiescence.m in Sources */,
+				TVOS00472DF24A0000000047 /* InputTextRequest.swift in Sources */,
+				TVOS00482DF24A0000000048 /* conductor_driver_iosUITests.swift in Sources */,
+				TVOS00492DF24A0000000049 /* FBConfiguration.m in Sources */,
+				TVOS004A2DF24A000000004A /* PressButtonRequest.swift in Sources */,
+				TVOS004B2DF24A000000004B /* AXElement.swift in Sources */,
+				TVOS004C2DF24A000000004C /* SwipeRouteHandler.swift in Sources */,
+				TVOS004D2DF24A000000004D /* AppError.swift in Sources */,
+				TVOS004E2DF24A000000004E /* InputTextRouteHandler.swift in Sources */,
+				TVOS004F2DF24A000000004F /* RunningApp.swift in Sources */,
+				TVOS00502DF24A0000000050 /* ScreenshotHandler.swift in Sources */,
+				TVOS00512DF24A0000000051 /* SwipeRequest.swift in Sources */,
+				TVOS00522DF24A0000000052 /* KeyboardRouteHandler.swift in Sources */,
+				TVOS00532DF24A0000000053 /* XCUIApplication+FBQuiescence.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -1120,6 +1425,16 @@
 			isa = PBXTargetDependency;
 			target = BBBB00A02DF24A00000000A0 /* ConductorDriverLib */;
 			targetProxy = BBBB00832DF24A0000000083 /* PBXContainerItemProxy */;
+		};
+		TVOS00672DF24A0000000067 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = TVOS00602DF24A0000000060 /* conductor-driver-tvos */;
+			targetProxy = TVOS00582DF24A0000000058 /* PBXContainerItemProxy */;
+		};
+		TVOS00682DF24A0000000068 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BBBB00A02DF24A00000000A0 /* ConductorDriverLib */;
+			targetProxy = TVOS00592DF24A0000000059 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1420,10 +1735,12 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.houwert.ConductorDriverLib;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
 				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = "1,2,3";
+				TVOS_DEPLOYMENT_TARGET = 14.0;
 			};
 			name = Debug;
 		};
@@ -1451,9 +1768,11 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.houwert.ConductorDriverLib;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
 				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = "1,2,3";
+				TVOS_DEPLOYMENT_TARGET = 14.0;
 			};
 			name = Release;
 		};
@@ -1532,6 +1851,125 @@
 			};
 			name = Release;
 		};
+		TVOS00802DF24A0000000080 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "conductor-driver-ios/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.houwert.conductor-driver-tvos";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 14.0;
+			};
+			name = Debug;
+		};
+		TVOS00812DF24A0000000081 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "conductor-driver-ios/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.houwert.conductor-driver-tvos";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 14.0;
+			};
+			name = Release;
+		};
+		TVOS00822DF24A0000000082 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 25CQD4CKK3;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.houwert.conductor-driver-tvosUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "conductor-driver-iosUITests/Categories/conductor-driver-iosUITests-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TEST_TARGET_NAME = "conductor-driver-tvos";
+				TVOS_DEPLOYMENT_TARGET = 14.0;
+			};
+			name = Debug;
+		};
+		TVOS00832DF24A0000000083 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 25CQD4CKK3;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "dev.houwert.conductor-driver-tvosUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "conductor-driver-iosUITests/Categories/conductor-driver-iosUITests-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TEST_TARGET_NAME = "conductor-driver-tvos";
+				TVOS_DEPLOYMENT_TARGET = 14.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1589,6 +2027,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		TVOS00702DF24A0000000070 /* Build configuration list for PBXNativeTarget "conductor-driver-tvos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TVOS00802DF24A0000000080 /* Debug */,
+				TVOS00812DF24A0000000081 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TVOS00712DF24A0000000071 /* Build configuration list for PBXNativeTarget "conductor-driver-tvosUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TVOS00822DF24A0000000082 /* Debug */,
+				TVOS00832DF24A0000000083 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1604,6 +2060,11 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		5279BFD52935ECE20056C609 /* FlyingFox */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 52049C062935E04D00807AA3 /* XCRemoteSwiftPackageReference "FlyingFox" */;
+			productName = FlyingFox;
+		};
+		TVOS00652DF24A0000000065 /* FlyingFox */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 52049C062935E04D00807AA3 /* XCRemoteSwiftPackageReference "FlyingFox" */;
 			productName = FlyingFox;

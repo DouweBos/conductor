@@ -34,6 +34,13 @@ export async function swipe(
   }
 
   const result = await runDirect(async (driver) => {
+    if (driver instanceof IOSDriver && driver.platform === 'tvos') {
+      throw new Error(
+        'swipe is not supported on tvOS — Apple TV uses focus-based navigation.\n' +
+          'Use press-key to navigate (e.g. conductor press-key left).'
+      );
+    }
+
     let startX: number, startY: number, endX: number, endY: number;
 
     if (driver instanceof IOSDriver) {

@@ -38,13 +38,13 @@ export async function discoverBootedDevices(): Promise<Device[]> {
       const parsed = JSON.parse(xcrun.stdout) as {
         devices: Record<string, Array<{ udid: string; name: string; state: string }>>;
       };
-      for (const [_runtime, sims] of Object.entries(parsed.devices)) {
+      for (const [runtime, sims] of Object.entries(parsed.devices)) {
         for (const sim of sims) {
           if (sim.state === 'Booted') {
             devices.push({
               id: sim.udid,
               name: sim.name,
-              platform: 'ios',
+              platform: runtime.includes('tvOS') ? 'tvos' : 'ios',
               status: 'booted',
             });
           }
@@ -71,13 +71,13 @@ export async function discoverAvailableDevices(): Promise<Device[]> {
           Array<{ udid: string; name: string; state: string; isAvailable: boolean }>
         >;
       };
-      for (const [_runtime, sims] of Object.entries(parsed.devices)) {
+      for (const [runtime, sims] of Object.entries(parsed.devices)) {
         for (const sim of sims) {
           if (sim.isAvailable && sim.state !== 'Booted') {
             devices.push({
               id: sim.udid,
               name: sim.name,
-              platform: 'ios',
+              platform: runtime.includes('tvOS') ? 'tvos' : 'ios',
               status: sim.state.toLowerCase(),
             });
           }

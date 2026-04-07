@@ -19,6 +19,7 @@ import {
   installDriver,
   startIOSDriver,
   startAndroidDriver,
+  startTvOSDriver,
   stopIOSDriver,
   stopAndroidDriver,
   uninstallDriver,
@@ -45,7 +46,7 @@ function dlog(msg: string): void {
 // ── Driver lifecycle ──────────────────────────────────────────────────────────
 
 let driverPort = 1075;
-let driverPlatform: 'ios' | 'android' = 'ios';
+let driverPlatform: 'ios' | 'android' | 'tvos' = 'ios';
 
 const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
 
@@ -53,7 +54,7 @@ let _restartInProgress = false;
 let _driverStarted = false;
 
 async function ensureDriverRunning(): Promise<void> {
-  if (_restartInProgress) return;
+  if (_restartInProgress || !_driverStarted) return;
 
   let alive: boolean;
   if (driverPlatform === 'android') {
@@ -62,11 +63,15 @@ async function ensureDriverRunning(): Promise<void> {
     alive = await probe.isAlive().catch(() => false);
     probe.close();
   } else {
+    // Both 'ios' and 'tvos' use an HTTP server — port open = alive
     alive = await isPortOpen(driverPort);
   }
 
   if (!alive) {
-    if (driverPlatform === 'ios' && !(await isSimulatorBooted(sessionName))) {
+    if (
+      (driverPlatform === 'ios' || driverPlatform === 'tvos') &&
+      !(await isSimulatorBooted(sessionName))
+    ) {
       dlog(`Simulator ${sessionName} is not booted — skipping driver restart`);
       return;
     }
@@ -75,6 +80,9 @@ async function ensureDriverRunning(): Promise<void> {
     try {
       if (driverPlatform === 'ios') {
         await startIOSDriver(sessionName, driverPort);
+      } else if (driverPlatform === 'tvos') {
+        // Health-check restart — don't dismiss, to avoid disrupting user's app
+        await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ false);
       } else {
         await startAndroidDriver(sessionName, driverPort);
       }
@@ -139,22 +147,29 @@ async function main(): Promise<void> {
     }
 
     if (_driverStarted) {
-      dlog(`Stopping driver on port ${driverPort}`);
-      try {
-        if (driverPlatform === 'ios') {
-          await stopIOSDriver(sessionName);
-        } else {
-          await stopAndroidDriver(sessionName, driverPort);
+      // tvOS: keep the driver process alive across daemon restarts.
+      // Stopping/reinstalling steals foreground focus and destroys
+      // the user's navigation state in the target app.
+      if (driverPlatform === 'tvos') {
+        dlog('tvOS: leaving driver running to preserve app state');
+      } else {
+        dlog(`Stopping driver on port ${driverPort}`);
+        try {
+          if (driverPlatform === 'ios') {
+            await stopIOSDriver(sessionName);
+          } else {
+            await stopAndroidDriver(sessionName, driverPort);
+          }
+        } catch (err) {
+          dlog(`Stop driver error: ${err instanceof Error ? err.message : String(err)}`);
         }
-      } catch (err) {
-        dlog(`Stop driver error: ${err instanceof Error ? err.message : String(err)}`);
-      }
 
-      dlog(`Uninstalling driver from ${sessionName}`);
-      try {
-        await uninstallDriver(sessionName, driverPlatform);
-      } catch (err) {
-        dlog(`Uninstall driver error: ${err instanceof Error ? err.message : String(err)}`);
+        dlog(`Uninstalling driver from ${sessionName}`);
+        try {
+          await uninstallDriver(sessionName, driverPlatform);
+        } catch (err) {
+          dlog(`Uninstall driver error: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     }
   }
@@ -204,6 +219,7 @@ async function main(): Promise<void> {
             driverAlive = await probe.isAlive().catch(() => false);
             probe.close();
           } else {
+            // Both 'ios' and 'tvos' use an HTTP server — port open = alive
             driverAlive = await isPortOpen(driverPort);
           }
           if (driverAlive) {
@@ -213,7 +229,7 @@ async function main(): Promise<void> {
           }
 
           // Android: install APKs before starting the driver.
-          // iOS: startIOSDriver uses xcodebuild which installs silently via DependentProductPaths.
+          // iOS/tvOS: xcodebuild installs silently via DependentProductPaths.
           if (platform === 'android') {
             dlog(`Installing Android driver on ${sessionName}`);
             await installDriver(sessionName);
@@ -224,6 +240,9 @@ async function main(): Promise<void> {
           try {
             if (platform === 'ios') {
               await startIOSDriver(sessionName, driverPort);
+            } else if (platform === 'tvos') {
+              // First install — dismiss the runner app to return to homescreen
+              await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ true);
             } else {
               await startAndroidDriver(sessionName, driverPort);
             }

@@ -59,6 +59,19 @@ const IOS_BUTTON_MAP: Partial<Record<Key, 'home' | 'lock'>> = {
   Power: 'lock',
 };
 
+// tvOS remote: map key names to pressButton values
+const TVOS_REMOTE_BUTTONS: Partial<
+  Record<Key, 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause'>
+> = {
+  'Remote Dpad Up': 'up',
+  'Remote Dpad Down': 'down',
+  'Remote Dpad Left': 'left',
+  'Remote Dpad Right': 'right',
+  'Remote Dpad Center': 'select',
+  'Remote Menu': 'menu',
+  'Remote Media Play Pause': 'playPause',
+};
+
 // Android keyevent codes
 const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
   Home: 3,
@@ -116,14 +129,25 @@ export async function pressKey(
 
   const result = await runDirect(async (driver) => {
     if (driver instanceof IOSDriver) {
-      const iosKey = IOS_KEY_MAP[matched];
-      const iosButton = IOS_BUTTON_MAP[matched];
-      if (iosKey) {
-        await driver.pressKey(iosKey);
-      } else if (iosButton) {
-        await driver.pressButton(iosButton);
+      if (driver.platform === 'tvos') {
+        const tvosButton = TVOS_REMOTE_BUTTONS[matched];
+        const iosButton = IOS_BUTTON_MAP[matched];
+        if (tvosButton) {
+          await driver.pressButton(tvosButton);
+        } else if (iosButton) {
+          await driver.pressButton(iosButton);
+        }
+        // Keys not mapped on tvOS are silently ignored
+      } else {
+        const iosKey = IOS_KEY_MAP[matched];
+        const iosButton = IOS_BUTTON_MAP[matched];
+        if (iosKey) {
+          await driver.pressKey(iosKey);
+        } else if (iosButton) {
+          await driver.pressButton(iosButton);
+        }
+        // Keys not mapped on iOS (e.g. Back, VolumeUp) are silently ignored
       }
-      // Keys not mapped on iOS (e.g. Back, VolumeUp) are silently ignored
     } else if (driver instanceof AndroidDriver) {
       const code = ANDROID_KEYCODE[matched];
       if (code !== undefined) {

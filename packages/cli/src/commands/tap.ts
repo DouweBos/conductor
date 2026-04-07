@@ -63,6 +63,13 @@ export async function tap(
   const label = flags.text ? `text="${flags.text}"` : flags.id ? `id="${flags.id}"` : `"${query}"`;
 
   const result = await runDirect(async (driver) => {
+    if (driver instanceof IOSDriver && driver.platform === 'tvos') {
+      throw new Error(
+        'tap is not supported on tvOS — Apple TV uses focus-based navigation.\n' +
+          'Use press-key to navigate (e.g. conductor press-key "Remote Dpad Center").'
+      );
+    }
+
     let el;
     if (driver instanceof IOSDriver) {
       el = await waitForIOSElement(() => driver.viewHierarchy().then((h) => h.axElement), sel);

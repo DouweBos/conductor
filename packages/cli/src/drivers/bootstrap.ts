@@ -9,6 +9,7 @@
  * drivers/ios/ — no separate Conductor/JVM installation required.
  */
 import { spawn } from 'child_process';
+import http from 'http';
 import net from 'net';
 import os from 'os';
 import fs from 'fs';
@@ -18,7 +19,7 @@ import { sleep } from '../utils.js';
 
 // ── Platform detection ────────────────────────────────────────────────────────
 
-export type Platform = 'ios' | 'android';
+export type Platform = 'ios' | 'android' | 'tvos';
 
 /** Cache: deviceId → platform */
 const _platformCache = new Map<string, Platform>();
@@ -26,9 +27,23 @@ const _platformCache = new Map<string, Platform>();
 export async function detectPlatform(deviceId: string): Promise<Platform> {
   if (_platformCache.has(deviceId)) return _platformCache.get(deviceId)!;
 
-  // Check if it looks like an iOS simulator UUID (8-4-4-4-12 hex chars)
+  // Check if it looks like an iOS/tvOS simulator UUID (8-4-4-4-12 hex chars)
   const iosUuidRe = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
   if (iosUuidRe.test(deviceId)) {
+    // Query simctl to determine whether this UUID belongs to a tvOS runtime
+    try {
+      const out = await spawnCapture('xcrun', ['simctl', 'list', 'devices', '--json']);
+      const parsed = JSON.parse(out) as { devices: Record<string, Array<{ udid: string }>> };
+      for (const [runtime, sims] of Object.entries(parsed.devices)) {
+        if (sims.some((s) => s.udid === deviceId)) {
+          const platform: Platform = runtime.includes('tvOS') ? 'tvos' : 'ios';
+          _platformCache.set(deviceId, platform);
+          return platform;
+        }
+      }
+    } catch {
+      /* fall through to ios default */
+    }
     _platformCache.set(deviceId, 'ios');
     return 'ios';
   }
@@ -41,6 +56,7 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
 // ── Port management ───────────────────────────────────────────────────────────
 
 const IOS_BASE_PORT = 1075;
+const TVOS_BASE_PORT = 2075;
 const ANDROID_BASE_PORT = 3763;
 
 const PORT_FILE = path.join(os.homedir(), '.conductor', 'ports.json');
@@ -50,6 +66,7 @@ const PORT_LOCK_TIMEOUT_MS = 5000;
 interface PortState {
   assignments: Record<string, number>;
   nextIosPort: number;
+  nextTvosPort: number;
   nextAndroidPort: number;
 }
 
@@ -57,7 +74,12 @@ function readPortState(): PortState {
   try {
     return JSON.parse(fs.readFileSync(PORT_FILE, 'utf-8')) as PortState;
   } catch {
-    return { assignments: {}, nextIosPort: IOS_BASE_PORT, nextAndroidPort: ANDROID_BASE_PORT };
+    return {
+      assignments: {},
+      nextIosPort: IOS_BASE_PORT,
+      nextTvosPort: TVOS_BASE_PORT,
+      nextAndroidPort: ANDROID_BASE_PORT,
+    };
   }
 }
 
@@ -100,7 +122,16 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
     if (state.assignments[deviceId] !== undefined) {
       return state.assignments[deviceId];
     }
-    const port = platform === 'ios' ? state.nextIosPort++ : state.nextAndroidPort++;
+    // Ensure tvos counter is initialised for port files created before tvOS support
+    if (state.nextTvosPort === undefined) state.nextTvosPort = TVOS_BASE_PORT;
+    let port: number;
+    if (platform === 'ios') {
+      port = state.nextIosPort++;
+    } else if (platform === 'tvos') {
+      port = state.nextTvosPort++;
+    } else {
+      port = state.nextAndroidPort++;
+    }
     state.assignments[deviceId] = port;
     writePortState(state);
     return port;
@@ -277,13 +308,23 @@ export async function startIOSDriver(deviceId: string, port = IOS_BASE_PORT): Pr
 
   const xctestrun = path.join(IOS_DRIVER_CACHE, 'conductor-driver-ios-config.xctestrun');
 
+  // Inject PORT into the xctestrun EnvironmentVariables so the XCTest runner
+  // picks it up. Env vars on the spawn call don't reach the test process —
+  // xcodebuild only passes what's declared in the xctestrun plist.
+  await spawnAndWait('plutil', [
+    '-replace',
+    'conductor-driver-iosUITests.EnvironmentVariables.PORT',
+    '-string',
+    String(port),
+    xctestrun,
+  ]);
+
   const proc = spawn(
     'xcodebuild',
     ['test-without-building', '-xctestrun', xctestrun, '-destination', `id=${deviceId}`],
     {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
-      env: { ...process.env, TEST_RUNNER_PORT: String(port) },
     }
   );
   proc.unref();
@@ -307,6 +348,154 @@ export async function startIOSDriver(deviceId: string, port = IOS_BASE_PORT): Pr
  */
 export async function stopIOSDriver(deviceId: string): Promise<void> {
   await spawnAndWait('xcrun', ['simctl', 'terminate', deviceId, IOS_RUNNER_BUNDLE_ID]);
+}
+
+// ── tvOS bootstrap ────────────────────────────────────────────────────────────
+
+const TVOS_RUNNER_BUNDLE_ID = 'dev.houwert.conductor-driver-tvosUITests.xctrunner';
+const TVOS_STARTUP_TIMEOUT_MS = 120000;
+const TVOS_STARTUP_POLL_MS = 500;
+
+// Persistent cache for extracted tvOS driver files (~/.conductor/tvos-driver/).
+// __TESTROOT__ in the xctestrun resolves to this directory, so both the xctestrun
+// and the Debug-appletvsimulator/ folder must live here.
+const TVOS_DRIVER_CACHE = path.join(os.homedir(), '.conductor', 'tvos-driver');
+
+/**
+ * Ensure the tvOS driver files are extracted from the bundled zips into the cache
+ * dir. Re-extracts only when the bundled xctestrun has changed (tracked by mtime).
+ */
+export async function setupTvOSDriverCache(): Promise<void> {
+  const bundledXctestrun = path.join(
+    BUNDLED_DRIVERS_DIR,
+    'tvos',
+    'conductor-driver-tvos-config.xctestrun'
+  );
+  const bundledDriverZip = path.join(BUNDLED_DRIVERS_DIR, 'tvos', 'conductor-driver-tvos.zip');
+  const bundledRunnerZip = path.join(
+    BUNDLED_DRIVERS_DIR,
+    'tvos',
+    'conductor-driver-tvosUITests-Runner.zip'
+  );
+
+  if (
+    !fs.existsSync(bundledXctestrun) ||
+    !fs.existsSync(bundledDriverZip) ||
+    !fs.existsSync(bundledRunnerZip)
+  ) {
+    throw new Error(
+      `Conductor tvOS driver files not found at ${path.join(BUNDLED_DRIVERS_DIR, 'tvos')}.\n` +
+        `Run 'make package-cli' from the repo root to build and bundle the drivers.`
+    );
+  }
+
+  const versionFile = path.join(TVOS_DRIVER_CACHE, '.version');
+  const xctestrunMtime = String(fs.statSync(bundledXctestrun).mtimeMs);
+
+  let cachedMtime = '';
+  try {
+    cachedMtime = fs.readFileSync(versionFile, 'utf-8').trim();
+  } catch {
+    /* first run */
+  }
+
+  const runnerApp = path.join(
+    TVOS_DRIVER_CACHE,
+    'Debug-appletvsimulator',
+    'conductor-driver-tvosUITests-Runner.app'
+  );
+  if (cachedMtime === xctestrunMtime && fs.existsSync(runnerApp)) return;
+
+  log('Extracting tvOS driver files to cache...');
+  fs.rmSync(TVOS_DRIVER_CACHE, { recursive: true, force: true });
+  fs.mkdirSync(TVOS_DRIVER_CACHE, { recursive: true });
+
+  // Copy xctestrun directly
+  fs.copyFileSync(
+    bundledXctestrun,
+    path.join(TVOS_DRIVER_CACHE, 'conductor-driver-tvos-config.xctestrun')
+  );
+
+  // Unzip the two .app bundles
+  const appsDir = path.join(TVOS_DRIVER_CACHE, 'Debug-appletvsimulator');
+  await spawnAndWait('unzip', ['-q', '-o', bundledDriverZip, '-d', appsDir]);
+  await spawnAndWait('unzip', ['-q', '-o', bundledRunnerZip, '-d', appsDir]);
+
+  fs.writeFileSync(versionFile, xctestrunMtime);
+  log('tvOS driver cache ready');
+}
+
+/**
+ * Start the tvOS XCTest driver via `xcodebuild test-without-building`.
+ * Mirrors startIOSDriver but targets the tvOS xctestrun.
+ *
+ * On first launch the runner app appears in the foreground, so we press the
+ * home button to dismiss it. On subsequent restarts (e.g. health-check recovery)
+ * we skip the dismiss to avoid disrupting the user's navigation state.
+ */
+export async function startTvOSDriver(
+  deviceId: string,
+  port = TVOS_BASE_PORT,
+  dismissAfterLaunch = false
+): Promise<void> {
+  if (await isPortOpen(port)) {
+    log(`tvOS driver already running on port ${port}`);
+    return;
+  }
+
+  log(`Starting tvOS XCTest driver for device ${deviceId} on port ${port}`);
+  await setupTvOSDriverCache();
+
+  const xctestrun = path.join(TVOS_DRIVER_CACHE, 'conductor-driver-tvos-config.xctestrun');
+
+  // Inject PORT into the xctestrun EnvironmentVariables so the XCTest runner
+  // picks it up. Env vars on the spawn call don't reach the test process —
+  // xcodebuild only passes what's declared in the xctestrun plist.
+  await spawnAndWait('plutil', [
+    '-replace',
+    'conductor-driver-tvosUITests.EnvironmentVariables.PORT',
+    '-string',
+    String(port),
+    xctestrun,
+  ]);
+
+  const proc = spawn(
+    'xcodebuild',
+    ['test-without-building', '-xctestrun', xctestrun, '-destination', `id=${deviceId}`],
+    {
+      detached: true,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    }
+  );
+  proc.unref();
+
+  const deadline = Date.now() + TVOS_STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(TVOS_STARTUP_POLL_MS);
+    if (await isPortOpen(port)) {
+      log(`tvOS driver ready on port ${port}`);
+      if (dismissAfterLaunch) {
+        try {
+          await pressButtonViaDriver(port, 'home');
+          log('Dismissed tvOS driver app');
+        } catch {
+          log('Could not dismiss tvOS driver app (non-fatal)');
+        }
+      }
+      return;
+    }
+  }
+
+  throw new Error(
+    `tvOS XCTest driver did not start within ${TVOS_STARTUP_TIMEOUT_MS / 1000}s on port ${port}.`
+  );
+}
+
+/**
+ * Stop the tvOS XCTest driver by terminating the runner app.
+ */
+export async function stopTvOSDriver(deviceId: string): Promise<void> {
+  await spawnAndWait('xcrun', ['simctl', 'terminate', deviceId, TVOS_RUNNER_BUNDLE_ID]);
 }
 
 // ── Android bootstrap ─────────────────────────────────────────────────────────
@@ -412,6 +601,10 @@ export async function uninstallDriver(deviceId: string, platform: Platform): Pro
       deviceId,
       'dev.houwert.conductor-driver-iosUITests.xctrunner',
     ]).catch(() => {});
+  } else if (platform === 'tvos') {
+    await spawnAndWait('xcrun', ['simctl', 'uninstall', deviceId, TVOS_RUNNER_BUNDLE_ID]).catch(
+      () => {}
+    );
   } else {
     await spawnAndWait('adb', ['-s', deviceId, 'uninstall', 'dev.houwert.conductor']).catch(
       () => {}
@@ -423,6 +616,31 @@ export async function uninstallDriver(deviceId: string, platform: Platform): Pro
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Send a pressButton command directly to the driver HTTP server. */
+function pressButtonViaDriver(port: number, button: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ button });
+    const options = {
+      hostname: '127.0.0.1',
+      port,
+      path: '/pressButton',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    };
+    const req = http.request(options, (res) => {
+      res.resume();
+      res.on('end', () =>
+        res.statusCode && res.statusCode < 300
+          ? resolve()
+          : reject(new Error(`HTTP ${res.statusCode}`))
+      );
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
 
 function spawnAndWait(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {

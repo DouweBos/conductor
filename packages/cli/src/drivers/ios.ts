@@ -50,7 +50,8 @@ export class IOSDriver {
   constructor(
     private readonly port = 1075,
     private readonly host = '127.0.0.1',
-    readonly deviceId?: string
+    readonly deviceId?: string,
+    readonly platform: 'ios' | 'tvos' = 'ios'
   ) {}
 
   private request(
@@ -188,7 +189,9 @@ export class IOSDriver {
     await this.post('pressKey', { key });
   }
 
-  async pressButton(button: 'home' | 'lock'): Promise<void> {
+  async pressButton(
+    button: 'home' | 'lock' | 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause'
+  ): Promise<void> {
     await this.post('pressButton', { button });
   }
 

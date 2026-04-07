@@ -47,7 +47,7 @@ import {
 import { setLocation, HELP as setLocationHelp } from './commands/set-location.js';
 import { setOrientation, HELP as setOrientationHelp } from './commands/set-orientation.js';
 import { startDevice, HELP as startDeviceHelp } from './commands/start-device.js';
-import { detectFirstDevice } from './runner.js';
+import { pickDevice } from './device-picker.js';
 import { checkForUpdates } from './update-check.js';
 
 const COMMAND_HELP: Record<string, string> = {
@@ -159,31 +159,8 @@ async function main(): Promise<void> {
   const [command, ...rest] = argv._;
   const opts = { json: argv['json'] as boolean };
 
-  // The device ID is the natural key for both the session file and the daemon.
-  // Use --device if given, otherwise detect the first booted device, otherwise 'default'.
-  const explicitDevice = argv['device'] as string | undefined;
-  const deviceName = argv['device-name'] as string | undefined;
-
-  if (explicitDevice && deviceName) {
-    console.error('Error: --device and --device-name are mutually exclusive.');
-    process.exit(1);
-  }
-
-  let sessionName: string;
-  if (deviceName) {
-    const devices = await discoverBootedDevices();
-    const match = devices.find((d) => d.name === deviceName);
-    if (!match) {
-      console.error(
-        `Error: No booted device found with name "${deviceName}". Run \`conductor list-devices\` to see booted devices.`
-      );
-      process.exit(1);
-    }
-    sessionName = match.id;
-  } else {
-    sessionName = explicitDevice ?? (await detectFirstDevice()) ?? 'default';
-  }
-
+  // Handle help and unknown commands before device resolution —
+  // no point prompting for a device if we're just printing help or erroring out.
   if (!command || argv['help']) {
     if (command && argv['help'] && COMMAND_HELP[command]) {
       console.log(
@@ -193,6 +170,51 @@ async function main(): Promise<void> {
       console.log(HELP);
     }
     process.exit(0);
+  }
+
+  // Commands that don't need a device session
+  const NO_DEVICE_COMMANDS = new Set([
+    'list-devices',
+    'start-device',
+    'cheat-sheet',
+    'install',
+    'copy-app',
+    'device-pool',
+    'run-parallel',
+  ]);
+
+  if (!NO_DEVICE_COMMANDS.has(command) && !COMMAND_HELP[command]) {
+    console.error(`Unknown command: ${command}`);
+    console.error('Run `conductor --help` for usage.');
+    process.exit(1);
+  }
+
+  // The device ID is the natural key for both the session file and the daemon.
+  // Use --device if given, otherwise detect the first booted device, otherwise 'default'.
+  // Only resolve for commands that actually need a device.
+  let sessionName = 'default';
+  if (!NO_DEVICE_COMMANDS.has(command)) {
+    const explicitDevice = argv['device'] as string | undefined;
+    const deviceName = argv['device-name'] as string | undefined;
+
+    if (explicitDevice && deviceName) {
+      console.error('Error: --device and --device-name are mutually exclusive.');
+      process.exit(1);
+    }
+
+    if (deviceName) {
+      const devices = await discoverBootedDevices();
+      const match = devices.find((d) => d.name === deviceName);
+      if (!match) {
+        console.error(
+          `Error: No booted device found with name "${deviceName}". Run \`conductor list-devices\` to see booted devices.`
+        );
+        process.exit(1);
+      }
+      sessionName = match.id;
+    } else {
+      sessionName = explicitDevice ?? (await pickDevice()) ?? 'default';
+    }
   }
 
   let exitCode = 0;
@@ -414,7 +436,10 @@ async function main(): Promise<void> {
       break;
 
     case 'focused':
-      exitCode = await focused(opts, sessionName);
+      exitCode = await focused(opts, sessionName, {
+        poll: argv['poll'] as boolean,
+        interval: argv['interval'] !== undefined ? Number(argv['interval']) : undefined,
+      });
       break;
 
     case 'run-flow': {
@@ -479,6 +504,7 @@ async function main(): Promise<void> {
     }
 
     default:
+      // Should be unreachable — unknown commands are caught before device resolution.
       console.error(`Unknown command: ${command}`);
       console.error('Run `conductor --help` for usage.');
       exitCode = 1;
