@@ -16,6 +16,7 @@ import { swipe, HELP as swipeHelp } from './commands/swipe.js';
 import { assertVisible, HELP as assertVisibleHelp } from './commands/assert-visible.js';
 import { screenshot, HELP as screenshotHelp } from './commands/screenshot.js';
 import { inspect, HELP as inspectHelp } from './commands/inspect.js';
+import { focused, HELP as focusedHelp } from './commands/focused.js';
 import { runFlow, HELP as runFlowHelp } from './commands/run-flow.js';
 import { runFlowInline, HELP as runFlowInlineHelp } from './commands/run-flow-inline.js';
 import { pressKey, HELP as pressKeyHelp } from './commands/press-key.js';
@@ -73,6 +74,7 @@ const COMMAND_HELP: Record<string, string> = {
   'set-orientation': setOrientationHelp,
   screenshot: screenshotHelp,
   inspect: inspectHelp,
+  focused: focusedHelp,
   'run-flow': runFlowHelp,
   'run-flow-inline': runFlowInlineHelp,
   session: sessionHelp,
@@ -408,6 +410,10 @@ async function main(): Promise<void> {
 
     case 'inspect':
       exitCode = await inspect(opts, sessionName);
+      break;
+
+    case 'focused':
+      exitCode = await focused(opts, sessionName);
       break;
 
     case 'run-flow': {
