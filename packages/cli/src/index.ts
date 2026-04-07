@@ -123,6 +123,7 @@ async function main(): Promise<void> {
       'double-tap',
       'optional',
       'benchmark',
+      'dump',
     ],
     string: [
       'device',
@@ -409,7 +410,7 @@ async function main(): Promise<void> {
     }
 
     case 'inspect':
-      exitCode = await inspect(opts, sessionName);
+      exitCode = await inspect(opts, sessionName, { dump: argv['dump'] as boolean });
       break;
 
     case 'focused':

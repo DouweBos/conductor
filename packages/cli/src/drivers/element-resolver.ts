@@ -223,12 +223,22 @@ interface AndroidNode {
   text: string;
   resourceId: string;
   contentDesc: string;
+  className: string;
+  packageName: string;
   bounds: { x1: number; y1: number; x2: number; y2: number };
   clickable: boolean;
   enabled: boolean;
   checked: boolean;
   focused: boolean;
+  focusable: boolean;
   selected: boolean;
+  checkable: boolean;
+  longClickable: boolean;
+  scrollable: boolean;
+  password: boolean;
+  visibleToUser: boolean;
+  hintText: string;
+  error: string;
   children: AndroidNode[];
   index: number; // position in flat node list
 }
@@ -266,12 +276,22 @@ export function parseAndroidHierarchy(xml: string): AndroidNode[] {
       text: attrs['text'] ?? '',
       resourceId: attrs['resource-id'] ?? '',
       contentDesc: attrs['content-desc'] ?? '',
+      className: attrs['class'] ?? '',
+      packageName: attrs['package'] ?? '',
       bounds,
       clickable: attrs['clickable'] === 'true',
       enabled: attrs['enabled'] === 'true',
       checked: attrs['checked'] === 'true',
       focused: attrs['focused'] === 'true',
+      focusable: attrs['focusable'] === 'true',
       selected: attrs['selected'] === 'true',
+      checkable: attrs['checkable'] === 'true',
+      longClickable: attrs['long-clickable'] === 'true',
+      scrollable: attrs['scrollable'] === 'true',
+      password: attrs['password'] === 'true',
+      visibleToUser: attrs['visible-to-user'] === 'true',
+      hintText: attrs['hintText'] ?? '',
+      error: attrs['error'] ?? '',
       children: [],
       index: nodes.length,
     });

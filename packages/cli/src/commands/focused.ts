@@ -6,6 +6,94 @@ import { IOSDriver, AXElement } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { parseAndroidHierarchy } from '../drivers/element-resolver.js';
 
+// XCUIElementType rawValue → human-readable name.
+// Source: XCUIElementType enum in XCTest framework.
+const IOS_ELEMENT_TYPE_NAMES: Record<number, string> = {
+  0: 'Any',
+  1: 'Other',
+  2: 'Application',
+  3: 'Group',
+  4: 'Window',
+  5: 'Sheet',
+  6: 'Drawer',
+  7: 'Alert',
+  8: 'Dialog',
+  9: 'Button',
+  10: 'RadioButton',
+  11: 'RadioGroup',
+  12: 'CheckBox',
+  13: 'DisclosureTriangle',
+  14: 'PopUpButton',
+  15: 'ComboBox',
+  16: 'MenuButton',
+  17: 'ToolbarButton',
+  18: 'Popover',
+  19: 'Keyboard',
+  20: 'Key',
+  21: 'NavigationBar',
+  22: 'TabBar',
+  23: 'TabGroup',
+  24: 'Toolbar',
+  25: 'StatusBar',
+  26: 'Table',
+  27: 'TableRow',
+  28: 'TableColumn',
+  29: 'Outline',
+  30: 'OutlineRow',
+  31: 'Browser',
+  32: 'CollectionView',
+  33: 'Slider',
+  34: 'PageIndicator',
+  35: 'ProgressIndicator',
+  36: 'ActivityIndicator',
+  37: 'SegmentedControl',
+  38: 'Picker',
+  39: 'PickerWheel',
+  40: 'Switch',
+  41: 'Toggle',
+  42: 'Link',
+  43: 'Image',
+  44: 'Icon',
+  45: 'SearchField',
+  46: 'ScrollView',
+  47: 'ScrollBar',
+  48: 'StaticText',
+  49: 'TextField',
+  50: 'SecureTextField',
+  51: 'DatePicker',
+  52: 'TextView',
+  53: 'Menu',
+  54: 'MenuItem',
+  55: 'MenuBar',
+  56: 'MenuBarItem',
+  57: 'Map',
+  58: 'WebView',
+  59: 'IncrementArrow',
+  60: 'DecrementArrow',
+  61: 'Timeline',
+  62: 'RatingIndicator',
+  63: 'ValueIndicator',
+  64: 'SplitGroup',
+  65: 'Splitter',
+  66: 'RelevanceIndicator',
+  67: 'ColorWell',
+  68: 'HelpTag',
+  69: 'Matte',
+  70: 'DockItem',
+  71: 'Ruler',
+  72: 'RulerMarker',
+  73: 'Grid',
+  74: 'LevelIndicator',
+  75: 'Cell',
+  76: 'LayoutArea',
+  77: 'LayoutItem',
+  78: 'Handle',
+  79: 'Stepper',
+  80: 'Tab',
+  81: 'TouchBar',
+  82: 'StatusItem',
+};
+
 /** DFS children-first so the deepest focused node wins (matches deepestMatchingIOSElements pattern). */
 function findFocusedIOS(node: AXElement): AXElement | null {
   for (const child of node.children ?? []) {
@@ -26,6 +114,7 @@ function formatIOSElement(node: AXElement): Record<string, unknown> {
     value: node.value ?? null,
     placeholderValue: node.placeholderValue ?? null,
     elementType: node.elementType,
+    elementTypeName: IOS_ELEMENT_TYPE_NAMES[node.elementType] ?? `Unknown(${node.elementType})`,
     enabled: node.enabled,
     selected: node.selected,
     hasFocus: node.hasFocus,
@@ -46,23 +135,43 @@ function formatAndroidNode(node: {
   text: string;
   resourceId: string;
   contentDesc: string;
+  className: string;
+  packageName: string;
   bounds: { x1: number; y1: number; x2: number; y2: number };
   clickable: boolean;
   enabled: boolean;
   checked: boolean;
   focused: boolean;
+  focusable: boolean;
   selected: boolean;
+  checkable: boolean;
+  longClickable: boolean;
+  scrollable: boolean;
+  password: boolean;
+  visibleToUser: boolean;
+  hintText: string;
+  error: string;
 }): Record<string, unknown> {
   const { x1, y1, x2, y2 } = node.bounds;
   return {
     text: node.text,
     resourceId: node.resourceId,
     contentDesc: node.contentDesc,
+    className: node.className,
+    packageName: node.packageName,
+    hintText: node.hintText || null,
+    error: node.error || null,
     clickable: node.clickable,
     enabled: node.enabled,
     checked: node.checked,
     focused: node.focused,
+    focusable: node.focusable,
     selected: node.selected,
+    checkable: node.checkable,
+    longClickable: node.longClickable,
+    scrollable: node.scrollable,
+    password: node.password,
+    visibleToUser: node.visibleToUser,
     bounds: { x1, y1, x2, y2 },
     center: {
       x: Math.round((x1 + x2) / 2),
