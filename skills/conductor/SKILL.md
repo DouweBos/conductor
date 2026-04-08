@@ -124,6 +124,28 @@ conductor stop-app com.example.myapp
 
 ---
 
+### `clear-state [<appId>]`
+
+Clear app data/state without relaunching. Uses the session `appId` if not specified. On iOS this terminates the app, preserves the .app bundle, uninstalls, and reinstalls (clearing all user data). On Android this runs `pm clear`.
+
+```bash
+conductor clear-state
+conductor clear-state com.example.myapp
+```
+
+---
+
+### `uninstall-app <appId>`
+
+Uninstall an app from the device. The app ID is required.
+
+```bash
+conductor uninstall-app com.example.myapp
+conductor uninstall-app com.example.myapp --device emulator-5554
+```
+
+---
+
 ### `tap <element>`
 
 Tap a UI element by its text label or accessibility ID. **Try the most obvious text label or ID first** — e.g. `"Sign In"`, `"Submit"`, `"btn_login"`. Only run `inspect` to look up the exact identifier if your first attempt fails. **For icon-only buttons (no visible text label), always run `inspect` first** to find the accessibility ID before tapping.

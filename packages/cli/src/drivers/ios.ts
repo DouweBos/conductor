@@ -234,6 +234,12 @@ export class IOSDriver {
     }
   }
 
+  async uninstallApp(bundleId: string): Promise<void> {
+    const deviceId = this.requireDeviceId();
+    await this.simctl(['terminate', deviceId, bundleId]).catch(() => {});
+    await this.simctl(['uninstall', deviceId, bundleId]);
+  }
+
   async clearKeychain(): Promise<void> {
     const deviceId = this.requireDeviceId();
     await this.simctl(['keychain', deviceId, 'reset']);

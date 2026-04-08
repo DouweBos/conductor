@@ -1169,6 +1169,22 @@ async function executeCommandBody(
       break;
     }
 
+    case 'uninstallApp': {
+      const appId =
+        val == null || val === ''
+          ? (opts.appId ??
+            (() => {
+              throw new Error('uninstallApp: no appId in command or flow header');
+            })())
+          : resolveAppId(val, 'uninstallApp');
+      if (driver instanceof IOSDriver) {
+        await driver.uninstallApp(appId);
+      } else {
+        await (driver as AndroidDriver).uninstallApp(appId);
+      }
+      break;
+    }
+
     // ── Keys ───────────────────────────────────────────────────────────────
     case 'pressKey': {
       const keyName = (val as string).toUpperCase();

@@ -199,6 +199,11 @@ export class AndroidDriver {
     await this.adb(['shell', 'pm', 'clear', packageName]);
   }
 
+  async uninstallApp(packageName: string): Promise<void> {
+    await this.adb(['shell', 'am', 'force-stop', packageName]).catch(() => {});
+    await this.adb(['uninstall', packageName]);
+  }
+
   async clearKeychain(): Promise<void> {
     // No-op on Android — keychain is an iOS concept
   }

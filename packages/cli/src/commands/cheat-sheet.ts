@@ -34,6 +34,8 @@ APP CONTROL
     --clear-keychain                        Wipe keychain before launching
     --argument key=value                    Set launch argument (repeatable)
   stop-app [<appId>]                        Stop app (uses session appId if omitted)
+  clear-state [<appId>]                     Clear app data/state (uses session appId if omitted)
+  uninstall-app <appId>                     Uninstall app from device
 
 INTERACTIONS
   tap <element>                             Tap element by text

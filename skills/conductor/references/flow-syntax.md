@@ -26,6 +26,8 @@ appId: com.example.myapp
     appId: com.other.app
 - clearState               # clear app data
 - clearKeychain            # clear keychain (iOS: full keychain; Android: account credentials)
+- uninstallApp             # uninstall app from device
+- uninstallApp: com.other.app  # uninstall a specific app
 ```
 
 ### Tapping

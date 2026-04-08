@@ -8,6 +8,8 @@ import {
 } from './commands/list-devices.js';
 import { launchApp, HELP as launchAppHelp } from './commands/launch-app.js';
 import { stopApp, HELP as stopAppHelp } from './commands/stop-app.js';
+import { clearState, HELP as clearStateHelp } from './commands/clear-state.js';
+import { uninstallApp, HELP as uninstallAppHelp } from './commands/uninstall-app.js';
 import { tap, HELP as tapHelp } from './commands/tap.js';
 import { typeText, HELP as typeHelp } from './commands/type.js';
 import { back, HELP as backHelp } from './commands/back.js';
@@ -58,6 +60,8 @@ const COMMAND_HELP: Record<string, string> = {
   'copy-app': copyAppHelp,
   'launch-app': launchAppHelp,
   'stop-app': stopAppHelp,
+  'clear-state': clearStateHelp,
+  'uninstall-app': uninstallAppHelp,
   tap: tapHelp,
   type: typeHelp,
   'erase-text': eraseTextHelp,
@@ -269,6 +273,18 @@ async function main(): Promise<void> {
     case 'stop-app': {
       const appId = rest[0];
       exitCode = await stopApp(appId, opts, sessionName);
+      break;
+    }
+
+    case 'clear-state': {
+      const appId = rest[0];
+      exitCode = await clearState(appId, opts, sessionName);
+      break;
+    }
+
+    case 'uninstall-app': {
+      const appId = rest[0] ?? '';
+      exitCode = await uninstallApp(appId, opts, sessionName);
       break;
     }
 

@@ -22,7 +22,7 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
 
   let appIds: string[];
 
-  if (platform === 'ios') {
+  if (platform === 'ios' || platform === 'tvos') {
     const result = await spawnCommand('bash', [
       '-c',
       `xcrun simctl listapps ${deviceId} | plutil -convert json - -o -`,
