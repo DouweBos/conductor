@@ -1,5 +1,11 @@
 # @houwert/conductor
 
+## 0.5.0
+
+### Minor Changes
+
+- 9fe1c39: Add install-app command
+
 ## 0.4.0
 
 ### Minor Changes
