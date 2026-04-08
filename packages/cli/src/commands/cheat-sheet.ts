@@ -29,6 +29,7 @@ DEVICE MANAGEMENT
   session --list                            List all device sessions
 
 APP CONTROL
+  download-app <appId> [--output <path>]     Download installed app binary from device
   install-app <path>                        Install .app / .ipa / .apk onto device
   launch-app <appId> [--device <id>]        Launch app and save to session
     --clear-state                           Wipe app data/state before launching

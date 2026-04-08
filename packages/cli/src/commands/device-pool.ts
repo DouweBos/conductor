@@ -18,8 +18,11 @@ import fs from 'fs';
 import { spawn } from 'child_process';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 
-const POOL_FILE = path.join(os.homedir(), '.conductor', 'device-pool.json');
-const LOCK_FILE = POOL_FILE + '.lock';
+function poolFilePath(): string {
+  return (
+    process.env.__CONDUCTOR_POOL_FILE ?? path.join(os.homedir(), '.conductor', 'device-pool.json')
+  );
+}
 const LOCK_TIMEOUT_MS = 5000;
 
 interface PoolEntry {
@@ -35,16 +38,17 @@ interface PoolState {
 // ── File locking ──────────────────────────────────────────────────────────────
 
 async function withLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  const lockFile = poolFilePath() + '.lock';
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
   while (Date.now() < deadline) {
     try {
-      const fd = fs.openSync(LOCK_FILE, 'wx'); // exclusive create
+      const fd = fs.openSync(lockFile, 'wx'); // exclusive create
       fs.closeSync(fd);
       try {
         return await Promise.resolve(fn());
       } finally {
         try {
-          fs.unlinkSync(LOCK_FILE);
+          fs.unlinkSync(lockFile);
         } catch {
           /* ok */
         }
@@ -58,7 +62,7 @@ async function withLock<T>(fn: () => T | Promise<T>): Promise<T> {
 
 function readPool(): PoolState {
   try {
-    const raw = fs.readFileSync(POOL_FILE, 'utf-8');
+    const raw = fs.readFileSync(poolFilePath(), 'utf-8');
     return JSON.parse(raw) as PoolState;
   } catch {
     return { devices: [] };
@@ -66,13 +70,18 @@ function readPool(): PoolState {
 }
 
 function writePool(state: PoolState): void {
-  fs.mkdirSync(path.dirname(POOL_FILE), { recursive: true });
-  fs.writeFileSync(POOL_FILE, JSON.stringify(state, null, 2));
+  const p = poolFilePath();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(state, null, 2));
 }
 
 // ── Device discovery ──────────────────────────────────────────────────────────
 
+/** Override for tests — when set, discoverAllDevices() returns this instead of probing. */
+export let _testDeviceOverride: string[] | undefined;
+
 async function discoverAllDevices(): Promise<string[]> {
+  if (_testDeviceOverride) return _testDeviceOverride;
   const devices: string[] = [];
 
   // Android: adb devices
@@ -106,6 +115,19 @@ async function discoverAllDevices(): Promise<string[]> {
   return devices;
 }
 
+function pruneStaleAcquisitions(state: PoolState): void {
+  for (const entry of state.devices) {
+    if (entry.acquiredBy) {
+      try {
+        process.kill(parseInt(entry.acquiredBy, 10), 0);
+      } catch {
+        delete entry.acquiredBy;
+        delete entry.acquiredAt;
+      }
+    }
+  }
+}
+
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 export async function devicePool(
@@ -115,7 +137,12 @@ export async function devicePool(
 ): Promise<number> {
   if (action === 'list') {
     const allDevices = await discoverAllDevices();
-    const pool = readPool();
+    const pool = await withLock(() => {
+      const state = readPool();
+      pruneStaleAcquisitions(state);
+      writePool(state);
+      return state;
+    });
 
     const rows = allDevices.map((id) => {
       const entry = pool.devices.find((e) => e.deviceId === id);
@@ -148,17 +175,7 @@ export async function devicePool(
 
     const result = await withLock(() => {
       const state = readPool();
-      // Prune stale acquisitions (process no longer running)
-      for (const entry of state.devices) {
-        if (entry.acquiredBy) {
-          try {
-            process.kill(parseInt(entry.acquiredBy, 10), 0);
-          } catch {
-            delete entry.acquiredBy;
-            delete entry.acquiredAt;
-          }
-        }
-      }
+      pruneStaleAcquisitions(state);
 
       // Ensure all discovered devices are in the pool
       for (const id of allDevices) {
