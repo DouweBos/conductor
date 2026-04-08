@@ -66,7 +66,7 @@ Claude learns every available command, how to coordinate across devices, and how
 
 | Capability | Commands |
 |---|---|
-| App lifecycle | `launch-app`, `stop-app`, `foreground-app`, `copy-app` |
+| App lifecycle | `launch-app`, `stop-app`, `clear-state`, `uninstall-app`, `install-app`, `foreground-app`, `copy-app` |
 | Interaction | `tap`, `type`, `scroll`, `scroll-until-visible`, `swipe`, `press-key`, `erase-text`, `hide-keyboard` |
 | Inspection | `inspect`, `focused`, `screenshot`, `list-apps` |
 | Assertions | `assert-visible`, `assert-not-visible` |

@@ -90,6 +90,17 @@ Both flags are required. The command reads the `.app` bundle path from the sourc
 
 ---
 
+### `install-app <path>`
+
+Install an app from a local `.app` bundle, `.ipa`, or `.apk` file onto the device.
+
+```bash
+conductor install-app ./build/MyApp.app
+conductor install-app ./build/app-debug.apk --device emulator-5554
+```
+
+---
+
 ### `launch-app <appId>`
 
 Launch an app by bundle ID and save it to the session.

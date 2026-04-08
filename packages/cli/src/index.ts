@@ -38,6 +38,7 @@ import { runParallel, HELP as runParallelHelp } from './commands/run-parallel.js
 import { foregroundApp, HELP as foregroundAppHelp } from './commands/foreground-app.js';
 import { listApps, HELP as listAppsHelp } from './commands/list-apps.js';
 import { copyApp, HELP as copyAppHelp } from './commands/copy-app.js';
+import { installApp, HELP as installAppHelp } from './commands/install-app.js';
 import { eraseText, HELP as eraseTextHelp } from './commands/erase-text.js';
 import { assertNotVisible, HELP as assertNotVisibleHelp } from './commands/assert-not-visible.js';
 import { openLink, HELP as openLinkHelp } from './commands/open-link.js';
@@ -58,6 +59,7 @@ const COMMAND_HELP: Record<string, string> = {
   'foreground-app': foregroundAppHelp,
   'list-apps': listAppsHelp,
   'copy-app': copyAppHelp,
+  'install-app': installAppHelp,
   'launch-app': launchAppHelp,
   'stop-app': stopAppHelp,
   'clear-state': clearStateHelp,
@@ -250,6 +252,12 @@ async function main(): Promise<void> {
       const from = argv['from'] as string | undefined;
       const to = argv['to'] as string | undefined;
       exitCode = await copyApp(bundleId, from ?? '', to ?? '', opts);
+      break;
+    }
+
+    case 'install-app': {
+      const appPath = rest[0] ?? '';
+      exitCode = await installApp(appPath, opts, sessionName);
       break;
     }
 
