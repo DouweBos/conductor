@@ -1,5 +1,11 @@
 # @houwert/conductor
 
+## 0.4.0
+
+### Minor Changes
+
+- 4260368: Add app uninstall and clear-state commands
+
 ## 0.3.0
 
 ### Minor Changes
