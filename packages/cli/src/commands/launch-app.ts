@@ -9,6 +9,7 @@ import { updateSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { WebDriver } from '../drivers/web.js';
 
 export async function launchApp(
   appId: string,
@@ -36,11 +37,14 @@ export async function launchApp(
     const shouldStop = flags.stopApp ?? true;
     if (shouldStop) {
       if (driver instanceof IOSDriver) await driver.terminateApp(appId);
+      else if (driver instanceof WebDriver) await driver.terminateApp();
       else if (driver instanceof AndroidDriver) await driver.stopApp(appId);
     }
 
     if (driver instanceof IOSDriver) {
       await driver.launchApp(appId, flags.launchArgs);
+    } else if (driver instanceof WebDriver) {
+      await driver.launchApp(appId);
     } else if (driver instanceof AndroidDriver) {
       await driver.launchApp(appId, flags.launchArgs);
     }

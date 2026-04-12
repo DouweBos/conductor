@@ -5,6 +5,7 @@ import { getSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { WebDriver } from '../drivers/web.js';
 
 export async function stopApp(
   appId?: string,
@@ -22,6 +23,8 @@ export async function stopApp(
   const result = await runDirect(async (driver) => {
     if (driver instanceof IOSDriver) {
       await driver.terminateApp(resolvedAppId);
+    } else if (driver instanceof WebDriver) {
+      await driver.terminateApp();
     } else if (driver instanceof AndroidDriver) {
       await driver.stopApp(resolvedAppId);
     }

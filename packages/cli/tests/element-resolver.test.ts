@@ -1,5 +1,10 @@
-import { findIOSElement, findAndroidElement } from '../src/drivers/element-resolver.js';
+import {
+  findIOSElement,
+  findAndroidElement,
+  findWebElement,
+} from '../src/drivers/element-resolver.js';
 import type { AXElement } from '../src/drivers/ios.js';
+import type { WebElement, WebViewHierarchy } from '../src/drivers/web.js';
 import { TestSuite, assert, runAll } from './runner.js';
 import { makeAndroidHierarchyWithAttrs } from './mock-driver.js';
 
@@ -17,6 +22,36 @@ function makeRootAX(children: AXElement[]): AXElement {
     selected: false,
     hasFocus: false,
     children,
+  };
+}
+
+function makeWebHierarchy(elements: WebElement[]): WebViewHierarchy {
+  return {
+    url: 'https://test.invalid/',
+    title: 'Test',
+    elements,
+    ariaSnapshot: '',
+  };
+}
+
+function webEl(
+  role: string,
+  name: string,
+  ref: string,
+  bounds: { x: number; y: number; width: number; height: number } = {
+    x: 0,
+    y: 0,
+    width: 80,
+    height: 32,
+  }
+): WebElement {
+  return {
+    role,
+    name,
+    ref,
+    bounds,
+    enabled: true,
+    focused: false,
   };
 }
 
@@ -164,6 +199,80 @@ elementResolver.test('Android: below returns null when reference not found', asy
   ]);
   const result = findAndroidElement(xml, { text: 'Input', below: { text: 'NonExistentLabel' } });
   assert(result === null, 'should return null when reference element does not exist');
+});
+
+// ── Full-string selector matching (YAML flow parity) ─────────────────────────
+
+elementResolver.test('query "Nouns" does not match label "Pronouns" (iOS)', async () => {
+  const root = makeRootAX([makeAXElem({ label: 'Pronouns', y: 0 })]);
+  const result = findIOSElement(root, { query: 'Nouns' });
+  assert(result === null, 'full-regex match: Pronouns is not entirely Nouns');
+});
+
+elementResolver.test('regex Episode 26.* matches full title (iOS)', async () => {
+  const root = makeRootAX([
+    {
+      identifier: '',
+      frame: { X: 0, Y: 0, Width: 200, Height: 44 },
+      label: '',
+      value: '',
+      title: 'Episode 26 — The Finale',
+      elementType: 48,
+      enabled: true,
+      selected: false,
+      hasFocus: false,
+      children: [],
+    },
+  ]);
+  const result = findIOSElement(root, { query: 'Episode 26.*' });
+  assert(result !== null, 'pattern should match entire title string');
+});
+
+elementResolver.test('hintText matches when text empty (Android)', async () => {
+  const xml = makeAndroidHierarchyWithAttrs([
+    { text: '', hintText: 'Search shows', y1: 0, y2: 44 },
+  ]);
+  const result = findAndroidElement(xml, { text: 'Search shows' });
+  assert(result !== null, 'hintText is included in text-bearing fields');
+});
+
+elementResolver.test('id matches suffix after last slash (Android)', async () => {
+  const xml = makeAndroidHierarchyWithAttrs([
+    { text: 'Go', id: 'com.example.app:id/submit_btn', y1: 0, y2: 44 },
+  ]);
+  const bySuffix = findAndroidElement(xml, { id: 'submit_btn' });
+  assert(bySuffix !== null, 'match on segment after last /');
+  const byFull = findAndroidElement(xml, { id: 'com.example.app:id/submit_btn' });
+  assert(byFull !== null, 'match on full resource-id');
+});
+
+elementResolver.test('invalid regex pattern falls back to literal (iOS)', async () => {
+  const label = '(unclosed';
+  const root = makeRootAX([makeAXElem({ label, y: 0 })]);
+  const found = findIOSElement(root, { text: label });
+  assert(found !== null, 'invalid pattern compiles as escaped literal');
+});
+
+elementResolver.test('newline in label matches pattern with space (iOS)', async () => {
+  const root = makeRootAX([makeAXElem({ label: 'Hello\nWorld', y: 0 })]);
+  const result = findIOSElement(root, { query: 'Hello World' });
+  assert(result !== null, 'newlines normalized to spaces for matching');
+});
+
+elementResolver.test('Web: query "Nouns" does not match name "Pronouns"', async () => {
+  const h = makeWebHierarchy([webEl('button', 'Pronouns', 'e1')]);
+  assert(findWebElement(h, { query: 'Nouns' }) === null, 'full-string regex on name');
+});
+
+elementResolver.test('Web: regex on name and id suffix on ref', async () => {
+  const h = makeWebHierarchy([
+    webEl('link', 'Episode 12 — Cold Open', 'e2'),
+    webEl('button', '', 'aria/panel/ok_btn'),
+  ]);
+  const ep = findWebElement(h, { query: 'Episode 12.*' });
+  assert(ep !== null, 'name field matches pattern');
+  const byRef = findWebElement(h, { id: 'ok_btn' });
+  assert(byRef !== null, 'ref: suffix after last /');
 });
 
 if (require.main === module) runAll([elementResolver]);

@@ -80,7 +80,9 @@ MULTI-AGENT / PARALLEL
   run-parallel --flows-dir <path>           Run flows in parallel across all devices
 
 MISC
-  install --skills                          Install skill files into .claude/skills/
+  install-plugin                            Register/update the global Claude Code plugin
+  install-skills                            Install skill files into .claude/skills/
+  install-web [browser]                     Install Playwright browser for web automation
   cheat-sheet                               Print this reference
 
 GLOBAL FLAGS

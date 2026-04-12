@@ -57,10 +57,13 @@ Claude learns every available command, how to coordinate across devices, and how
 
 | Command | What it does |
 |---|---|
-| `npm install -g @houwert/conductor` | Registers global plugin automatically (via postinstall) |
-| `conductor install` | Re-register or update the global plugin |
-| `conductor install --skills` | Copy skills into `.claude/skills/conductor/` in the current project |
-| `conductor install --check` | Print current install status without modifying anything |
+| `npm install -g @houwert/conductor` | Registers or updates the global Claude Code plugin (via package postinstall) |
+| `conductor install-plugin` | Re-register or update the global Claude Code plugin (same as postinstall) |
+| `conductor install-plugin --check` | Print whether the global plugin is registered (no changes) |
+| `conductor install-skills` | Copy skills into `.claude/skills/conductor/` in the current project |
+| `conductor install-skills --check` | Print whether local skills are installed (no changes) |
+| `conductor install-web` | Install a Playwright browser for web automation (default: chromium) |
+| `conductor install-web --check` | Print which Playwright browsers are installed (no changes) |
 
 ### 📱 What Claude can do
 

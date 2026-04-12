@@ -9,6 +9,7 @@
  * drivers/ios/ — no separate Conductor/JVM installation required.
  */
 import { spawn } from 'child_process';
+import crypto from 'crypto';
 import http from 'http';
 import net from 'net';
 import os from 'os';
@@ -19,13 +20,19 @@ import { sleep } from '../utils.js';
 
 // ── Platform detection ────────────────────────────────────────────────────────
 
-export type Platform = 'ios' | 'android' | 'tvos';
+export type Platform = 'ios' | 'android' | 'tvos' | 'web';
 
 /** Cache: deviceId → platform */
 const _platformCache = new Map<string, Platform>();
 
 export async function detectPlatform(deviceId: string): Promise<Platform> {
   if (_platformCache.has(deviceId)) return _platformCache.get(deviceId)!;
+
+  // Web browser: "web", "web:chromium", "web:firefox", "web:webkit"
+  if (deviceId === 'web' || deviceId.startsWith('web:')) {
+    _platformCache.set(deviceId, 'web');
+    return 'web';
+  }
 
   // Check if it looks like an iOS/tvOS simulator UUID (8-4-4-4-12 hex chars)
   const iosUuidRe = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
@@ -58,6 +65,7 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
 const IOS_BASE_PORT = 1075;
 const TVOS_BASE_PORT = 2075;
 const ANDROID_BASE_PORT = 3763;
+const WEB_BASE_PORT = 4075;
 
 const PORT_FILE = path.join(os.homedir(), '.conductor', 'ports.json');
 const PORT_LOCK = PORT_FILE + '.lock';
@@ -68,6 +76,7 @@ interface PortState {
   nextIosPort: number;
   nextTvosPort: number;
   nextAndroidPort: number;
+  nextWebPort: number;
 }
 
 function readPortState(): PortState {
@@ -79,6 +88,7 @@ function readPortState(): PortState {
       nextIosPort: IOS_BASE_PORT,
       nextTvosPort: TVOS_BASE_PORT,
       nextAndroidPort: ANDROID_BASE_PORT,
+      nextWebPort: WEB_BASE_PORT,
     };
   }
 }
@@ -122,13 +132,16 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
     if (state.assignments[deviceId] !== undefined) {
       return state.assignments[deviceId];
     }
-    // Ensure tvos counter is initialised for port files created before tvOS support
+    // Ensure counters are initialised for port files created before new platform support
     if (state.nextTvosPort === undefined) state.nextTvosPort = TVOS_BASE_PORT;
+    if (state.nextWebPort === undefined) state.nextWebPort = WEB_BASE_PORT;
     let port: number;
     if (platform === 'ios') {
       port = state.nextIosPort++;
     } else if (platform === 'tvos') {
       port = state.nextTvosPort++;
+    } else if (platform === 'web') {
+      port = state.nextWebPort++;
     } else {
       port = state.nextAndroidPort++;
     }
@@ -587,6 +600,135 @@ export async function stopAndroidDriver(deviceId: string, port = ANDROID_BASE_PO
     'dev.houwert.conductor',
   ]).catch(() => {});
   await spawnAndWait('adb', ['-s', deviceId, 'forward', '--remove', `tcp:${port}`]).catch(() => {});
+}
+
+// ── Web bootstrap ────────────────────────────────────────────────────────────
+
+/**
+ * Extract the browser name from a web device ID.
+ * "web" → "chromium", "web:firefox" → "firefox", "web:webkit" → "webkit"
+ *
+ * Also handles instance-qualified IDs:
+ * "web:chromium:abc1" → "chromium", "web:firefox:abc1" → "firefox"
+ */
+export function webBrowserName(deviceId: string): 'chromium' | 'firefox' | 'webkit' {
+  if (deviceId.startsWith('web:')) {
+    const browser = deviceId.slice(4).split(':')[0];
+    if (browser === 'firefox' || browser === 'webkit') return browser;
+  }
+  return 'chromium';
+}
+
+/**
+ * Generate a unique web session ID for parallel browser instances.
+ * Format: "web:<browser>:<8-hex-char-id>"
+ */
+export function generateWebSessionId(
+  browserName: 'chromium' | 'firefox' | 'webkit' = 'chromium'
+): string {
+  const id = crypto.randomBytes(4).toString('hex');
+  return `web:${browserName}:${id}`;
+}
+
+/**
+ * True when the device ID refers to a web browser but does NOT include
+ * an instance qualifier — i.e. "web" or "web:<browser>" but not "web:<browser>:<id>".
+ */
+export function isUnqualifiedWebId(deviceId: string): boolean {
+  if (deviceId === 'web') return true;
+  if (!deviceId.startsWith('web:')) return false;
+  return deviceId.split(':').length === 2;
+}
+
+/**
+ * Check whether a Playwright browser is installed for the current playwright-core version.
+ * Returns true if the executable exists, false otherwise.
+ */
+export function isPlaywrightBrowserInstalled(
+  browserName: 'chromium' | 'firefox' | 'webkit'
+): boolean {
+  try {
+    // Dynamic import to avoid pulling playwright-core into every code path
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pw = require('playwright-core') as typeof import('playwright-core');
+    const execPath = pw[browserName].executablePath();
+    return fs.existsSync(execPath);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Install a Playwright browser if not already present.
+ * Shells out to `npx playwright-core install <browser>` which downloads the
+ * version-matched browser binary to the default cache (~/.cache/ms-playwright).
+ */
+export async function ensurePlaywrightBrowser(
+  browserName: 'chromium' | 'firefox' | 'webkit',
+  logger: (msg: string) => void = log
+): Promise<void> {
+  if (isPlaywrightBrowserInstalled(browserName)) {
+    logger(`Playwright ${browserName} is already installed`);
+    return;
+  }
+
+  logger(`Installing Playwright ${browserName} browser...`);
+
+  // Use the playwright-core CLI to install the browser.
+  // Resolve the playwright-core binary from node_modules.
+  const pwCoreBin = path.join(
+    path.dirname(require.resolve('playwright-core/package.json')),
+    'cli.js'
+  );
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(process.execPath, [pwCoreBin, 'install', browserName], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stderr = '';
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      const line = chunk.toString().trim();
+      if (line) logger(line);
+    });
+    proc.on('close', (code) => {
+      if (code === 0) {
+        logger(`Playwright ${browserName} installed successfully`);
+        resolve();
+      } else {
+        reject(
+          new Error(
+            `Failed to install Playwright ${browserName} (exit ${code}).\n${stderr.trim()}\n` +
+              `You can install manually: npx playwright-core install ${browserName}`
+          )
+        );
+      }
+    });
+    proc.on('error', (err) => {
+      reject(
+        new Error(
+          `Failed to run Playwright installer: ${err.message}\n` +
+            `You can install manually: npx playwright-core install ${browserName}`
+        )
+      );
+    });
+  });
+}
+
+/**
+ * Stop the web driver by sending a shutdown request to its HTTP server.
+ */
+export async function stopWebDriver(port: number): Promise<void> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { hostname: '127.0.0.1', port, path: '/shutdown', method: 'POST' },
+      () => resolve()
+    );
+    req.on('error', () => resolve());
+    req.end();
+  });
 }
 
 /**

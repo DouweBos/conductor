@@ -32,7 +32,14 @@ import {
   HELP_DAEMON_STOP as daemonStopHelp,
   HELP_DAEMON_STATUS as daemonStatusHelp,
 } from './commands/daemon.js';
-import { installSkills, HELP as installHelp } from './commands/install.js';
+import {
+  installPluginCli,
+  installSkillsCli,
+  installWebCli,
+  HELP_INSTALL_PLUGIN,
+  HELP_INSTALL_SKILLS,
+  HELP_INSTALL_WEB,
+} from './commands/install.js';
 import { devicePool, HELP as devicePoolHelp } from './commands/device-pool.js';
 import { runParallel, HELP as runParallelHelp } from './commands/run-parallel.js';
 import { foregroundApp, HELP as foregroundAppHelp } from './commands/foreground-app.js';
@@ -87,7 +94,9 @@ const COMMAND_HELP: Record<string, string> = {
   'run-flow-inline': runFlowInlineHelp,
   session: sessionHelp,
   'cheat-sheet': cheatSheetHelp,
-  install: installHelp,
+  'install-plugin': HELP_INSTALL_PLUGIN,
+  'install-skills': HELP_INSTALL_SKILLS,
+  'install-web': HELP_INSTALL_WEB,
   'daemon-start': daemonStartHelp,
   'daemon-stop': daemonStopHelp,
   'daemon-status': daemonStatusHelp,
@@ -98,6 +107,7 @@ const COMMAND_HELP: Record<string, string> = {
 const OPTIONS_HELP = `Options:
   --device <id>     Target device ID (also keys the session and daemon)
   --device-name <n> Target a booted device by name (resolved to ID from booted devices)
+  --platform <p>    Filter to devices of this platform (ios, android, tvos, web)
   --json            Output as machine-readable JSON
   --verbose, -v     Log daemon calls, fallbacks, and raw output
   --help, -h        Show this help`;
@@ -119,7 +129,6 @@ async function main(): Promise<void> {
       'clear',
       'list',
       'verbose',
-      'skills',
       'check',
       'all',
       'acquire',
@@ -156,6 +165,7 @@ async function main(): Promise<void> {
       'name',
       'device-name',
       'device-type',
+      'browser',
       'from',
       'to',
     ],
@@ -185,7 +195,9 @@ async function main(): Promise<void> {
     'list-devices',
     'start-device',
     'cheat-sheet',
-    'install',
+    'install-plugin',
+    'install-skills',
+    'install-web',
     'copy-app',
     'device-pool',
     'run-parallel',
@@ -221,7 +233,8 @@ async function main(): Promise<void> {
       }
       sessionName = match.id;
     } else {
-      sessionName = explicitDevice ?? (await pickDevice()) ?? 'default';
+      sessionName =
+        explicitDevice ?? (await pickDevice(argv['platform'] as string | undefined)) ?? 'default';
     }
   }
 
@@ -234,6 +247,7 @@ async function main(): Promise<void> {
         avd: argv['avd'] as string | undefined,
         name: argv['name'] as string | undefined,
         deviceType: argv['device-type'] as string | undefined,
+        browser: argv['browser'] as string | undefined,
       });
       break;
 
@@ -504,8 +518,16 @@ async function main(): Promise<void> {
       exitCode = await cheatSheet();
       break;
 
-    case 'install':
-      exitCode = await installSkills(opts, argv['skills'] as boolean, argv['check'] as boolean);
+    case 'install-plugin':
+      exitCode = await installPluginCli(opts, argv['check'] as boolean);
+      break;
+
+    case 'install-skills':
+      exitCode = await installSkillsCli(opts, argv['check'] as boolean);
+      break;
+
+    case 'install-web':
+      exitCode = await installWebCli(opts, argv['check'] as boolean, rest[0]);
       break;
 
     case 'daemon-start':

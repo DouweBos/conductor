@@ -7,8 +7,13 @@ import { getDriver } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { WebDriver } from '../drivers/web.js';
 import { ElementSelector } from '../drivers/element-resolver.js';
-import { waitUntilIOSElementGone, waitUntilAndroidElementGone } from '../drivers/wait.js';
+import {
+  waitUntilIOSElementGone,
+  waitUntilAndroidElementGone,
+  waitUntilWebElementGone,
+} from '../drivers/wait.js';
 
 export async function assertNotVisible(
   element: string,
@@ -61,6 +66,8 @@ export async function assertNotVisible(
         sel,
         flags.timeout
       );
+    } else if (driver instanceof WebDriver) {
+      await waitUntilWebElementGone(() => driver.viewHierarchy(), sel, flags.timeout);
     } else if (driver instanceof AndroidDriver) {
       await waitUntilAndroidElementGone(() => driver.viewHierarchy(), sel, flags.timeout);
     }

@@ -8,9 +8,11 @@ import { getDriver } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { WebDriver } from '../drivers/web.js';
 import {
   findIOSElement,
   findAndroidElement,
+  findWebElement,
   ElementSelector,
 } from '../drivers/element-resolver.js';
 import { Direction, swipeCoords } from '../utils.js';
@@ -73,6 +75,21 @@ export async function scrollUntilVisible(
             coords.endX * w,
             coords.endY * h,
             0.5
+          );
+        } else if (driver instanceof WebDriver) {
+          const hierarchy = await driver.viewHierarchy();
+          if (findWebElement(hierarchy, sel)) {
+            printSuccess(`scroll-until-visible ${label} — found`, opts);
+            return 0;
+          }
+          const info = await driver.deviceInfo();
+          const { widthPixels: w, heightPixels: h } = info;
+          await driver.swipe(
+            coords.startX * w,
+            coords.startY * h,
+            coords.endX * w,
+            coords.endY * h,
+            500
           );
         } else if (driver instanceof AndroidDriver) {
           const xml = await driver.viewHierarchy();

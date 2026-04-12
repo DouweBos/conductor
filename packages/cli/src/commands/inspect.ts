@@ -4,7 +4,12 @@ import { getDriver } from '../runner.js';
 import { printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
-import { inspectIOSToText, inspectAndroidToText } from '../drivers/element-resolver.js';
+import { WebDriver } from '../drivers/web.js';
+import {
+  inspectIOSToText,
+  inspectAndroidToText,
+  inspectWebToText,
+} from '../drivers/element-resolver.js';
 
 export interface InspectOptions {
   dump?: boolean;
@@ -23,6 +28,8 @@ export async function inspect(
       if (driver instanceof IOSDriver) {
         const hierarchy = await driver.viewHierarchy(false);
         raw = JSON.stringify(hierarchy, null, 2);
+      } else if (driver instanceof WebDriver) {
+        raw = JSON.stringify(await driver.viewHierarchy(), null, 2);
       } else if (driver instanceof AndroidDriver) {
         raw = await driver.viewHierarchy();
       } else {
@@ -42,6 +49,9 @@ export async function inspect(
     if (driver instanceof IOSDriver) {
       const hierarchy = await driver.viewHierarchy(false);
       text = inspectIOSToText(hierarchy.axElement);
+    } else if (driver instanceof WebDriver) {
+      const hierarchy = await driver.viewHierarchy();
+      text = inspectWebToText(hierarchy);
     } else if (driver instanceof AndroidDriver) {
       const xml = await driver.viewHierarchy();
       text = inspectAndroidToText(xml);

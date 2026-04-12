@@ -5,6 +5,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { socketPath, pidFile, logFile } from './protocol.js';
 import { log } from '../verbose.js';
+import { webBrowserName } from '../drivers/bootstrap.js';
 
 const STARTUP_POLL_MS = 200;
 const STARTUP_MAX_WAIT_MS = 10000;
@@ -107,4 +108,21 @@ export async function daemonStatus(
   } catch {
     return { running: true };
   }
+}
+
+/**
+ * Find a running web daemon session that matches the given browser type.
+ * Scans `~/.conductor/daemons/` for `web:*` directories whose daemon socket
+ * is still alive. Returns the session name, or undefined if none found.
+ */
+export async function findRunningWebSession(
+  browserName: 'chromium' | 'firefox' | 'webkit'
+): Promise<string | undefined> {
+  for (const session of listDaemonSessions()) {
+    if (!(session === 'web' || session.startsWith('web:'))) continue;
+    if (webBrowserName(session) !== browserName) continue;
+
+    if (await socketExists(session)) return session;
+  }
+  return undefined;
 }

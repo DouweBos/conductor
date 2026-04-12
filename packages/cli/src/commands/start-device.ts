@@ -1,12 +1,14 @@
 export const HELP = `  start-device
-    --platform <ios|android|tvos>     Boot a simulator or emulator
+    --platform <ios|android|tvos|web> Boot a simulator/emulator, or start the web driver (Playwright)
     --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
     --avd <name>                      Android AVD name (default: first available)
     --name <name>                     Set a custom name on the simulator after boot (iOS/tvOS only)
-    --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K"); creates if needed`;
+    --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K"); creates if needed
+    --browser <chromium|firefox|webkit> Web only: which Playwright browser to launch (default: chromium)`;
 
 import { spawn } from 'child_process';
 import { spawnCommand } from '../runner.js';
+import { startDaemon } from '../daemon/client.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { sleep } from '../utils.js';
 
@@ -546,15 +548,54 @@ async function startAndroid(avdName: string | undefined, opts: OutputOptions): P
   return 0;
 }
 
+function webSessionIdForBrowser(
+  browserArg: string | undefined
+): { session: string } | { error: string } {
+  const b = (browserArg ?? 'chromium').toLowerCase();
+  switch (b) {
+    case 'chromium':
+      return { session: 'web' };
+    case 'firefox':
+      return { session: 'web:firefox' };
+    case 'webkit':
+      return { session: 'web:webkit' };
+    default:
+      return {
+        error: `Unknown web browser "${browserArg}". Use chromium, firefox, or webkit.`,
+      };
+  }
+}
+
+async function startWebDriver(opts: OutputOptions, browser?: string): Promise<number> {
+  const resolved = webSessionIdForBrowser(browser);
+  if ('error' in resolved) {
+    printError(resolved.error, opts);
+    return 1;
+  }
+
+  const ready = await startDaemon(resolved.session);
+  if (!ready) {
+    printError(
+      `Web driver did not become ready for session ${resolved.session}. ` +
+        'Install a browser with `conductor install-web` if needed, then retry.',
+      opts
+    );
+    return 1;
+  }
+
+  printSuccess(`Web driver ready (${resolved.session})`, opts);
+  return 0;
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function startDevice(
   platform: string | undefined,
   opts: OutputOptions,
-  flags: { osVersion?: string; avd?: string; name?: string; deviceType?: string }
+  flags: { osVersion?: string; avd?: string; name?: string; deviceType?: string; browser?: string }
 ): Promise<number> {
   if (!platform) {
-    printError('start-device requires --platform ios|android', opts);
+    printError('start-device requires --platform ios|android|tvos|web', opts);
     return 1;
   }
 
@@ -565,8 +606,10 @@ export async function startDevice(
       return startTvOS(flags.osVersion, opts, flags.name, flags.deviceType);
     case 'android':
       return startAndroid(flags.avd, opts);
+    case 'web':
+      return startWebDriver(opts, flags.browser);
     default:
-      printError(`Unknown platform "${platform}". Use ios, android, or tvos.`, opts);
+      printError(`Unknown platform "${platform}". Use ios, android, tvos, or web.`, opts);
       return 1;
   }
 }

@@ -5,6 +5,7 @@ import { getDriver } from '../runner.js';
 import { printError, OutputOptions } from '../output.js';
 import { IOSDriver, AXElement } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { WebDriver, WebElement } from '../drivers/web.js';
 import { parseAndroidHierarchy } from '../drivers/element-resolver.js';
 
 // XCUIElementType rawValue → human-readable name.
@@ -181,13 +182,50 @@ function formatAndroidNode(node: {
   };
 }
 
+function findFocusedWeb(elements: WebElement[]): WebElement | null {
+  for (const el of elements) {
+    if (el.children) {
+      const found = findFocusedWeb(el.children);
+      if (found) return found;
+    }
+    if (el.focused) return el;
+  }
+  return null;
+}
+
+function formatWebElement(node: WebElement): Record<string, unknown> {
+  const b = node.bounds;
+  return {
+    text: node.name || '',
+    ref: node.ref || '',
+    role: node.role,
+    enabled: node.enabled,
+    focused: node.focused,
+    checked: node.checked ?? null,
+    selected: node.selected ?? null,
+    bounds: b
+      ? {
+          x: Math.round(b.x),
+          y: Math.round(b.y),
+          width: Math.round(b.width),
+          height: Math.round(b.height),
+        }
+      : null,
+    center: b ? { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) } : null,
+  };
+}
+
 async function queryFocused(
-  driver: IOSDriver | AndroidDriver
+  driver: IOSDriver | AndroidDriver | WebDriver
 ): Promise<Record<string, unknown> | null> {
   if (driver instanceof IOSDriver) {
     const hierarchy = await driver.viewHierarchy(false);
     const node = findFocusedIOS(hierarchy.axElement);
     return node ? formatIOSElement(node) : null;
+  } else if (driver instanceof WebDriver) {
+    const hierarchy = await driver.viewHierarchy();
+    const node = findFocusedWeb(hierarchy.elements);
+    return node ? formatWebElement(node) : null;
   } else if (driver instanceof AndroidDriver) {
     const xml = await driver.viewHierarchy();
     const nodes = parseAndroidHierarchy(xml);

@@ -4,6 +4,7 @@ import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { WebDriver } from '../drivers/web.js';
 
 const VALID_KEYS = [
   'Enter',
@@ -147,6 +148,20 @@ export async function pressKey(
           await driver.pressButton(iosButton);
         }
         // Keys not mapped on iOS (e.g. Back, VolumeUp) are silently ignored
+      }
+    } else if (driver instanceof WebDriver) {
+      const WEB_KEY_MAP: Partial<Record<Key, string>> = {
+        Enter: 'Enter',
+        Tab: 'Tab',
+        Backspace: 'Backspace',
+        Delete: 'Delete',
+        Escape: 'Escape',
+        Home: 'Home',
+        End: 'End',
+      };
+      const webKey = WEB_KEY_MAP[matched];
+      if (webKey) {
+        await driver.pressKey(webKey);
       }
     } else if (driver instanceof AndroidDriver) {
       const code = ANDROID_KEYCODE[matched];

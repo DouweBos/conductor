@@ -17,7 +17,13 @@ import { getDriver } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
-import { waitForIOSElement, waitForAndroidElement, OPTIONAL_TIMEOUT_MS } from '../drivers/wait.js';
+import { WebDriver } from '../drivers/web.js';
+import {
+  waitForIOSElement,
+  waitForAndroidElement,
+  waitForWebElement,
+  OPTIONAL_TIMEOUT_MS,
+} from '../drivers/wait.js';
 
 export async function assertVisible(
   element: string,
@@ -73,6 +79,8 @@ export async function assertVisible(
           sel,
           timeoutMs
         );
+      } else if (driver instanceof WebDriver) {
+        return waitForWebElement(() => driver.viewHierarchy(), sel, timeoutMs);
       } else if (driver instanceof AndroidDriver) {
         return waitForAndroidElement(() => driver.viewHierarchy(), sel, timeoutMs);
       }

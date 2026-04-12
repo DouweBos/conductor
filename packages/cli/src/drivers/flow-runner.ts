@@ -8,12 +8,15 @@ import vm from 'node:vm';
 import yaml from 'js-yaml';
 import { IOSDriver, AXElement } from './ios.js';
 import { AndroidDriver } from './android.js';
+import { WebDriver } from './web.js';
 import {
   waitForIOSElement,
   waitForAndroidElement,
+  waitForWebElement,
   waitForIOSTransitionToSettle,
   waitForIOSHierarchyToSettle,
   waitForAndroidHierarchyToSettle,
+  waitForWebHierarchyToSettle,
   OPTIONAL_TIMEOUT_MS,
 } from './wait.js';
 import { performance } from 'perf_hooks';
@@ -24,7 +27,7 @@ function fmtMs(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-type AnyDriver = IOSDriver | AndroidDriver;
+type AnyDriver = IOSDriver | AndroidDriver | WebDriver;
 
 // ── Selector ──────────────────────────────────────────────────────────────────
 
@@ -184,6 +187,8 @@ async function waitForElement(
       elSel,
       timeoutMs
     );
+  } else if (driver instanceof WebDriver) {
+    return waitForWebElement(() => driver.viewHierarchy(), elSel, timeoutMs);
   } else {
     return waitForAndroidElement(() => driver.viewHierarchy(), elSel, timeoutMs);
   }
@@ -303,6 +308,8 @@ async function dismissIOSPermissionDialogs(
 async function waitForSettle(driver: AnyDriver): Promise<void> {
   if (driver instanceof IOSDriver) {
     await waitForIOSTransitionToSettle(() => driver.isScreenStatic());
+  } else if (driver instanceof WebDriver) {
+    await waitForWebHierarchyToSettle(() => driver.viewHierarchy());
   } else {
     await waitForAndroidHierarchyToSettle(() => driver.viewHierarchy());
   }
@@ -605,8 +612,10 @@ function getConductorObj(
   driver: AnyDriver,
   output: Record<string, unknown>
 ): Record<string, unknown> {
+  const platform =
+    driver instanceof IOSDriver ? 'ios' : driver instanceof WebDriver ? 'web' : 'android';
   return {
-    platform: driver instanceof IOSDriver ? 'ios' : 'android',
+    platform,
     copiedText: (output['__copiedText'] as string) ?? '',
   };
 }
@@ -773,6 +782,8 @@ async function executeCommandBody(
           : ((val as { charactersToErase?: number })?.charactersToErase ?? 50);
       if (driver instanceof AndroidDriver) {
         await driver.eraseAllText(n);
+      } else if (driver instanceof WebDriver) {
+        await driver.eraseAllText(n);
       } else {
         for (let i = 0; i < n; i++) await driver.pressKey('delete');
       }
@@ -920,6 +931,7 @@ async function executeCommandBody(
     // ── Navigation ─────────────────────────────────────────────────────────
     case 'back': {
       if (driver instanceof AndroidDriver) await driver.back();
+      else if (driver instanceof WebDriver) await driver.goBack();
       // iOS has no hardware back button — noop
       break;
     }
@@ -943,6 +955,8 @@ async function executeCommandBody(
         await driver.pressKey('return').catch(() => {
           /* noop if no keyboard */
         });
+      } else if (driver instanceof WebDriver) {
+        // No virtual keyboard on web — noop
       } else {
         await (driver as AndroidDriver).pressKeyEvent(111); // KEYCODE_ESCAPE
       }
@@ -1096,9 +1110,14 @@ async function executeCommandBody(
       if (permissions) await driver.setPermissions(appId, permissions);
       if (stopAppFlag) {
         if (driver instanceof IOSDriver) await driver.terminateApp(appId);
+        else if (driver instanceof WebDriver) await driver.terminateApp();
         else if (driver instanceof AndroidDriver) await driver.stopApp(appId);
       }
-      await driver.launchApp(appId, launchArgs);
+      if (driver instanceof WebDriver) {
+        await driver.launchApp(appId); // appId is URL for web
+      } else {
+        await driver.launchApp(appId, launchArgs);
+      }
       if (driver instanceof IOSDriver && permissions) {
         // Determine allow vs deny from the permissions map.
         // `all` is the canonical key; fall back to majority vote across explicit keys.
@@ -1130,6 +1149,8 @@ async function executeCommandBody(
           : resolveAppId(val, 'stopApp');
       if (driver instanceof IOSDriver) {
         await driver.terminateApp(appId);
+      } else if (driver instanceof WebDriver) {
+        await driver.terminateApp();
       } else {
         await driver.stopApp(appId);
       }
@@ -1146,6 +1167,8 @@ async function executeCommandBody(
           : resolveAppId(val, 'killApp');
       if (driver instanceof IOSDriver) {
         await driver.terminateApp(appId);
+      } else if (driver instanceof WebDriver) {
+        await driver.terminateApp();
       } else {
         await (driver as AndroidDriver).stopApp(appId);
       }
@@ -1153,14 +1176,18 @@ async function executeCommandBody(
     }
 
     case 'clearState': {
-      const appId =
-        val == null || val === ''
-          ? (opts.appId ??
-            (() => {
-              throw new Error('clearState: no appId in command or flow header');
-            })())
-          : resolveAppId(val, 'clearState');
-      await driver.clearAppState(appId);
+      if (driver instanceof WebDriver) {
+        await driver.clearAppState();
+      } else {
+        const appId =
+          val == null || val === ''
+            ? (opts.appId ??
+              (() => {
+                throw new Error('clearState: no appId in command or flow header');
+              })())
+            : resolveAppId(val, 'clearState');
+        await driver.clearAppState(appId);
+      }
       break;
     }
 
@@ -1177,7 +1204,9 @@ async function executeCommandBody(
               throw new Error('uninstallApp: no appId in command or flow header');
             })())
           : resolveAppId(val, 'uninstallApp');
-      if (driver instanceof IOSDriver) {
+      if (driver instanceof WebDriver) {
+        throw new Error('uninstallApp is not supported on web');
+      } else if (driver instanceof IOSDriver) {
         await driver.uninstallApp(appId);
       } else {
         await (driver as AndroidDriver).uninstallApp(appId);
@@ -1197,6 +1226,18 @@ async function executeCommandBody(
         } else {
           await driver.pressKey(mapIosKey(keyName));
         }
+      } else if (driver instanceof WebDriver) {
+        // Map common key names to Playwright key names
+        const WEB_KEY_MAP: Record<string, string> = {
+          ENTER: 'Enter',
+          RETURN: 'Enter',
+          TAB: 'Tab',
+          DELETE: 'Backspace',
+          BACKSPACE: 'Backspace',
+          SPACE: 'Space',
+          ESCAPE: 'Escape',
+        };
+        await driver.pressKey(WEB_KEY_MAP[keyName] ?? keyName);
       } else {
         const keycode = ANDROID_KEYCODES[keyName];
         if (keycode === undefined) throw new Error(`pressKey: unknown key "${val}"`);
@@ -1210,6 +1251,8 @@ async function executeCommandBody(
         await driver.pressKey('return').catch(() => {
           /* noop if no keyboard */
         });
+      } else if (driver instanceof WebDriver) {
+        // No virtual keyboard on web — noop
       } else {
         await driver.pressKeyEvent(111); // KEYCODE_ESCAPE
       }
@@ -1411,6 +1454,8 @@ async function executeCommandBody(
           () => driver.viewHierarchy().then((h) => h.axElement),
           wfaTimeout
         );
+      } else if (driver instanceof WebDriver) {
+        await waitForWebHierarchyToSettle(() => driver.viewHierarchy(), wfaTimeout);
       } else {
         await waitForAndroidHierarchyToSettle(
           () => (driver as AndroidDriver).viewHierarchy(),
