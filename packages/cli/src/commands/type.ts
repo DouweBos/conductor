@@ -1,4 +1,4 @@
-export const HELP = `  type <text>                         Type text into focused field`;
+export const HELP = `  input-text <text>                    Type text into focused field`;
 
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
@@ -9,7 +9,7 @@ export async function typeText(
   sessionName = 'default'
 ): Promise<number> {
   if (text === undefined || text === '') {
-    printError('type requires <text>', opts);
+    printError('input-text requires <text>', opts);
     return 1;
   }
 

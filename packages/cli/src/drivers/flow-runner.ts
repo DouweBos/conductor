@@ -950,19 +950,6 @@ async function executeCommandBody(
       break;
     }
 
-    case 'hide keyboard': {
-      if (driver instanceof IOSDriver) {
-        await driver.pressKey('return').catch(() => {
-          /* noop if no keyboard */
-        });
-      } else if (driver instanceof WebDriver) {
-        // No virtual keyboard on web — noop
-      } else {
-        await (driver as AndroidDriver).pressKeyEvent(111); // KEYCODE_ESCAPE
-      }
-      break;
-    }
-
     // ── Assertions ─────────────────────────────────────────────────────────
     case 'assertVisible': {
       const optional =

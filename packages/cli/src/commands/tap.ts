@@ -1,4 +1,4 @@
-export const HELP = `  tap <element>                       Tap element by text or id
+export const HELP = `  tap-on <element>                     Tap element by text or id
     --id <id>                         Match by accessibility id instead of text
     --text <text>                     Match by text only (not id)
     --index <n>                       Pick the nth match (0-based)
@@ -44,7 +44,7 @@ export async function tap(
   } = {}
 ): Promise<number> {
   if (!query && !flags.id && !flags.text) {
-    printError('tap requires <element> or --id <id>', opts);
+    printError('tap-on requires <element> or --id <id>', opts);
     return 1;
   }
 
@@ -66,7 +66,7 @@ export async function tap(
   const result = await runDirect(async (driver) => {
     if (driver instanceof IOSDriver && driver.platform === 'tvos') {
       throw new Error(
-        'tap is not supported on tvOS — Apple TV uses focus-based navigation.\n' +
+        'tap-on is not supported on tvOS — Apple TV uses focus-based navigation.\n' +
           'Use press-key to navigate (e.g. conductor press-key "Remote Dpad Center").'
       );
     }

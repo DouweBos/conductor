@@ -40,12 +40,12 @@ APP CONTROL
   uninstall-app <appId>                     Uninstall app from device
 
 INTERACTIONS
-  tap <element>                             Tap element by text
+  tap-on <element>                           Tap element by text
     --id <id>                               Match by accessibility ID instead of text
     --index <n>                             Pick the nth match (0-based)
     --long-press                            Hold instead of tap
     --double-tap                            Double-tap the element
-  type <text>                               Type text into focused field
+  input-text <text>                          Type text into focused field
   back                                      Press back button (Android only)
   press-key <key>                           Press a key (Enter, Backspace, Home, ...)
   scroll [--direction down|up|left|right]   Scroll (default: down)
@@ -61,7 +61,7 @@ ASSERTIONS
     --optional                              Succeed even if element is not found
 
 SCREENSHOTS & INSPECTION
-  screenshot [--output <path>]              Take screenshot (default: ./screenshot-<ts>.png)
+  take-screenshot [--output <path>]          Take screenshot (default: ./screenshot-<ts>.png)
   inspect                                   Print UI hierarchy
 
 FLOW EXECUTION
@@ -93,11 +93,11 @@ GLOBAL FLAGS
 
 EXAMPLES
   conductor launch-app com.example.app
-  conductor tap "Sign In"
-  conductor tap --id "btn_login"
-  conductor type "hello@example.com"
+  conductor tap-on "Sign In"
+  conductor tap-on --id "btn_login"
+  conductor input-text "hello@example.com"
   conductor swipe --start 0.5,0.8 --end 0.5,0.2
   conductor assert-visible "Dashboard" --timeout 30000
-  conductor screenshot --output /tmp/screen.png
+  conductor take-screenshot --output /tmp/screen.png
   conductor run-flow ./flows/login.yaml
 `.trim();

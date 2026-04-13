@@ -1,4 +1,4 @@
-export const HELP = `  screenshot [--output <path>]        Take screenshot`;
+export const HELP = `  take-screenshot [--output <path>]    Take screenshot`;
 
 import path from 'path';
 import fs from 'fs/promises';

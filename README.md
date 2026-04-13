@@ -24,10 +24,10 @@ Conductor gives Claude Code the ability to interact with iOS simulators and Andr
 
 ```bash
 conductor launch-app com.example.myapp
-conductor tap "Sign In"
-conductor type "user@example.com"
+conductor tap-on "Sign In"
+conductor input-text "user@example.com"
 conductor assert-visible "Dashboard"
-conductor screenshot --output /tmp/screen.png
+conductor take-screenshot --output /tmp/screen.png
 ```
 
 One agent writes the feature. Another taps through the app. They talk. It works. 🤝
@@ -70,8 +70,8 @@ Claude learns every available command, how to coordinate across devices, and how
 | Capability | Commands |
 |---|---|
 | App lifecycle | `launch-app`, `stop-app`, `clear-state`, `uninstall-app`, `install-app`, `foreground-app`, `copy-app` |
-| Interaction | `tap`, `type`, `scroll`, `scroll-until-visible`, `swipe`, `press-key`, `erase-text`, `hide-keyboard` |
-| Inspection | `inspect`, `focused`, `screenshot`, `list-apps` |
+| Interaction | `tap-on`, `input-text`, `scroll`, `scroll-until-visible`, `swipe`, `press-key`, `erase-text`, `hide-keyboard` |
+| Inspection | `inspect`, `focused`, `take-screenshot`, `list-apps` |
 | Assertions | `assert-visible`, `assert-not-visible` |
 | Navigation | `open-link`, `back` |
 | Flows | `run-flow`, `run-flow-inline`, `run-parallel` |

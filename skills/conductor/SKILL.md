@@ -157,21 +157,21 @@ conductor uninstall-app com.example.myapp --device emulator-5554
 
 ---
 
-### `tap <element>`
+### `tap-on <element>`
 
 Tap a UI element by its text label or accessibility ID. **Try the most obvious text label or ID first** — e.g. `"Sign In"`, `"Submit"`, `"btn_login"`. Only run `inspect` to look up the exact identifier if your first attempt fails. **For icon-only buttons (no visible text label), always run `inspect` first** to find the accessibility ID before tapping.
 
 ```bash
-conductor tap "Sign In"
-conductor tap --id "btn_login"             # match by accessibility ID instead of text
-conductor tap --text "Edit"                # match by text only (not id)
-conductor tap "Next" --index 1             # pick the 2nd match (0-based)
-conductor tap "Add to cart" --long-press
-conductor tap "Like" --double-tap
-conductor tap "Delete" --optional          # do not fail if not found
-conductor tap "Edit" --below "Username"    # tap "Edit" that is below the "Username" element
-conductor tap "Submit" --above "Footer"
-conductor tap ">" --right-of "Email"
+conductor tap-on "Sign In"
+conductor tap-on --id "btn_login"             # match by accessibility ID instead of text
+conductor tap-on --text "Edit"                # match by text only (not id)
+conductor tap-on "Next" --index 1             # pick the 2nd match (0-based)
+conductor tap-on "Add to cart" --long-press
+conductor tap-on "Like" --double-tap
+conductor tap-on "Delete" --optional          # do not fail if not found
+conductor tap-on "Edit" --below "Username"    # tap "Edit" that is below the "Username" element
+conductor tap-on "Submit" --above "Footer"
+conductor tap-on ">" --right-of "Email"
 ```
 
 Flags:
@@ -192,13 +192,13 @@ Flags:
 
 ---
 
-### `type <text>`
+### `input-text <text>`
 
 Type text into the currently focused input field.
 
 ```bash
-conductor type "hello@example.com"
-conductor type "my password"
+conductor input-text "hello@example.com"
+conductor input-text "my password"
 ```
 
 ---
@@ -216,7 +216,7 @@ conductor erase-text 10     # erase 10 characters
 
 ### `back`
 
-Press the Android back button. **Android only** — iOS has no back button. On iOS, always run `inspect` first to find the exact label or accessibility ID of the in-app back button, then use `tap` to press it.
+Press the Android back button. **Android only** — iOS has no back button. On iOS, always run `inspect` first to find the exact label or accessibility ID of the in-app back button, then use `tap-on` to press it.
 
 ```bash
 conductor back
@@ -386,14 +386,14 @@ conductor set-orientation landscape
 
 ---
 
-### `screenshot`
+### `take-screenshot`
 
-Take a screenshot of the current screen. **Prefer `inspect` over `screenshot`** when you need to understand what is on screen — the view hierarchy tells you element text, IDs, and structure without consuming a vision token. Use `screenshot` only for visual evidence, debugging rendering issues, or when a human needs to see the screen.
+Take a screenshot of the current screen. **Prefer `inspect` over `take-screenshot`** when you need to understand what is on screen — the view hierarchy tells you element text, IDs, and structure without consuming a vision token. Use `take-screenshot` only for visual evidence, debugging rendering issues, or when a human needs to see the screen.
 
 ```bash
-conductor screenshot
-conductor screenshot --output /tmp/screen.png
-conductor screenshot --output ./screenshots/login.png
+conductor take-screenshot
+conductor take-screenshot --output /tmp/screen.png
+conductor take-screenshot --output ./screenshots/login.png
 ```
 
 Default output: `./screenshot-<timestamp>.png`
@@ -404,9 +404,9 @@ Default output: `./screenshot-<timestamp>.png`
 
 ### `inspect`
 
-Print the UI element hierarchy of the current screen. Use this when a `tap` or `assert-visible` fails and you need to discover the exact element text or accessibility ID.
+Print the UI element hierarchy of the current screen. Use this when a `tap-on` or `assert-visible` fails and you need to discover the exact element text or accessibility ID.
 
-The hierarchy shows each element's type, text, and accessibility ID (resourceId / accessibilityIdentifier). Use the `text` value or `id` value as the argument to `tap` / `assert-visible`.
+The hierarchy shows each element's type, text, and accessibility ID (resourceId / accessibilityIdentifier). Use the `text` value or `id` value as the argument to `tap-on` / `assert-visible`.
 
 ```bash
 conductor inspect
@@ -541,13 +541,13 @@ Exits with code 0 if all flows pass, 1 if any fail.
 
 ## Typical Agent Workflow
 
-**Prefer individual CLI commands over `run-flow` / `run-flow-inline`.** Use `tap`, `type`, `scroll`, `swipe`, `assert-visible`, etc. directly — they are faster, give immediate feedback per step, and make failures easier to diagnose. Only reach for `run-flow` or `run-flow-inline` when you need Maestro-specific YAML features (conditional logic, `runScript`, retryTapIfNoChange`, etc.) that have no CLI equivalent.
+**Prefer individual CLI commands over `run-flow` / `run-flow-inline`.** Use `tap-on`, `input-text`, `scroll`, `swipe`, `assert-visible`, etc. directly — they are faster, give immediate feedback per step, and make failures easier to diagnose. Only reach for `run-flow` or `run-flow-inline` when you need Maestro-specific YAML features (conditional logic, `runScript`, retryTapIfNoChange`, etc.) that have no CLI equivalent.
 
-**Always `launch-app` before interacting.** Never attempt to `tap`, `type`, `scroll`, or navigate before the app is launched and the session is set. `launch-app` both opens the app and saves the `appId`/`deviceId` to the session so all subsequent commands know which device and app to target.
+**Always `launch-app` before interacting.** Never attempt to `tap-on`, `input-text`, `scroll`, or navigate before the app is launched and the session is set. `launch-app` both opens the app and saves the `appId`/`deviceId` to the session so all subsequent commands know which device and app to target.
 
-**To understand what is on screen, run `inspect` first** — it gives you element text, IDs, and structure. Only take a `screenshot` when you need visual evidence or are debugging a rendering issue.
+**To understand what is on screen, run `inspect` first** — it gives you element text, IDs, and structure. Only take a `take-screenshot` when you need visual evidence or are debugging a rendering issue.
 
-**Try obvious text labels and IDs first. Only run `inspect` when a `tap` or `assert-visible` fails and you need to discover the exact identifier.**
+**Try obvious text labels and IDs first. Only run `inspect` when a `tap-on` or `assert-visible` fails and you need to discover the exact identifier.**
 
 Single-agent (default session, no flag needed):
 ```bash
@@ -558,17 +558,17 @@ conductor list-devices
 conductor launch-app com.example.myapp --device emulator-5554
 
 # 3. Interact using the most likely text labels or IDs
-conductor tap "Sign In"           # try the obvious label first
-conductor tap "username_field"    # or a guessed test ID
-conductor type "user@example.com"
-conductor tap "password_field"
-conductor type "secret123"
-conductor tap "Login"
+conductor tap-on "Sign In"           # try the obvious label first
+conductor tap-on "username_field"    # or a guessed test ID
+conductor input-text "user@example.com"
+conductor tap-on "password_field"
+conductor input-text "secret123"
+conductor tap-on "Login"
 
 # → If a tap fails, run inspect to find the real identifier:
 conductor inspect
 # → hierarchy shows text="Log in", id="btn_login" — retry with correct value
-conductor tap "Log in"
+conductor tap-on "Log in"
 
 # 4. Assert — try expected text directly
 conductor assert-visible "Dashboard"
@@ -577,7 +577,7 @@ conductor assert-visible "Dashboard"
 conductor inspect
 
 # 6. Screenshot only for visual evidence or rendering checks
-conductor screenshot --output /tmp/tester-ios-iphone-16/post-login.png
+conductor take-screenshot --output /tmp/tester-ios-iphone-16/post-login.png
 
 # 7. Run a full flow only when CLI commands aren't sufficient
 #    Write the YAML to /tmp/<agent-name>/ first — never pass YAML inline, it doesn't work
@@ -674,13 +674,13 @@ conductor launch-app com.example.myapp --device emulator-5554
 **Every subsequent command carries `--device`:**
 ```bash
 # Agent tester-ios-iphone-16
-conductor tap "Sign In"     --device C59D3241-FB6A-4E3B-AE7B-A82D3C933889
-conductor type "user@a.com" --device C59D3241-FB6A-4E3B-AE7B-A82D3C933889
+conductor tap-on "Sign In"     --device C59D3241-FB6A-4E3B-AE7B-A82D3C933889
+conductor input-text "user@a.com" --device C59D3241-FB6A-4E3B-AE7B-A82D3C933889
 conductor inspect           --device C59D3241-FB6A-4E3B-AE7B-A82D3C933889
 
 # Agent tester-android-pixel-6 (runs fully in parallel)
-conductor tap "Sign In"     --device emulator-5554
-conductor type "user@b.com" --device emulator-5554
+conductor tap-on "Sign In"     --device emulator-5554
+conductor input-text "user@b.com" --device emulator-5554
 conductor inspect           --device emulator-5554
 ```
 

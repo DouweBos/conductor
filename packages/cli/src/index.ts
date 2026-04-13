@@ -73,8 +73,8 @@ const COMMAND_HELP: Record<string, string> = {
   'stop-app': stopAppHelp,
   'clear-state': clearStateHelp,
   'uninstall-app': uninstallAppHelp,
-  tap: tapHelp,
-  type: typeHelp,
+  'tap-on': tapHelp,
+  'input-text': typeHelp,
   'erase-text': eraseTextHelp,
   back: backHelp,
   'press-key': pressKeyHelp,
@@ -87,7 +87,7 @@ const COMMAND_HELP: Record<string, string> = {
   'open-link': openLinkHelp,
   'set-location': setLocationHelp,
   'set-orientation': setOrientationHelp,
-  screenshot: screenshotHelp,
+  'take-screenshot': screenshotHelp,
   inspect: inspectHelp,
   focused: focusedHelp,
   'run-flow': runFlowHelp,
@@ -318,7 +318,7 @@ async function main(): Promise<void> {
       break;
     }
 
-    case 'tap': {
+    case 'tap-on': {
       const element = rest.join(' ');
       exitCode = await tap(element, opts, sessionName, {
         id: argv['id'] as string | undefined,
@@ -339,7 +339,7 @@ async function main(): Promise<void> {
       break;
     }
 
-    case 'type': {
+    case 'input-text': {
       const text = rest.join(' ');
       exitCode = await typeText(text, opts, sessionName);
       break;
@@ -471,7 +471,7 @@ async function main(): Promise<void> {
       break;
     }
 
-    case 'screenshot': {
+    case 'take-screenshot': {
       const outPath = argv['output'] as string | undefined;
       exitCode = await screenshot(outPath, opts, sessionName);
       break;
