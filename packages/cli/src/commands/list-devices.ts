@@ -2,6 +2,8 @@ export const HELP = `  list-devices                        List booted and avail
 
 import { spawnCommand } from '../runner.js';
 import { printData, printError, OutputOptions } from '../output.js';
+import { isPlaywrightBrowserInstalled, webBrowserName } from '../drivers/bootstrap.js';
+import { listDaemonSessions, daemonStatus } from '../daemon/client.js';
 
 export interface Device {
   id: string;
@@ -52,6 +54,26 @@ export async function discoverBootedDevices(): Promise<Device[]> {
       }
     } catch {
       // ignore parse errors
+    }
+  }
+
+  // Check for running web browser sessions (daemon sessions starting with "web")
+  const sessions = listDaemonSessions();
+  for (const session of sessions) {
+    if (session === 'web' || session.startsWith('web:')) {
+      const status = await daemonStatus(session);
+      if (status.running) {
+        const browser = webBrowserName(session);
+        const parts = session.split(':');
+        const label = browser.charAt(0).toUpperCase() + browser.slice(1);
+        const name = parts.length > 2 ? `${label} (${parts[2]})` : label;
+        devices.push({
+          id: session,
+          name,
+          platform: 'web',
+          status: 'running',
+        });
+      }
     }
   }
 
@@ -108,13 +130,27 @@ export async function listDevices(opts: OutputOptions): Promise<number> {
     discoverAvailableDevices(),
   ]);
 
-  if (devices.length === 0 && availableDevices.length === 0) {
+  // Detect installed Playwright browsers for web support
+  const webBrowsers = (['chromium', 'firefox', 'webkit'] as const).filter((b) =>
+    isPlaywrightBrowserInstalled(b)
+  );
+
+  if (devices.length === 0 && availableDevices.length === 0 && webBrowsers.length === 0) {
     printError('No devices found. Start an emulator or simulator first.', opts);
     return 1;
   }
 
   if (opts.json) {
-    printData({ status: 'ok', devices, availableDevices }, opts);
+    const webDevices: Device[] = webBrowsers.map((b) => ({
+      id: b === 'chromium' ? 'web' : `web:${b}`,
+      name: b.charAt(0).toUpperCase() + b.slice(1),
+      platform: 'web',
+      status: 'available',
+    }));
+    printData(
+      { status: 'ok', devices, availableDevices: [...availableDevices, ...webDevices] },
+      opts
+    );
   } else {
     if (devices.length > 0) {
       console.log('Booted devices:');
@@ -134,6 +170,17 @@ export async function listDevices(opts: OutputOptions): Promise<number> {
       }
     } else {
       console.log('No available devices.');
+    }
+
+    if (webBrowsers.length > 0) {
+      console.log('');
+      console.log('Web browsers:');
+      for (const b of webBrowsers) {
+        const deviceId = b === 'chromium' ? 'web' : `web:${b}`;
+        console.log(
+          `  web      available   ${deviceId.padEnd(16)} ${b.charAt(0).toUpperCase() + b.slice(1)}`
+        );
+      }
     }
   }
   return 0;

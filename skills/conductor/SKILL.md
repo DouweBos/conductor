@@ -460,12 +460,12 @@ conductor cheat-sheet
 
 ---
 
-### `install`
+### `install-skills`
 
 Copy the conductor skill files into the current project's `.claude/skills/conductor/` directory, so AI agents in that project can use the `cheat-sheet` command locally.
 
 ```bash
-conductor install --skills
+conductor install-skills
 ```
 
 ---

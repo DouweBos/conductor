@@ -4,11 +4,13 @@
  * or times out with a descriptive error.
  */
 import { AXElement } from './ios.js';
+import { WebViewHierarchy } from './web.js';
 import {
   ElementSelector,
   ResolvedElement,
   findIOSElement,
   findAndroidElement,
+  findWebElement,
 } from './element-resolver.js';
 import { sleep } from '../utils.js';
 
@@ -211,6 +213,74 @@ export async function waitForAndroidHierarchyToSettle(
       const xml = await getHierarchy();
       if (xml === prev) return; // stable
       prev = xml;
+    } catch {
+      // ignore
+    }
+    await sleep(intervalMs);
+  }
+}
+
+// ── Web ──────────────────────────────────────────────────────────────────────
+
+export async function waitForWebElement(
+  getHierarchy: () => Promise<WebViewHierarchy>,
+  selector: ElementSelector,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  intervalMs = DEFAULT_INTERVAL_MS
+): Promise<ResolvedElement> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const hierarchy = await getHierarchy();
+      const el = findWebElement(hierarchy, selector);
+      if (el) return el;
+    } catch {
+      // Hierarchy fetch failed; keep retrying
+    }
+    await sleep(intervalMs);
+  }
+
+  const desc = selectorDesc(selector);
+  throw new Error(`Element not found after ${timeoutMs}ms: ${desc}`);
+}
+
+export async function waitUntilWebElementGone(
+  getHierarchy: () => Promise<WebViewHierarchy>,
+  selector: ElementSelector,
+  timeoutMs = OPTIONAL_TIMEOUT_MS
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    try {
+      const hierarchy = await getHierarchy();
+      if (!findWebElement(hierarchy, selector)) return;
+    } catch {
+      return; // hierarchy fetch failed — treat as gone
+    }
+    await sleep(DEFAULT_INTERVAL_MS);
+  } while (Date.now() < deadline);
+
+  const desc = selectorDesc(selector);
+  throw new Error(`Element still visible after ${timeoutMs}ms: ${desc}`);
+}
+
+/**
+ * Wait until the web page ARIA snapshot stops changing between consecutive polls.
+ */
+export async function waitForWebHierarchyToSettle(
+  getHierarchy: () => Promise<WebViewHierarchy>,
+  timeoutMs = 3000,
+  intervalMs = 200
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let prev: string | null = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const hierarchy = await getHierarchy();
+      const curr = hierarchy.ariaSnapshot;
+      if (curr === prev) return; // stable
+      prev = curr;
     } catch {
       // ignore
     }

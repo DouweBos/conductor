@@ -25,8 +25,11 @@ import {
   uninstallDriver,
   isPortOpen,
   isSimulatorBooted,
+  webBrowserName,
+  ensurePlaywrightBrowser,
 } from '../drivers/bootstrap.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { startWebServer, stopWebServer } from './web-server.js';
 
 const sessionName = process.argv[2] ?? 'default';
 
@@ -46,7 +49,7 @@ function dlog(msg: string): void {
 // ── Driver lifecycle ──────────────────────────────────────────────────────────
 
 let driverPort = 1075;
-let driverPlatform: 'ios' | 'android' | 'tvos' = 'ios';
+let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' = 'ios';
 
 const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
 
@@ -63,7 +66,7 @@ async function ensureDriverRunning(): Promise<void> {
     alive = await probe.isAlive().catch(() => false);
     probe.close();
   } else {
-    // Both 'ios' and 'tvos' use an HTTP server — port open = alive
+    // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive
     alive = await isPortOpen(driverPort);
   }
 
@@ -83,6 +86,8 @@ async function ensureDriverRunning(): Promise<void> {
       } else if (driverPlatform === 'tvos') {
         // Health-check restart — don't dismiss, to avoid disrupting user's app
         await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ false);
+      } else if (driverPlatform === 'web') {
+        await startWebServer(driverPort, webBrowserName(sessionName), dlog);
       } else {
         await startAndroidDriver(sessionName, driverPort);
       }
@@ -152,6 +157,13 @@ async function main(): Promise<void> {
       // the user's navigation state in the target app.
       if (driverPlatform === 'tvos') {
         dlog('tvOS: leaving driver running to preserve app state');
+      } else if (driverPlatform === 'web') {
+        dlog('Stopping web driver');
+        try {
+          await stopWebServer();
+        } catch (err) {
+          dlog(`Stop web driver error: ${err instanceof Error ? err.message : String(err)}`);
+        }
       } else {
         dlog(`Stopping driver on port ${driverPort}`);
         try {
@@ -219,7 +231,7 @@ async function main(): Promise<void> {
             driverAlive = await probe.isAlive().catch(() => false);
             probe.close();
           } else {
-            // Both 'ios' and 'tvos' use an HTTP server — port open = alive
+            // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive
             driverAlive = await isPortOpen(driverPort);
           }
           if (driverAlive) {
@@ -230,10 +242,14 @@ async function main(): Promise<void> {
 
           // Android: install APKs before starting the driver.
           // iOS/tvOS: xcodebuild installs silently via DependentProductPaths.
+          // Web: ensure Playwright browser binary is installed.
           if (platform === 'android') {
             dlog(`Installing Android driver on ${sessionName}`);
             await installDriver(sessionName);
             dlog(`Driver installation complete`);
+          } else if (platform === 'web') {
+            const browser = webBrowserName(sessionName);
+            await ensurePlaywrightBrowser(browser, dlog);
           }
 
           dlog(`Starting ${platform} driver on port ${driverPort}`);
@@ -243,6 +259,8 @@ async function main(): Promise<void> {
             } else if (platform === 'tvos') {
               // First install — dismiss the runner app to return to homescreen
               await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ true);
+            } else if (platform === 'web') {
+              await startWebServer(driverPort, webBrowserName(sessionName), dlog);
             } else {
               await startAndroidDriver(sessionName, driverPort);
             }

@@ -8,6 +8,7 @@ import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { WebDriver } from '../drivers/web.js';
 import { Direction, swipeCoords } from '../utils.js';
 
 function parseCoordPair(s: string): { x: number; y: number } {
@@ -63,6 +64,26 @@ export async function swipe(
         endY = coords.endY * h;
       }
       await driver.swipe(startX, startY, endX, endY, durationSec);
+    } else if (driver instanceof WebDriver) {
+      const { widthPixels: w, heightPixels: h } = await driver.deviceInfo();
+      const durationMs = flags.duration ?? 500;
+
+      if (flags.start && flags.end) {
+        const s = parseCoordPair(flags.start);
+        const e = parseCoordPair(flags.end);
+        startX = s.x <= 1 ? s.x * w : s.x;
+        startY = s.y <= 1 ? s.y * h : s.y;
+        endX = e.x <= 1 ? e.x * w : e.x;
+        endY = e.y <= 1 ? e.y * h : e.y;
+      } else {
+        const normalized = direction.toLowerCase() as Direction;
+        const coords = swipeCoords(normalized);
+        startX = coords.startX * w;
+        startY = coords.startY * h;
+        endX = coords.endX * w;
+        endY = coords.endY * h;
+      }
+      await driver.swipe(startX, startY, endX, endY, durationMs);
     } else if (driver instanceof AndroidDriver) {
       const { widthPixels: w, heightPixels: h } = await driver.deviceInfo();
       const durationMs = flags.duration ?? 500;

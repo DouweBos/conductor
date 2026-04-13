@@ -18,7 +18,8 @@ import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
-import { waitForIOSElement, waitForAndroidElement } from '../drivers/wait.js';
+import { WebDriver } from '../drivers/web.js';
+import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../drivers/wait.js';
 import { sleep } from '../utils.js';
 
 export async function tap(
@@ -73,6 +74,8 @@ export async function tap(
     let el;
     if (driver instanceof IOSDriver) {
       el = await waitForIOSElement(() => driver.viewHierarchy().then((h) => h.axElement), sel);
+    } else if (driver instanceof WebDriver) {
+      el = await waitForWebElement(() => driver.viewHierarchy(), sel);
     } else if (driver instanceof AndroidDriver) {
       el = await waitForAndroidElement(() => driver.viewHierarchy(), sel);
     } else {
@@ -81,6 +84,8 @@ export async function tap(
 
     if (flags.longPress) {
       if (driver instanceof IOSDriver) {
+        await driver.tap(el.centerX, el.centerY, 1.5);
+      } else if (driver instanceof WebDriver) {
         await driver.tap(el.centerX, el.centerY, 1.5);
       } else {
         await (driver as AndroidDriver).swipe(el.centerX, el.centerY, el.centerX, el.centerY, 1500);

@@ -4,8 +4,16 @@ import { parseFlowString, executeFlow } from './drivers/flow-runner.js';
 import { log } from './verbose.js';
 import { IOSDriver } from './drivers/ios.js';
 import { AndroidDriver } from './drivers/android.js';
-import { detectPlatform, getDriverPort, isPortOpen } from './drivers/bootstrap.js';
-import { startDaemon } from './daemon/client.js';
+import { WebDriver } from './drivers/web.js';
+import {
+  detectPlatform,
+  getDriverPort,
+  isPortOpen,
+  webBrowserName,
+  generateWebSessionId,
+  isUnqualifiedWebId,
+} from './drivers/bootstrap.js';
+import { startDaemon, findRunningWebSession } from './daemon/client.js';
 
 /**
  * Detect the first booted device/emulator without requiring a session.
@@ -70,7 +78,7 @@ export interface RunResult {
 
 // ── Driver management ─────────────────────────────────────────────────────────
 
-type AnyDriver = IOSDriver | AndroidDriver;
+type AnyDriver = IOSDriver | AndroidDriver | WebDriver;
 
 /** Per-session driver cache (process lifetime). */
 const _driverCache = new Map<string, AnyDriver>();
@@ -104,8 +112,10 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
   }
 
   const platform = await detectPlatform(deviceId);
-  const port = await getDriverPort(platform, deviceId);
-  log(`getDriver: platform=${platform} deviceId=${deviceId} port=${port}`);
+  // Web daemons resolve their own port after generating a unique session ID,
+  // so we defer getDriverPort for them to avoid allocating an unused port.
+  const port = platform !== 'web' ? await getDriverPort(platform, deviceId) : 0;
+  log(`getDriver: platform=${platform} deviceId=${deviceId} port=${port || '(deferred)'}`);
 
   let driver: AnyDriver;
 
@@ -137,6 +147,36 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
       );
     }
     driver = tvosDriver;
+  } else if (platform === 'web') {
+    const browser = webBrowserName(deviceId);
+    let webSession = deviceId;
+
+    if (isUnqualifiedWebId(deviceId)) {
+      const existing = await findRunningWebSession(browser);
+      if (existing) {
+        webSession = existing;
+        log(`Reusing running web session ${webSession}`);
+      } else {
+        webSession = generateWebSessionId(browser);
+        log(`Generated new web session ${webSession}`);
+      }
+    }
+
+    const webPort = await getDriverPort('web', webSession);
+
+    if (!(await isPortOpen(webPort))) {
+      log(`Web driver not running — starting daemon for ${webSession}...`);
+      await startDaemon(webSession);
+      await waitForPort(webPort);
+    }
+    const webDriver = new WebDriver(webPort, '127.0.0.1', webSession);
+    if (!(await webDriver.isAlive())) {
+      throw new Error(
+        `Web browser driver on port ${webPort} is not responding.\n` +
+          `Run: conductor daemon-start --device ${webSession}`
+      );
+    }
+    driver = webDriver;
   } else {
     // Ensure the daemon is running — it handles APK install and driver startup.
     await startDaemon(deviceId);

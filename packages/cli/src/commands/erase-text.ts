@@ -4,6 +4,7 @@ import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { WebDriver } from '../drivers/web.js';
 
 export async function eraseText(
   characters: number,
@@ -12,6 +13,8 @@ export async function eraseText(
 ): Promise<number> {
   const result = await runDirect(async (driver) => {
     if (driver instanceof AndroidDriver) {
+      await driver.eraseAllText(characters);
+    } else if (driver instanceof WebDriver) {
       await driver.eraseAllText(characters);
     } else if (driver instanceof IOSDriver) {
       for (let i = 0; i < characters; i++) await driver.pressKey('delete');

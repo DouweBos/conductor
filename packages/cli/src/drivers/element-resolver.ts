@@ -1,15 +1,17 @@
 /**
- * Element resolution and hierarchy formatting for iOS (AXElement) and Android (XML).
+ * Element resolution and hierarchy formatting for iOS (AXElement), Android (XML), and Web (ARIA).
  *
- * Mirrors the logic of Maestro's TapOnTool selector matching and ViewHierarchyFormatters
- * inspect output.
+ * Text/id selectors use full-string regex matching (`toRegexSafe` + anchored match), multiple
+ * text-bearing attributes per platform, and id matching on the full id or the segment after the
+ * last `/`. This aligns with YAML flow semantics used by `run-flow`.
  */
 import { AXElement } from './ios.js';
+import { WebElement, WebViewHierarchy } from './web.js';
 import { log } from '../verbose.js';
 
 export interface ElementSelector {
-  text?: string; // AND: must match label / title / value / placeholder on iOS; text / content-desc on Android
-  id?: string; // AND: must match identifier on iOS; resource-id on Android
+  text?: string; // AND: full-string regex on platform text fields (see matchesIOSElement)
+  id?: string; // AND: full-string regex on id, or on segment after last '/'
   query?: string; // OR: matches text fields OR id — used when a single arg can be either
   index?: number; // 0-based index among all matches
   // State attributes
@@ -33,8 +35,7 @@ export interface ResolvedElement {
 }
 
 // XCUIElementType rawValues that represent interactive controls.
-// Mirrors Maestro's clickableFirst() behaviour for iOS, where clickable is not
-// exposed in the AXElement — we sort by element type instead.
+// Approximates “prefer clickable” when sorting, since AXElement does not expose clickable.
 const IOS_INTERACTIVE_TYPES = new Set([
   9, // Button
   23, // Slider
@@ -80,33 +81,74 @@ function iosTextOf(node: AXElement): string {
   return node.label || node.title || node.value || node.placeholderValue || '';
 }
 
-function matchesText(candidate: string, query: string): boolean {
-  if (!query) return false;
-  if (candidate === query) return true;
-  if (candidate.toLowerCase() === query.toLowerCase()) return true;
-  // fuzzy: .*query.* regex
-  try {
-    const re = new RegExp(`.*${escapeRegex(query)}.*`, 'i');
-    return re.test(candidate);
-  } catch {
-    return false;
-  }
+function iosTextMatchFields(node: AXElement): (string | undefined)[] {
+  return [node.label, node.title, node.value, node.placeholderValue];
 }
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function toRegexSafe(pattern: string): RegExp {
+  try {
+    return new RegExp(pattern, 'ims');
+  } catch {
+    return new RegExp(escapeRegex(pattern), 'ims');
+  }
+}
+
+function regexMatchesEntireString(regex: RegExp, value: string): boolean {
+  const anchored = new RegExp(`^(?:${regex.source})$`, regex.flags);
+  return anchored.test(value);
+}
+
+/** Entire attribute value must match the pattern; newlines are normalized to spaces for a second pass. */
+function matchPatternAgainstTextField(pattern: string, value: string | null | undefined): boolean {
+  if (value == null || value === '') return false;
+  const re = toRegexSafe(pattern);
+  const stripped = value.replace(/\n/g, ' ');
+  return (
+    regexMatchesEntireString(re, value) ||
+    pattern === value ||
+    regexMatchesEntireString(re, stripped) ||
+    pattern === stripped
+  );
+}
+
+function matchPatternAgainstAnyTextField(
+  pattern: string,
+  fields: (string | null | undefined)[]
+): boolean {
+  for (const f of fields) {
+    if (f != null && f !== '' && matchPatternAgainstTextField(pattern, f)) return true;
+  }
+  return false;
+}
+
+function substringAfterLastSlash(s: string): string {
+  const i = s.lastIndexOf('/');
+  return i === -1 ? s : s.slice(i + 1);
+}
+
+function matchPatternAgainstElementId(pattern: string, value: string | null | undefined): boolean {
+  if (value == null || value === '') return false;
+  return (
+    matchPatternAgainstTextField(pattern, value) ||
+    matchPatternAgainstTextField(pattern, substringAfterLastSlash(value))
+  );
+}
+
 function matchesIOSElement(node: AXElement, sel: ElementSelector): boolean {
   if (sel.query) {
-    const text = iosTextOf(node);
-    if (!matchesText(text, sel.query) && !matchesText(node.identifier, sel.query)) return false;
+    const textOk = matchPatternAgainstAnyTextField(sel.query, iosTextMatchFields(node));
+    const idOk = matchPatternAgainstElementId(sel.query, node.identifier);
+    if (!textOk && !idOk) return false;
   }
   if (sel.text) {
-    if (!matchesText(iosTextOf(node), sel.text)) return false;
+    if (!matchPatternAgainstAnyTextField(sel.text, iosTextMatchFields(node))) return false;
   }
   if (sel.id) {
-    if (!matchesText(node.identifier, sel.id)) return false;
+    if (!matchPatternAgainstElementId(sel.id, node.identifier)) return false;
   }
   // State attributes — only match fields that exist on AXElement
   if (sel.enabled !== undefined && node.enabled !== sel.enabled) return false;
@@ -118,10 +160,8 @@ function matchesIOSElement(node: AXElement, sel: ElementSelector): boolean {
 }
 
 /**
- * Mirrors Maestro's deepestMatchingElement(): for each branch of the tree,
- * return matching nodes only from the deepest level that has a match.
- * This prevents parent wrapper nodes that inherit their child's accessibility
- * label (common in React Native) from appearing as separate candidates.
+ * Deepest match per branch: prefer matches in descendants so parent wrappers that only
+ * duplicate a child label (e.g. React Native) do not appear as duplicate tap targets.
  */
 function deepestMatchingIOSElements(node: AXElement, pred: (n: AXElement) => boolean): AXElement[] {
   // Recurse into children first — deepest match wins over ancestor
@@ -182,13 +222,13 @@ export function findIOSElement(root: AXElement, sel: ElementSelector): ResolvedE
   });
 
   if (sel.index !== undefined) {
-    // Mirror Maestro's INDEX_COMPARATOR: sort top-to-bottom, then left-to-right
+    // Sort top-to-bottom, then left-to-right when index is set
     matches = [...matches].sort((a, b) => {
       const dy = a.frame.Y - b.frame.Y;
       return dy !== 0 ? dy : a.frame.X - b.frame.X;
     });
   } else {
-    // Prefer interactive element types (approximation of Maestro's clickableFirst for iOS)
+    // Prefer interactive element types when no explicit index
     matches = [...matches].sort(
       (a, b) =>
         Number(IOS_INTERACTIVE_TYPES.has(b.elementType)) -
@@ -303,16 +343,21 @@ function androidTextOf(n: AndroidNode): string {
   return n.text || n.contentDesc || '';
 }
 
+function androidTextMatchFields(n: AndroidNode): (string | undefined)[] {
+  return [n.text, n.contentDesc, n.hintText];
+}
+
 function matchesAndroidNode(n: AndroidNode, sel: ElementSelector): boolean {
   if (sel.query) {
-    if (!matchesText(androidTextOf(n), sel.query) && !matchesText(n.resourceId, sel.query))
-      return false;
+    const textOk = matchPatternAgainstAnyTextField(sel.query, androidTextMatchFields(n));
+    const idOk = matchPatternAgainstElementId(sel.query, n.resourceId);
+    if (!textOk && !idOk) return false;
   }
   if (sel.text) {
-    if (!matchesText(androidTextOf(n), sel.text)) return false;
+    if (!matchPatternAgainstAnyTextField(sel.text, androidTextMatchFields(n))) return false;
   }
   if (sel.id) {
-    if (!matchesText(n.resourceId, sel.id)) return false;
+    if (!matchPatternAgainstElementId(sel.id, n.resourceId)) return false;
   }
   if (sel.enabled !== undefined && n.enabled !== sel.enabled) return false;
   if (sel.checked !== undefined && n.checked !== sel.checked) return false;
@@ -367,9 +412,7 @@ export function findAndroidElement(xml: string, sel: ElementSelector): ResolvedE
     );
   });
 
-  // Mirror Maestro's clickableFirst(): when no index is specified, prefer
-  // clickable nodes so a text label shared by a Button and a plain TextView
-  // resolves to the button, matching Maestro's GraalVM behaviour.
+  // When no index is specified, prefer clickable nodes so shared labels resolve to controls.
   if (sel.index === undefined) {
     matches = [...matches].sort((a, b) => Number(b.clickable) - Number(a.clickable));
   }
@@ -451,4 +494,204 @@ export function inspectAndroidToText(xml: string): string {
       return parts.join(' ');
     })
     .join('\n');
+}
+
+// ── Web: ARIA snapshot tree traversal ───────────────────────────────────────
+
+// ARIA roles that represent interactive controls — mirrors IOS_INTERACTIVE_TYPES
+const WEB_INTERACTIVE_ROLES = new Set([
+  'button',
+  'link',
+  'textbox',
+  'searchbox',
+  'checkbox',
+  'radio',
+  'switch',
+  'slider',
+  'spinbutton',
+  'combobox',
+  'listbox',
+  'option',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'tab',
+]);
+
+/** Collect all visible (has bounds) leaf/interactive elements from a WebElement tree. */
+function collectWebElements(nodes: WebElement[], results: WebElement[]): void {
+  for (const node of nodes) {
+    const visible = node.bounds && node.bounds.width > 0 && node.bounds.height > 0;
+
+    if (visible) {
+      const hasContent = !!(node.name || node.ref);
+      const isLeaf = !node.children || node.children.length === 0;
+      if (hasContent || isLeaf) {
+        results.push(node);
+      }
+    }
+
+    if (node.children) {
+      collectWebElements(node.children, results);
+    }
+  }
+}
+
+function matchesWebElement(node: WebElement, sel: ElementSelector): boolean {
+  if (sel.query) {
+    const textOk = matchPatternAgainstAnyTextField(sel.query, [node.name]);
+    const idOk = matchPatternAgainstElementId(sel.query, node.ref);
+    if (!textOk && !idOk) return false;
+  }
+  if (sel.text) {
+    if (!matchPatternAgainstAnyTextField(sel.text, [node.name])) return false;
+  }
+  if (sel.id) {
+    if (!matchPatternAgainstElementId(sel.id, node.ref)) return false;
+  }
+  if (sel.enabled !== undefined && node.enabled !== sel.enabled) return false;
+  if (sel.checked !== undefined && node.checked !== sel.checked) return false;
+  if (sel.focused !== undefined && node.focused !== sel.focused) return false;
+  if (sel.selected !== undefined && node.selected !== sel.selected) return false;
+  return true;
+}
+
+/**
+ * Deepest matching elements — same logic as iOS to avoid parent wrapper duplicates.
+ */
+function deepestMatchingWebElements(
+  nodes: WebElement[],
+  pred: (n: WebElement) => boolean
+): WebElement[] {
+  const results: WebElement[] = [];
+  for (const node of nodes) {
+    const childMatches = node.children ? deepestMatchingWebElements(node.children, pred) : [];
+    if (childMatches.length > 0) {
+      results.push(...childMatches);
+    } else if (node.bounds && node.bounds.width > 0 && node.bounds.height > 0 && pred(node)) {
+      results.push(node);
+    }
+  }
+  return results;
+}
+
+export function findWebElement(
+  hierarchy: WebViewHierarchy,
+  sel: ElementSelector
+): ResolvedElement | null {
+  // Resolve reference frame for relative-position selectors
+  let refBounds: { x: number; y: number; width: number; height: number } | null = null;
+  const relSel = sel.below ?? sel.above ?? sel.leftOf ?? sel.rightOf;
+  if (relSel) {
+    const allNodes: WebElement[] = [];
+    collectWebElements(hierarchy.elements, allNodes);
+    const ref = allNodes.find((n) => matchesWebElement(n, relSel));
+    if (!ref?.bounds) return null;
+    refBounds = ref.bounds;
+  }
+
+  // Find deepest matching nodes
+  let matches = deepestMatchingWebElements(hierarchy.elements, (n) => matchesWebElement(n, sel));
+
+  // Apply relative position filter
+  if (refBounds) {
+    const refBottom = refBounds.y + refBounds.height;
+    const refRight = refBounds.x + refBounds.width;
+    if (sel.below) {
+      matches = matches.filter((n) => n.bounds && n.bounds.y >= refBottom);
+    } else if (sel.above) {
+      matches = matches.filter((n) => n.bounds && n.bounds.y + n.bounds.height <= refBounds!.y);
+    } else if (sel.leftOf) {
+      matches = matches.filter((n) => n.bounds && n.bounds.x + n.bounds.width <= refBounds!.x);
+    } else if (sel.rightOf) {
+      matches = matches.filter((n) => n.bounds && n.bounds.x >= refRight);
+    }
+  }
+
+  // Filter to elements that have bounding boxes (visible and measurable)
+  matches = matches.filter((n) => n.bounds && n.bounds.width > 0 && n.bounds.height > 0);
+
+  if (matches.length === 0) {
+    log(`[Web] no candidates matched selector`, sel);
+    return null;
+  }
+
+  log(`[Web] ${matches.length} candidate(s):`);
+  matches.forEach((n, i) => {
+    const b = n.bounds!;
+    const interactive = WEB_INTERACTIVE_ROLES.has(n.role);
+    log(
+      `  [${i}] text="${n.name}" ref="${n.ref}" role="${n.role}" ` +
+        `bounds=[${Math.round(b.x)},${Math.round(b.y)}][${Math.round(b.x + b.width)},${Math.round(b.y + b.height)}]` +
+        `${interactive ? ' (interactive)' : ''}`
+    );
+  });
+
+  if (sel.index !== undefined) {
+    // Sort top-to-bottom, then left-to-right
+    matches = [...matches].sort((a, b) => {
+      const dy = a.bounds!.y - b.bounds!.y;
+      return dy !== 0 ? dy : a.bounds!.x - b.bounds!.x;
+    });
+  } else {
+    // Prefer interactive roles
+    matches = [...matches].sort(
+      (a, b) =>
+        Number(WEB_INTERACTIVE_ROLES.has(b.role)) - Number(WEB_INTERACTIVE_ROLES.has(a.role))
+    );
+  }
+
+  const idx = sel.index ?? 0;
+  const node = matches[idx < 0 ? matches.length + idx : idx];
+  if (!node) {
+    log(`[Web] index ${idx} out of range (${matches.length} candidates)`);
+    return null;
+  }
+
+  const b = node.bounds!;
+  log(
+    `[Web] chose [${idx}] text="${node.name}" ref="${node.ref}" role="${node.role}" ` +
+      `bounds=[${Math.round(b.x)},${Math.round(b.y)}][${Math.round(b.x + b.width)},${Math.round(b.y + b.height)}] ` +
+      `→ tap (${Math.round(b.x + b.width / 2)}, ${Math.round(b.y + b.height / 2)})`
+  );
+  return {
+    centerX: b.x + b.width / 2,
+    centerY: b.y + b.height / 2,
+    text: node.name || undefined,
+    id: node.ref || undefined,
+  };
+}
+
+/**
+ * Format web ARIA hierarchy into LLM-optimized text.
+ */
+export function inspectWebToText(hierarchy: WebViewHierarchy): string {
+  const lines: string[] = [];
+  visitWeb(hierarchy.elements, lines, 0);
+  return lines.join('\n');
+}
+
+function visitWeb(nodes: WebElement[], lines: string[], depth: number): void {
+  for (const node of nodes) {
+    const parts: string[] = [];
+    parts.push(node.role);
+    if (node.name) parts.push(`"${node.name}"`);
+    if (node.ref) parts.push(`ref=${node.ref}`);
+    if (node.bounds) {
+      const b = node.bounds;
+      parts.push(
+        `bounds=[${Math.round(b.x)},${Math.round(b.y)}][${Math.round(b.x + b.width)},${Math.round(b.y + b.height)}]`
+      );
+    }
+    if (!node.enabled) parts.push('disabled');
+
+    // Only output nodes that have content
+    if (node.name || node.ref || (node.bounds && (!node.children || node.children.length === 0))) {
+      lines.push(`${'  '.repeat(depth)}${parts.join(' ')}`);
+    }
+
+    if (node.children) {
+      visitWeb(node.children, lines, depth + 1);
+    }
+  }
 }

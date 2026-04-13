@@ -145,6 +145,8 @@ export function makeAndroidHierarchyWithAttrs(
   elements: Array<{
     text?: string;
     id?: string;
+    contentDesc?: string;
+    hintText?: string;
     x1?: number;
     y1?: number;
     x2?: number;
@@ -159,6 +161,8 @@ export function makeAndroidHierarchyWithAttrs(
     ({
       text = '',
       id = '',
+      contentDesc = '',
+      hintText = '',
       x1 = 50,
       y1 = 100,
       x2 = 150,
@@ -168,7 +172,7 @@ export function makeAndroidHierarchyWithAttrs(
       focused = false,
       selected = false,
     }) =>
-      `  <node text="${text}" resource-id="${id}" content-desc="" bounds="[${x1},${y1}][${x2},${y2}]" enabled="${enabled}" checked="${checked}" focused="${focused}" selected="${selected}"/>`
+      `  <node text="${text}" resource-id="${id}" content-desc="${contentDesc}" hintText="${hintText}" bounds="[${x1},${y1}][${x2},${y2}]" enabled="${enabled}" checked="${checked}" focused="${focused}" selected="${selected}"/>`
   );
   return `<hierarchy>\n${nodes.join('\n')}\n</hierarchy>`;
 }

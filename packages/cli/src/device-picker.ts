@@ -9,9 +9,15 @@ import { discoverBootedDevices } from './commands/list-devices.js';
  * - 1 device  → returns it automatically
  * - N devices + TTY → shows a numbered picker
  * - N devices + no TTY → returns undefined (caller should error)
+ *
+ * When `platform` is provided, only devices matching that platform are considered.
  */
-export async function pickDevice(): Promise<string | undefined> {
-  const devices = await discoverBootedDevices();
+export async function pickDevice(platform?: string): Promise<string | undefined> {
+  let devices = await discoverBootedDevices();
+
+  if (platform) {
+    devices = devices.filter((d) => d.platform === platform.toLowerCase());
+  }
 
   if (devices.length === 0) return undefined;
   if (devices.length === 1) return devices[0].id;
