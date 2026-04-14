@@ -58,11 +58,14 @@ import {
 import { setLocation, HELP as setLocationHelp } from './commands/set-location.js';
 import { setOrientation, HELP as setOrientationHelp } from './commands/set-orientation.js';
 import { startDevice, HELP as startDeviceHelp } from './commands/start-device.js';
+import { deleteDevice, HELP as deleteDeviceHelp } from './commands/delete-device.js';
+import { logs, HELP as logsHelp } from './commands/logs.js';
 import { pickDevice } from './device-picker.js';
 import { checkForUpdates } from './update-check.js';
 
 const COMMAND_HELP: Record<string, string> = {
   'start-device': startDeviceHelp,
+  'delete-device': deleteDeviceHelp,
   'list-devices': listDevicesHelp,
   'foreground-app': foregroundAppHelp,
   'list-apps': listAppsHelp,
@@ -102,6 +105,7 @@ const COMMAND_HELP: Record<string, string> = {
   'daemon-status': daemonStatusHelp,
   'device-pool': devicePoolHelp,
   'run-parallel': runParallelHelp,
+  logs: logsHelp,
 };
 
 const OPTIONS_HELP = `Options:
@@ -168,6 +172,9 @@ async function main(): Promise<void> {
       'browser',
       'from',
       'to',
+      'source',
+      'metro-port',
+      'level',
     ],
     alias: { h: 'help', v: 'verbose' },
   });
@@ -194,6 +201,7 @@ async function main(): Promise<void> {
   const NO_DEVICE_COMMANDS = new Set([
     'list-devices',
     'start-device',
+    'delete-device',
     'cheat-sheet',
     'install-plugin',
     'install-skills',
@@ -201,6 +209,8 @@ async function main(): Promise<void> {
     'copy-app',
     'device-pool',
     'run-parallel',
+    // `logs --list` and `logs --source metro` only query Metro on localhost — no device needed
+    ...(command === 'logs' && (argv['list'] || argv['source'] === 'metro') ? ['logs'] : []),
   ]);
 
   if (!NO_DEVICE_COMMANDS.has(command) && !COMMAND_HELP[command]) {
@@ -253,6 +263,13 @@ async function main(): Promise<void> {
 
     case 'list-devices':
       exitCode = await listDevices(opts);
+      break;
+
+    case 'delete-device':
+      exitCode = await deleteDevice(rest[0], opts, {
+        platform: argv['platform'] as string | undefined,
+        all: argv['all'] as boolean,
+      });
       break;
 
     case 'foreground-app':
@@ -485,6 +502,19 @@ async function main(): Promise<void> {
       exitCode = await focused(opts, sessionName, {
         poll: argv['poll'] as boolean,
         interval: argv['interval'] !== undefined ? Number(argv['interval']) : undefined,
+      });
+      break;
+
+    case 'logs':
+      exitCode = await logs(opts, sessionName, {
+        source: argv['source'] as string | undefined,
+        level: argv['level'] as string | undefined,
+        metro: (argv['metro'] as boolean) || argv['metro-port'] !== undefined,
+        metroPort: argv['metro-port'] !== undefined ? Number(argv['metro-port']) : undefined,
+        target: argv['target'] !== undefined ? Number(argv['target']) : undefined,
+        list: argv['list'] as boolean,
+        recent: argv['recent'] !== undefined ? Number(argv['recent']) : undefined,
+        duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
       });
       break;
 

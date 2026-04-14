@@ -9,7 +9,73 @@
  * happen here so the CLI remains a thin HTTP client.
  */
 import http from 'http';
+import url from 'url';
 import { chromium, firefox, webkit, Browser, BrowserContext, Page } from 'playwright-core';
+
+// ── Console log buffer ──────────────────────────────────────────────────────
+
+interface ConsoleLogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  stackTrace: string | null;
+  source: 'console';
+}
+
+const MAX_CONSOLE_BUFFER = 1000;
+const _consoleBuffer: ConsoleLogEntry[] = [];
+
+function mapPlaywrightLevel(type: string): ConsoleLogEntry['level'] {
+  switch (type) {
+    case 'warning':
+      return 'warning';
+    case 'error':
+      return 'error';
+    case 'info':
+      return 'info';
+    case 'debug':
+      return 'debug';
+    case 'trace':
+      return 'verbose';
+    default:
+      return 'log';
+  }
+}
+
+function pushConsoleEntry(entry: ConsoleLogEntry): void {
+  _consoleBuffer.push(entry);
+  if (_consoleBuffer.length > MAX_CONSOLE_BUFFER) {
+    _consoleBuffer.splice(0, _consoleBuffer.length - MAX_CONSOLE_BUFFER);
+  }
+}
+
+function attachConsoleListeners(page: Page): void {
+  page.on('console', (msg) => {
+    const text = msg.text();
+    const loc = msg.location();
+    let stackTrace: string | null = null;
+    if (loc.url && loc.lineNumber !== undefined) {
+      stackTrace = `  at ${loc.url}:${loc.lineNumber + 1}:${(loc.columnNumber ?? 0) + 1}`;
+    }
+    pushConsoleEntry({
+      timestamp: new Date().toISOString(),
+      level: mapPlaywrightLevel(msg.type()),
+      message: text,
+      stackTrace,
+      source: 'console',
+    });
+  });
+
+  page.on('pageerror', (err) => {
+    pushConsoleEntry({
+      timestamp: new Date().toISOString(),
+      level: 'error',
+      message: err.message,
+      stackTrace: err.stack ?? null,
+      source: 'console',
+    });
+  });
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -423,6 +489,7 @@ export async function startWebServer(
   });
 
   _page = await _context.newPage();
+  attachConsoleListeners(_page);
   dlog(`Browser ready, page created`);
 
   _server = http.createServer(async (req, res) => {
@@ -494,6 +561,7 @@ async function recreateBrowserContext(dlog?: (msg: string) => void): Promise<voi
     viewport: DEFAULT_VIEWPORT,
   });
   _page = await _context.newPage();
+  attachConsoleListeners(_page);
 }
 
 /**
@@ -518,6 +586,7 @@ async function getPage(dlog?: (msg: string) => void): Promise<Page> {
       await recreateBrowserContext(dlog);
     } else {
       _page = await _context.newPage();
+      attachConsoleListeners(_page);
     }
     return _page!;
   } catch (err) {
@@ -574,12 +643,14 @@ async function handleRequest(
   res: http.ServerResponse,
   dlog: (msg: string) => void
 ): Promise<void> {
-  const url = req.url ?? '/';
+  const rawUrl = req.url ?? '/';
+  const parsedUrl = url.parse(rawUrl, true);
+  const pathname = parsedUrl.pathname ?? '/';
   const method = req.method ?? 'GET';
 
   // ── GET endpoints ────────────────────────────────────────────────────────
   if (method === 'GET') {
-    switch (url) {
+    switch (pathname) {
       case '/status': {
         jsonResponse(res, { alive: true });
         return;
@@ -647,6 +718,15 @@ async function handleRequest(
         return;
       }
 
+      case '/consoleLogs': {
+        const since = (parsedUrl.query['since'] as string) ?? '';
+        const entries = since
+          ? _consoleBuffer.filter((e) => e.timestamp > since)
+          : _consoleBuffer.slice();
+        jsonResponse(res, { entries });
+        return;
+      }
+
       default: {
         res.writeHead(404);
         res.end('Not found');
@@ -659,7 +739,7 @@ async function handleRequest(
   if (method === 'POST') {
     const body = await readBody(req);
 
-    switch (url) {
+    switch (pathname) {
       case '/tap': {
         const x = body['x'] as number;
         const y = body['y'] as number;

@@ -1,4 +1,4 @@
-import net from 'net';
+import http from 'http';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -6,23 +6,23 @@ import { spawn } from 'child_process';
 import { socketPath, pidFile, logFile } from './protocol.js';
 import { log } from '../verbose.js';
 import { webBrowserName } from '../drivers/bootstrap.js';
+import type { LogEntry } from '../drivers/log-sources/types.js';
 
 const STARTUP_POLL_MS = 200;
 const STARTUP_MAX_WAIT_MS = 10000;
 
 async function socketExists(sessionName: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const sock = net.createConnection(socketPath(sessionName));
-    sock.on('connect', () => {
-      sock.destroy();
-      resolve(true);
+    const req = http.get({ socketPath: socketPath(sessionName), path: '/status' }, (res) => {
+      res.resume();
+      resolve(res.statusCode === 200);
     });
-    sock.on('error', () => resolve(false));
-    sock.setTimeout(500);
-    sock.on('timeout', () => {
-      sock.destroy();
+    req.setTimeout(500);
+    req.on('timeout', () => {
+      req.destroy();
       resolve(false);
     });
+    req.on('error', () => resolve(false));
   });
 }
 
@@ -125,4 +125,51 @@ export async function findRunningWebSession(
     if (await socketExists(session)) return session;
   }
   return undefined;
+}
+
+/**
+ * Fetch buffered log entries from the daemon's /logs HTTP endpoint.
+ * Used by `conductor logs --recent` for snapshot access.
+ *
+ * Pass `metro` port to opt in to Metro auto-discovery for React Native apps.
+ * The daemon will start polling Metro's /json endpoint for a debugger target
+ * matching this device and merge JS console entries into the log buffer.
+ */
+export async function fetchDaemonLogs(
+  sessionName: string,
+  opts: { since?: string; level?: string; limit?: number; metro?: number | 'auto' } = {}
+): Promise<LogEntry[]> {
+  const params = new URLSearchParams();
+  if (opts.since) params.set('since', opts.since);
+  if (opts.level) params.set('level', opts.level);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  if (opts.metro === 'auto') {
+    params.set('metro', '');
+  } else if (opts.metro) {
+    params.set('metro', String(opts.metro));
+  }
+  const qs = params.toString();
+  const reqPath = qs ? `/logs?${qs}` : '/logs';
+
+  return new Promise((resolve, reject) => {
+    const req = http.get({ socketPath: socketPath(sessionName), path: reqPath }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as {
+            entries: LogEntry[];
+          };
+          resolve(data.entries ?? []);
+        } catch {
+          resolve([]);
+        }
+      });
+    });
+    req.setTimeout(5000, () => {
+      req.destroy();
+      reject(new Error('Timeout fetching daemon logs'));
+    });
+    req.on('error', reject);
+  });
 }

@@ -414,6 +414,37 @@ conductor inspect
 
 ---
 
+### `logs`
+
+Stream app console/log output in real time. Auto-detects the best log source based on the platform:
+
+- **Web** — captures Playwright browser console events
+- **React Native (iOS/Android)** — connects to the Metro dev server via Chrome DevTools Protocol
+- **Native iOS** — streams from the simulator via `simctl log stream`
+- **Native Android** — streams from the device via `adb logcat`
+
+```bash
+conductor logs                           # auto-detect source and stream
+conductor logs --source metro            # force Metro CDP (for React Native JS logs)
+conductor logs --source device           # force platform-native logs (simctl/logcat)
+conductor logs --level warn              # only show warnings and errors
+conductor logs --level error             # only show errors
+conductor logs --metro-port 8082         # custom Metro dev server port (default: 8081)
+conductor logs --target 1                # connect to a specific Metro debugger target (0-based)
+conductor logs --list                    # list available Metro debugger targets and exit
+conductor logs --list --json             # list targets as JSON (includes appId, logicalDeviceId)
+conductor logs --json                    # NDJSON output (one JSON object per line)
+```
+
+For iOS/Android, auto-detection tries Metro first (2s timeout), then falls back to device logs. When multiple devices share one Metro instance, use `--list` to see available targets, then `--target <n>` to connect to a specific one. `--list` and `--source metro` don't require a running device session.
+
+Exits on Ctrl+C. Each line in `--json` mode is a complete JSON object:
+```json
+{"timestamp":"...","level":"log","message":"User tapped sign-in","stackTrace":null,"source":"metro"}
+```
+
+---
+
 ### `run-flow <file>`
 
 Execute a Maestro YAML flow file.

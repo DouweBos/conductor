@@ -5,7 +5,7 @@
  * don't wait 5 minutes.  Uses a dedicated session name to avoid interfering
  * with any real daemon that may be running.
  */
-import net from 'net';
+import http from 'http';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -66,11 +66,16 @@ async function waitForSocket(timeoutMs = 5000): Promise<boolean> {
 
 function socketConnectable(): Promise<boolean> {
   return new Promise((resolve) => {
-    const sock = net.createConnection(SOCKET);
-    sock.on('connect', () => { sock.destroy(); resolve(true); });
-    sock.on('error', () => resolve(false));
-    sock.setTimeout(300);
-    sock.on('timeout', () => { sock.destroy(); resolve(false); });
+    const req = http.get(
+      { socketPath: SOCKET, path: '/status' },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.setTimeout(300);
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.on('error', () => resolve(false));
   });
 }
 
