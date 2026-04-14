@@ -211,6 +211,8 @@ async function main(): Promise<void> {
     'run-parallel',
     // `logs --list` and `logs --source metro` only query Metro on localhost — no device needed
     ...(command === 'logs' && (argv['list'] || argv['source'] === 'metro') ? ['logs'] : []),
+    // `daemon-stop --all` stops every daemon — no device needed
+    ...(command === 'daemon-stop' && argv['all'] ? ['daemon-stop'] : []),
   ]);
 
   if (!NO_DEVICE_COMMANDS.has(command) && !COMMAND_HELP[command]) {
