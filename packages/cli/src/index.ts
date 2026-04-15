@@ -62,6 +62,9 @@ import { deleteDevice, HELP as deleteDeviceHelp } from './commands/delete-device
 import { logs, HELP as logsHelp } from './commands/logs.js';
 import { pickDevice } from './device-picker.js';
 import { checkForUpdates } from './update-check.js';
+import { findPkgRoot } from './pkg-root.js';
+import fs from 'fs';
+import path from 'path';
 
 const COMMAND_HELP: Record<string, string> = {
   'start-device': startDeviceHelp,
@@ -114,6 +117,7 @@ const OPTIONS_HELP = `Options:
   --platform <p>    Filter to devices of this platform (ios, android, tvos, web)
   --json            Output as machine-readable JSON
   --verbose, -v     Log daemon calls, fallbacks, and raw output
+  --version, -V     Print version number
   --help, -h        Show this help`;
 
 const HELP = `Usage: conductor <command> [args] [options]
@@ -130,6 +134,7 @@ async function main(): Promise<void> {
     boolean: [
       'json',
       'help',
+      'version',
       'clear',
       'list',
       'verbose',
@@ -176,13 +181,20 @@ async function main(): Promise<void> {
       'metro-port',
       'level',
     ],
-    alias: { h: 'help', v: 'verbose' },
+    alias: { h: 'help', v: 'verbose', V: 'version' },
   });
 
   if (argv['verbose']) setVerbose(true);
 
   const [command, ...rest] = argv._;
   const opts = { json: argv['json'] as boolean };
+
+  if (argv['version']) {
+    const pkgRoot = findPkgRoot(__dirname);
+    const pkg = JSON.parse(fs.readFileSync(path.join(pkgRoot, 'package.json'), 'utf-8'));
+    console.log(pkg.version);
+    process.exit(0);
+  }
 
   // Handle help and unknown commands before device resolution —
   // no point prompting for a device if we're just printing help or erroring out.
