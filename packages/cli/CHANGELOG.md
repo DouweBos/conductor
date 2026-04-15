@@ -1,5 +1,18 @@
 # @houwert/conductor
 
+## 0.6.0
+
+### Minor Changes
+
+- 6002bfd: Add delete-device command
+- 9647790: Add web support
+- 6002bfd: Add logs command
+
+### Patch Changes
+
+- 7488ad8: Fix CLI command naming
+- bdd1637: Do not require device selection for daemon-stop --all
+
 ## 0.5.0
 
 ### Minor Changes
