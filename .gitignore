@@ -11,6 +11,6 @@ DerivedData/
 **/derived-data*/
 .build/
 packages/cli/drivers/
-.claude/
+.claude/settings.local.json
 *.profraw
 *.profdata
