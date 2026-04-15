@@ -1,4 +1,4 @@
-.PHONY: build build-cli build-ios-driver build-tvos-driver build-android-driver copy-skills package-cli
+.PHONY: build build-cli build-ios-driver build-tvos-driver build-android-driver package-cli
 
 ANDROID_OUT    = packages/android-driver/conductor-android/build/outputs/apk
 CLI_DRIVERS    = packages/cli/drivers
@@ -29,11 +29,7 @@ build-tvos-driver:
 build-android-driver:
 	cd packages/android-driver && ./gradlew :conductor-android:assembleDebug :conductor-android:assembleAndroidTest
 
-copy-skills:
-	rm -rf packages/cli/skills
-	cp -r skills packages/cli/skills
-
-package-cli: build-ios-driver build-tvos-driver build-android-driver copy-skills
+package-cli: build-ios-driver build-tvos-driver build-android-driver
 	mkdir -p $(CLI_DRIVERS)/android $(CLI_DRIVERS)/ios $(CLI_DRIVERS)/tvos
 	cp $(ANDROID_OUT)/debug/conductor-android-debug.apk \
 		$(CLI_DRIVERS)/android/conductor-app.apk

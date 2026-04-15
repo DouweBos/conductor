@@ -25,6 +25,12 @@ jobs:
       - name: Apply changesets
         run: pnpm changeset version
 
+      - name: Sync skill version
+        run: |
+          VERSION=$(node -p "require('./packages/cli/package.json').version")
+          sed -i '' "s/^version: .*/version: ${VERSION}/" packages/cli/skills/conductor/SKILL.md
+          sed -i '' "s/^    version: .*/    version: ${VERSION}/" packages/cli/skills/skills.yaml
+
       - name: Build
         run: make build
 
