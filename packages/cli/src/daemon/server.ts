@@ -36,6 +36,15 @@ import { getSession } from '../session.js';
 
 const sessionName = process.argv[2] ?? 'default';
 
+/**
+ * CDP URL for connecting to an external browser (e.g. Stagehand's embedded
+ * webview). When set, the web driver attaches via Playwright's connectOverCDP
+ * instead of launching its own browser.
+ *
+ * Set by the host IDE (Stagehand) via the agent subprocess environment.
+ */
+const cdpUrl = process.env.CONDUCTOR_CDP_URL || undefined;
+
 const SOCKET_PATH = socketPath(sessionName);
 const PID_FILE = pidFile(sessionName);
 const LOG_FILE = logFile(sessionName);
@@ -91,7 +100,7 @@ async function ensureDriverRunning(): Promise<void> {
         // Health-check restart — don't dismiss, to avoid disrupting user's app
         await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ false);
       } else if (driverPlatform === 'web') {
-        await startWebServer(driverPort, webBrowserName(sessionName), dlog);
+        await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl);
       } else {
         await startAndroidDriver(sessionName, driverPort);
       }
@@ -296,7 +305,9 @@ async function main(): Promise<void> {
               dlog(`Installing Android driver on ${sessionName}`);
               await installDriver(sessionName);
               dlog(`Driver installation complete`);
-            } else if (platform === 'web') {
+            } else if (platform === 'web' && !cdpUrl) {
+              // Only install Playwright browser when launching standalone.
+              // In CDP mode we attach to the host app's browser (e.g. Electron).
               const browser = webBrowserName(sessionName);
               await ensurePlaywrightBrowser(browser, dlog);
             }
@@ -309,7 +320,7 @@ async function main(): Promise<void> {
                 // First install — dismiss the runner app to return to homescreen
                 await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ true);
               } else if (platform === 'web') {
-                await startWebServer(driverPort, webBrowserName(sessionName), dlog);
+                await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl);
               } else {
                 await startAndroidDriver(sessionName, driverPort);
               }

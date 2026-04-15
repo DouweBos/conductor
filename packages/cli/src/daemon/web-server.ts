@@ -470,27 +470,74 @@ let _context: BrowserContext | null = null;
 let _page: Page | null = null;
 let _server: http.Server | null = null;
 
+/**
+ * True when connected to an external browser via CDP (e.g. Stagehand's
+ * embedded webview). In this mode we must NOT close the browser on shutdown
+ * — we only disconnect.
+ */
+let _cdpMode = false;
+
 export async function startWebServer(
   port: number,
   browserName: 'chromium' | 'firefox' | 'webkit' = 'chromium',
-  dlog: (msg: string) => void = () => {}
+  dlog: (msg: string) => void = () => {},
+  cdpUrl?: string
 ): Promise<void> {
-  const browserType =
-    browserName === 'firefox' ? firefox : browserName === 'webkit' ? webkit : chromium;
+  if (cdpUrl) {
+    // ── CDP mode: attach to an existing browser (e.g. Electron webview) ───
+    dlog(`Connecting to existing browser via CDP: ${cdpUrl}`);
+    _browser = await chromium.connectOverCDP(cdpUrl);
+    _cdpMode = true;
 
-  dlog(`Launching ${browserName} browser...`);
-  _browser = await browserType.launch({
-    headless: false,
-    args: browserName === 'chromium' ? ['--disable-search-engine-choice-screen'] : undefined,
-  });
+    // Use the first existing context and page. The host app (e.g. Stagehand)
+    // already created them — we just take a handle.
+    const contexts = _browser.contexts();
+    if (contexts.length === 0) {
+      throw new Error('No browser contexts found via CDP — is the webview loaded?');
+    }
 
-  _context = await _browser.newContext({
-    viewport: DEFAULT_VIEWPORT,
-  });
+    // Find the context with a real page (not about:blank, not the host app).
+    for (const ctx of contexts) {
+      const pages = ctx.pages();
+      const candidate = pages.find(
+        (p) => p.url() !== 'about:blank' && !p.url().startsWith('file://')
+      );
+      if (candidate) {
+        _context = ctx;
+        _page = candidate;
+        break;
+      }
+    }
 
-  _page = await _context.newPage();
-  attachConsoleListeners(_page);
-  dlog(`Browser ready, page created`);
+    // Fallback: just use the first context's first page.
+    if (!_page) {
+      _context = contexts[0];
+      const pages = _context.pages();
+      _page = pages[0] ?? (await _context.newPage());
+    }
+
+    attachConsoleListeners(_page);
+    dlog(`CDP connected — page: ${_page.url()}`);
+  } else {
+    // ── Standalone mode: launch a fresh browser ───────────────────────────
+    const browserType =
+      browserName === 'firefox' ? firefox : browserName === 'webkit' ? webkit : chromium;
+
+    dlog(`Launching ${browserName} browser...`);
+    _browser = await browserType.launch({
+      headless: false,
+      args: browserName === 'chromium' ? ['--disable-search-engine-choice-screen'] : undefined,
+    });
+
+    _context = await _browser.newContext({
+      viewport: DEFAULT_VIEWPORT,
+    });
+
+    _page = await _context.newPage();
+    attachConsoleListeners(_page);
+    dlog(`Browser ready, page created`);
+    _cdpMode = false;
+  }
 
   _server = http.createServer(async (req, res) => {
     try {
@@ -516,18 +563,38 @@ export async function stopWebServer(): Promise<void> {
     _server.close();
     _server = null;
   }
-  if (_page) {
-    await _page.close().catch(() => {});
+
+  if (_cdpMode) {
+    // CDP mode: we don't own the browser — just release our handles.
+    // Do NOT close the page, context, or browser.
     _page = null;
-  }
-  if (_context) {
-    await _context.close().catch(() => {});
     _context = null;
+    if (_browser) {
+      // Playwright's connectOverCDP browser supports disconnect() but not close().
+      try {
+        _browser.close().catch(() => {});
+      } catch {
+        /* not all CDP browsers support close gracefully */
+      }
+      _browser = null;
+    }
+  } else {
+    // Standalone mode: we launched the browser, so tear it all down.
+    if (_page) {
+      await _page.close().catch(() => {});
+      _page = null;
+    }
+    if (_context) {
+      await _context.close().catch(() => {});
+      _context = null;
+    }
+    if (_browser) {
+      await _browser.close().catch(() => {});
+      _browser = null;
+    }
   }
-  if (_browser) {
-    await _browser.close().catch(() => {});
-    _browser = null;
-  }
+
+  _cdpMode = false;
 }
 
 /** Playwright / CDP errors when the tab, context, or session died but our JS refs still exist. */
@@ -541,14 +608,13 @@ function isClosedLikeError(err: unknown): boolean {
 /**
  * Drop the context and open a fresh one. Used when newPage/goto fails after the user closed
  * the last tab (Chromium can quit the window) or the CDP target is gone while isConnected stays true.
+ *
+ * In CDP mode, we can't create new contexts — the host app owns the browser.
+ * Instead we try to re-acquire an existing context/page.
  */
 async function recreateBrowserContext(dlog?: (msg: string) => void): Promise<void> {
   dlog?.('Web driver: recreating browser context');
-  if (_context) {
-    await _context.close().catch(() => {});
-    _context = null;
-  }
-  _page = null;
+
   if (!_browser) {
     throw new Error('No page available');
   }
@@ -557,6 +623,31 @@ async function recreateBrowserContext(dlog?: (msg: string) => void): Promise<voi
       'Browser has been closed. Restart the web driver (e.g. conductor daemon-start --device web).'
     );
   }
+
+  if (_cdpMode) {
+    // In CDP mode, try to re-acquire a page from existing contexts.
+    _page = null;
+    _context = null;
+    const contexts = _browser.contexts();
+    for (const ctx of contexts) {
+      const pages = ctx.pages();
+      const candidate = pages.find((p) => !p.isClosed());
+      if (candidate) {
+        _context = ctx;
+        _page = candidate;
+        attachConsoleListeners(_page);
+        return;
+      }
+    }
+    throw new Error('No live pages found via CDP — is the webview still open?');
+  }
+
+  if (_context) {
+    await _context.close().catch(() => {});
+    _context = null;
+  }
+  _page = null;
+
   _context = await _browser.newContext({
     viewport: DEFAULT_VIEWPORT,
   });
