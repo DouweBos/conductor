@@ -1,5 +1,15 @@
 # @houwert/conductor
 
+## 0.7.0
+
+### Minor Changes
+
+- 9dc701a: Add custom CDP url support for web control
+
+### Patch Changes
+
+- 6317ae4: Add --version
+
 ## 0.6.0
 
 ### Minor Changes
