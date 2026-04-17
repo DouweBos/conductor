@@ -31,6 +31,11 @@ export async function downloadApp(
 
   const platform = await detectPlatform(deviceId);
 
+  if (platform === 'web') {
+    printError('download-app is not supported on web.', opts);
+    return 1;
+  }
+
   if (platform === 'ios' || platform === 'tvos') {
     // Get the .app bundle path from the simulator
     const getPath = await spawnCommand('xcrun', [

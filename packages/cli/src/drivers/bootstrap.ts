@@ -736,7 +736,11 @@ export async function stopWebDriver(port: number): Promise<void> {
  */
 export async function uninstallDriver(deviceId: string, platform: Platform): Promise<void> {
   log(`uninstallDriver: removing ${platform} driver from ${deviceId}`);
-  if (platform === 'ios') {
+  if (platform === 'web') {
+    // Web has no persistent driver to uninstall — the browser is managed by the daemon.
+    // Stopping the web server is handled by the daemon cleanup.
+    return;
+  } else if (platform === 'ios') {
     await spawnAndWait('xcrun', [
       'simctl',
       'uninstall',

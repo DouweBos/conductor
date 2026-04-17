@@ -19,4 +19,8 @@ export function logFile(sessionName = 'default'): string {
   return path.join(daemonDir(sessionName), 'daemon.log');
 }
 
+export function nameFile(sessionName = 'default'): string {
+  return path.join(daemonDir(sessionName), 'name');
+}
+
 export const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes

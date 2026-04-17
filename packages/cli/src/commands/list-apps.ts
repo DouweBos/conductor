@@ -22,7 +22,13 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
 
   let appIds: string[];
 
-  if (platform === 'ios' || platform === 'tvos') {
+  if (platform === 'web') {
+    printError(
+      'list-apps is not supported on web. Use foreground-app to get the current URL.',
+      opts
+    );
+    return 1;
+  } else if (platform === 'ios' || platform === 'tvos') {
     const result = await spawnCommand('bash', [
       '-c',
       `xcrun simctl listapps ${deviceId} | plutil -convert json - -o -`,

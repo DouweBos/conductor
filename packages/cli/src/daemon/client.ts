@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
-import { socketPath, pidFile, logFile } from './protocol.js';
+import { socketPath, pidFile, logFile, nameFile } from './protocol.js';
 import { log } from '../verbose.js';
 import { webBrowserName } from '../drivers/bootstrap.js';
 import type { LogEntry } from '../drivers/log-sources/types.js';
@@ -149,7 +149,12 @@ export async function stopDaemon(sessionName = 'default'): Promise<boolean> {
 
   // Clean up the daemon directory regardless — removes stale dirs from crashed daemons
   const dir = path.join(os.homedir(), '.conductor', 'daemons', sessionName);
-  for (const file of [socketPath(sessionName), pidFile(sessionName), logFile(sessionName)]) {
+  for (const file of [
+    socketPath(sessionName),
+    pidFile(sessionName),
+    logFile(sessionName),
+    nameFile(sessionName),
+  ]) {
     try {
       fs.unlinkSync(file);
     } catch {

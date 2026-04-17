@@ -30,7 +30,7 @@ import {
   ensurePlaywrightBrowser,
 } from '../drivers/bootstrap.js';
 import { AndroidDriver } from '../drivers/android.js';
-import { startWebServer, stopWebServer } from './web-server.js';
+import { startWebServer, stopWebServer, getCdpPort, getPageTargetId } from './web-server.js';
 import { LogCollector } from './log-collector.js';
 import { getSession } from '../session.js';
 
@@ -77,6 +77,7 @@ const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
 
 let _restartInProgress = false;
 let _driverStarted = false;
+let _driverStartError: string | null = null;
 
 async function ensureDriverRunning(): Promise<void> {
   if (_restartInProgress || !_driverStarted) return;
@@ -255,6 +256,9 @@ async function main(): Promise<void> {
         driverPort,
         cdpUrl: cdpUrl ?? null,
         cdpTargetId: cdpTargetId ?? null,
+        chromiumCdpPort: driverPlatform === 'web' ? getCdpPort() : null,
+        pageTargetId: driverPlatform === 'web' ? getPageTargetId() : null,
+        driverStartError: _driverStartError,
       });
       return;
     }
@@ -351,7 +355,8 @@ async function main(): Promise<void> {
               _driverStarted = true;
               dlog(`Driver started successfully`);
             } catch (err) {
-              dlog(`Driver startup error: ${err instanceof Error ? err.message : String(err)}`);
+              _driverStartError = err instanceof Error ? err.message : String(err);
+              dlog(`Driver startup error: ${_driverStartError}`);
             }
           }
 

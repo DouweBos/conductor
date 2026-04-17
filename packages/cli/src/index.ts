@@ -58,6 +58,7 @@ import {
 import { setLocation, HELP as setLocationHelp } from './commands/set-location.js';
 import { setOrientation, HELP as setOrientationHelp } from './commands/set-orientation.js';
 import { startDevice, HELP as startDeviceHelp } from './commands/start-device.js';
+import { stopDevice, HELP as stopDeviceHelp } from './commands/stop-device.js';
 import { deleteDevice, HELP as deleteDeviceHelp } from './commands/delete-device.js';
 import { logs, HELP as logsHelp } from './commands/logs.js';
 import { pickDevice } from './device-picker.js';
@@ -68,6 +69,7 @@ import path from 'path';
 
 const COMMAND_HELP: Record<string, string> = {
   'start-device': startDeviceHelp,
+  'stop-device': stopDeviceHelp,
   'delete-device': deleteDeviceHelp,
   'list-devices': listDevicesHelp,
   'foreground-app': foregroundAppHelp,
@@ -213,6 +215,7 @@ async function main(): Promise<void> {
   const NO_DEVICE_COMMANDS = new Set([
     'list-devices',
     'start-device',
+    'stop-device',
     'delete-device',
     'cheat-sheet',
     'install-plugin',
@@ -277,6 +280,13 @@ async function main(): Promise<void> {
 
     case 'list-devices':
       exitCode = await listDevices(opts);
+      break;
+
+    case 'stop-device':
+      exitCode = await stopDevice(rest[0], opts, {
+        platform: argv['platform'] as string | undefined,
+        all: argv['all'] as boolean,
+      });
       break;
 
     case 'delete-device':

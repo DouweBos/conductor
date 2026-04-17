@@ -2,13 +2,16 @@ export const HELP = `  start-device
     --platform <ios|android|tvos|web> Boot a simulator/emulator, or start the web driver (Playwright)
     --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
     --avd <name>                      Android AVD name (default: first available)
-    --name <name>                     Set a custom name on the simulator after boot (iOS/tvOS only)
+    --name <name>                     Set a custom name on the device after creation (iOS/tvOS/web)
     --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K"); creates if needed
     --browser <chromium|firefox|webkit> Web only: which Playwright browser to launch (default: chromium)`;
 
+import fs from 'fs';
 import { spawn } from 'child_process';
 import { spawnCommand } from '../runner.js';
-import { startDaemon } from '../daemon/client.js';
+import { startDaemon, findRunningWebSession } from '../daemon/client.js';
+import { nameFile } from '../daemon/protocol.js';
+import { generateWebSessionId } from '../drivers/bootstrap.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { sleep } from '../utils.js';
 
@@ -548,17 +551,15 @@ async function startAndroid(avdName: string | undefined, opts: OutputOptions): P
   return 0;
 }
 
-function webSessionIdForBrowser(
+function resolveWebBrowser(
   browserArg: string | undefined
-): { session: string } | { error: string } {
+): { browser: 'chromium' | 'firefox' | 'webkit' } | { error: string } {
   const b = (browserArg ?? 'chromium').toLowerCase();
   switch (b) {
     case 'chromium':
-      return { session: 'web' };
     case 'firefox':
-      return { session: 'web:firefox' };
     case 'webkit':
-      return { session: 'web:webkit' };
+      return { browser: b };
     default:
       return {
         error: `Unknown web browser "${browserArg}". Use chromium, firefox, or webkit.`,
@@ -566,24 +567,48 @@ function webSessionIdForBrowser(
   }
 }
 
-async function startWebDriver(opts: OutputOptions, browser?: string): Promise<number> {
-  const resolved = webSessionIdForBrowser(browser);
+async function startWebDriver(
+  opts: OutputOptions,
+  browser?: string,
+  name?: string
+): Promise<number> {
+  const resolved = resolveWebBrowser(browser);
   if ('error' in resolved) {
     printError(resolved.error, opts);
     return 1;
   }
 
-  const ready = await startDaemon(resolved.session);
+  // Check for an existing running session of this browser type
+  const existing = await findRunningWebSession(resolved.browser);
+  if (existing && !name) {
+    printSuccess(`Web driver already running: ${existing}`, opts);
+    return 0;
+  }
+
+  // Generate a unique session ID for this instance
+  const session = generateWebSessionId(resolved.browser);
+
+  const ready = await startDaemon(session);
   if (!ready) {
     printError(
-      `Web driver did not become ready for session ${resolved.session}. ` +
+      `Web driver did not become ready for session ${session}. ` +
         'Install a browser with `conductor install-web` if needed, then retry.',
       opts
     );
     return 1;
   }
 
-  printSuccess(`Web driver ready (${resolved.session})`, opts);
+  if (name) {
+    try {
+      fs.writeFileSync(nameFile(session), name, 'utf-8');
+    } catch {
+      /* best-effort — display name won't persist but the session works */
+    }
+  }
+
+  const label = resolved.browser.charAt(0).toUpperCase() + resolved.browser.slice(1);
+  const displayName = name ? `${name} (${label})` : label;
+  printSuccess(`Web driver ready: ${displayName} (${session})`, opts);
   return 0;
 }
 
@@ -607,7 +632,7 @@ export async function startDevice(
     case 'android':
       return startAndroid(flags.avd, opts);
     case 'web':
-      return startWebDriver(opts, flags.browser);
+      return startWebDriver(opts, flags.browser, flags.name);
     default:
       printError(`Unknown platform "${platform}". Use ios, android, tvos, or web.`, opts);
       return 1;
