@@ -29,7 +29,10 @@ export async function installApp(
 
   const platform = await detectPlatform(deviceId);
 
-  if (platform === 'ios' || platform === 'tvos') {
+  if (platform === 'web') {
+    printError('install-app is not supported on web. Use launch-app with a URL instead.', opts);
+    return 1;
+  } else if (platform === 'ios' || platform === 'tvos') {
     const result = await spawnCommand('xcrun', ['simctl', 'install', deviceId, appPath]);
     if (!result.success) {
       printError(`install-app failed: ${result.stderr}`, opts);

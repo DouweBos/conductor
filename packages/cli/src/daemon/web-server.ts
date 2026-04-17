@@ -9,6 +9,7 @@
  * happen here so the CLI remains a thin HTTP client.
  */
 import http from 'http';
+import { createServer as createTcpServer } from 'net';
 import url from 'url';
 import { chromium, firefox, webkit, Browser, BrowserContext, Page } from 'playwright-core';
 
@@ -476,6 +477,36 @@ let _server: http.Server | null = null;
  * — we only disconnect.
  */
 let _cdpMode = false;
+let _cdpPort = 0;
+let _pageTargetId: string | null = null;
+
+/** Find a free TCP port by briefly binding to port 0. */
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createTcpServer();
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      const port = typeof addr === 'object' ? (addr?.port ?? 0) : 0;
+      srv.close(() => resolve(port));
+    });
+    srv.on('error', reject);
+  });
+}
+
+/** Resolve the CDP target ID of the current page via a temporary CDP session. */
+async function resolvePageTargetId(): Promise<string | null> {
+  if (!_context || !_page) return null;
+  try {
+    const cdpSession = await _context.newCDPSession(_page);
+    const info = (await cdpSession.send('Target.getTargetInfo')) as {
+      targetInfo?: { targetId?: string };
+    };
+    await cdpSession.detach();
+    return info.targetInfo?.targetId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function startWebServer(
   port: number,
@@ -582,10 +613,20 @@ export async function startWebServer(
     const browserType =
       browserName === 'firefox' ? firefox : browserName === 'webkit' ? webkit : chromium;
 
-    dlog(`Launching ${browserName} browser...`);
+    if (browserName === 'chromium') {
+      _cdpPort = await findFreePort();
+      dlog(`Allocated CDP port ${_cdpPort} for remote debugging`);
+    }
+
+    const headless =
+      process.env.CONDUCTOR_HEADLESS === '1' || process.env.CONDUCTOR_HEADLESS === 'true';
+    dlog(`Launching ${browserName} browser (headless=${headless})...`);
     _browser = await browserType.launch({
-      headless: false,
-      args: browserName === 'chromium' ? ['--disable-search-engine-choice-screen'] : undefined,
+      headless,
+      args:
+        browserName === 'chromium'
+          ? [`--remote-debugging-port=${_cdpPort}`, '--disable-search-engine-choice-screen']
+          : undefined,
     });
 
     _context = await _browser.newContext({
@@ -594,7 +635,9 @@ export async function startWebServer(
 
     _page = await _context.newPage();
     attachConsoleListeners(_page);
-    dlog(`Browser ready, page created`);
+
+    _pageTargetId = await resolvePageTargetId();
+    dlog(`Browser ready, page created (targetId=${_pageTargetId ?? 'unknown'})`);
     _cdpMode = false;
   }
 
@@ -654,6 +697,36 @@ export async function stopWebServer(): Promise<void> {
   }
 
   _cdpMode = false;
+  _cdpPort = 0;
+  _pageTargetId = null;
+}
+
+/** Get the CDP remote debugging port (0 if not running or non-Chromium). */
+export function getCdpPort(): number {
+  return _cdpPort;
+}
+
+/** Get the CDP target ID for the current page (null if unavailable). */
+export function getPageTargetId(): string | null {
+  return _pageTargetId;
+}
+
+/** Query the page's navigation history via CDP to determine back/forward state. */
+async function getNavState(
+  page: Page
+): Promise<{ url: string; canGoBack: boolean; canGoForward: boolean }> {
+  try {
+    const session = await page.context().newCDPSession(page);
+    const { currentIndex, entries } = await session.send('Page.getNavigationHistory');
+    await session.detach().catch(() => {});
+    return {
+      url: page.url(),
+      canGoBack: currentIndex > 0,
+      canGoForward: currentIndex < entries.length - 1,
+    };
+  } catch {
+    return { url: page.url(), canGoBack: false, canGoForward: false };
+  }
 }
 
 /** Playwright / CDP errors when the tab, context, or session died but our JS refs still exist. */
@@ -962,29 +1035,32 @@ async function handleRequest(
           return;
         }
         await gotoWithRecovery(targetUrl, dlog);
-        jsonResponse(res, { ok: true });
+        const navState = await getNavState(await getPage(dlog));
+        jsonResponse(res, { ok: true, ...navState });
         return;
       }
 
       case '/goBack': {
-        await (await getPage(dlog))
-          .goBack({ waitUntil: 'domcontentloaded', timeout: 10000 })
-          .catch(() => {});
-        jsonResponse(res, { ok: true });
+        const p = await getPage(dlog);
+        await p.goBack({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+        const navState = await getNavState(p);
+        jsonResponse(res, { ok: true, ...navState });
         return;
       }
 
       case '/goForward': {
-        await (await getPage(dlog))
-          .goForward({ waitUntil: 'domcontentloaded', timeout: 10000 })
-          .catch(() => {});
-        jsonResponse(res, { ok: true });
+        const p = await getPage(dlog);
+        await p.goForward({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+        const navState = await getNavState(p);
+        jsonResponse(res, { ok: true, ...navState });
         return;
       }
 
       case '/reload': {
-        await (await getPage(dlog)).reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
-        jsonResponse(res, { ok: true });
+        const p = await getPage(dlog);
+        await p.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+        const navState = await getNavState(p);
+        jsonResponse(res, { ok: true, ...navState });
         return;
       }
 
@@ -1031,6 +1107,57 @@ async function handleRequest(
         for (let i = 0; i < count; i++) {
           await p.keyboard.press('Backspace');
         }
+        jsonResponse(res, { ok: true });
+        return;
+      }
+
+      case '/setViewport': {
+        if (_cdpMode) {
+          jsonResponse(res, { error: 'setViewport not supported in CDP mode' }, 400);
+          return;
+        }
+        if (!_browser) {
+          jsonResponse(res, { error: 'No browser running' }, 400);
+          return;
+        }
+        const vpWidth = (body['width'] as number) ?? DEFAULT_VIEWPORT.width;
+        const vpHeight = (body['height'] as number) ?? DEFAULT_VIEWPORT.height;
+        const vpUserAgent = body['userAgent'] as string | undefined;
+        const vpIsMobile = (body['isMobile'] as boolean) ?? false;
+        const vpScaleFactor = (body['deviceScaleFactor'] as number) ?? (vpIsMobile ? 2 : 1);
+        const vpColorScheme = body['colorScheme'] as 'dark' | 'light' | undefined;
+        const savedUrl = _page ? _page.url() : '';
+
+        if (_page) await _page.close().catch(() => {});
+        if (_context) await _context.close().catch(() => {});
+
+        _context = await _browser.newContext({
+          viewport: { width: vpWidth, height: vpHeight },
+          userAgent: vpUserAgent,
+          deviceScaleFactor: vpScaleFactor,
+          isMobile: vpIsMobile,
+          hasTouch: vpIsMobile,
+          colorScheme: vpColorScheme,
+        });
+        _page = await _context.newPage();
+        attachConsoleListeners(_page);
+        _pageTargetId = await resolvePageTargetId();
+
+        if (savedUrl && savedUrl !== 'about:blank') {
+          await gotoWithRecovery(savedUrl, dlog);
+        }
+
+        jsonResponse(res, { ok: true, cdpTargetId: _pageTargetId });
+        return;
+      }
+
+      case '/setColorScheme': {
+        const scheme = body['colorScheme'] as string;
+        if (scheme !== 'dark' && scheme !== 'light') {
+          jsonResponse(res, { error: 'colorScheme must be "dark" or "light"' }, 400);
+          return;
+        }
+        await (await getPage(dlog)).emulateMedia({ colorScheme: scheme });
         jsonResponse(res, { ok: true });
         return;
       }

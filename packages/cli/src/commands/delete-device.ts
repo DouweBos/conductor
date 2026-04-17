@@ -1,9 +1,13 @@
 export const HELP = `  delete-device <name-or-id>
-    --platform <ios|tvos|android>  Scope to a single platform
-    --all                          Delete all shutdown simulators / non-running AVDs`;
+    --platform <ios|tvos|android|web> Scope to a single platform
+    --all                             Delete all shutdown simulators / non-running AVDs / web sessions`;
 
+import fs from 'fs';
 import { spawnCommand } from '../runner.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
+import { listDaemonSessions, stopDaemon, daemonStatus } from '../daemon/client.js';
+import { nameFile } from '../daemon/protocol.js';
+import { webBrowserName } from '../drivers/bootstrap.js';
 
 // ── iOS / tvOS ───────────────────────────────────────────────────────────────
 
@@ -108,6 +112,7 @@ export async function deleteDevice(
   const includeIOS = !platform || platform === 'ios';
   const includeTvOS = !platform || platform === 'tvos';
   const includeAndroid = !platform || platform === 'android';
+  const includeWeb = !platform || platform === 'web';
   const deleted: { id: string; name: string; platform: string }[] = [];
 
   // ── --all mode ───────────────────────────────────────────────────────────
@@ -154,6 +159,28 @@ export async function deleteDevice(
         } catch (e) {
           printError(
             `Failed to delete AVD "${avd}": ${e instanceof Error ? e.message : String(e)}`,
+            opts
+          );
+        }
+      }
+    }
+
+    // Web: stop all running web daemon sessions
+    if (includeWeb) {
+      const sessions = listDaemonSessions();
+      for (const session of sessions) {
+        if (!(session === 'web' || session.startsWith('web:'))) continue;
+        const status = await daemonStatus(session);
+        if (!status.running) continue;
+
+        try {
+          await stopDaemon(session);
+          const browser = webBrowserName(session);
+          const label = browser.charAt(0).toUpperCase() + browser.slice(1);
+          deleted.push({ id: session, name: label, platform: 'web' });
+        } catch (e) {
+          printError(
+            `Failed to stop web session ${session}: ${e instanceof Error ? e.message : String(e)}`,
             opts
           );
         }
@@ -244,6 +271,38 @@ export async function deleteDevice(
         );
       } else {
         printSuccess(`Deleted android AVD: ${nameOrId}`, opts);
+      }
+      return 0;
+    }
+  }
+
+  // Try Web session (match by session ID or persisted name)
+  if (includeWeb && nameOrId) {
+    const sessions = listDaemonSessions();
+    const match = sessions.find((s) => {
+      if (!(s === 'web' || s.startsWith('web:'))) return false;
+      if (s === nameOrId) return true;
+      try {
+        return fs.readFileSync(nameFile(s), 'utf-8').trim() === nameOrId;
+      } catch {
+        return false;
+      }
+    });
+
+    if (match) {
+      try {
+        await stopDaemon(match);
+      } catch (e) {
+        printError(e instanceof Error ? e.message : String(e), opts);
+        return 1;
+      }
+
+      const browser = webBrowserName(match);
+      const label = browser.charAt(0).toUpperCase() + browser.slice(1);
+      if (opts.json) {
+        printData({ status: 'ok', deleted: [{ id: match, name: label, platform: 'web' }] }, opts);
+      } else {
+        printSuccess(`Stopped web session: ${label} (${match})`, opts);
       }
       return 0;
     }

@@ -13,7 +13,12 @@ import {
   generateWebSessionId,
   isUnqualifiedWebId,
 } from './drivers/bootstrap.js';
-import { startDaemon, findRunningWebSession } from './daemon/client.js';
+import {
+  startDaemon,
+  findRunningWebSession,
+  listDaemonSessions,
+  daemonStatus,
+} from './daemon/client.js';
 
 /**
  * Detect the first booted device/emulator without requiring a session.
@@ -62,6 +67,17 @@ export async function detectFirstDevice(): Promise<string | undefined> {
       }
     } catch {
       /* ignore */
+    }
+  }
+
+  // Web: check for running daemon web sessions
+  for (const session of listDaemonSessions()) {
+    if (!(session === 'web' || session.startsWith('web:'))) continue;
+    const status = await daemonStatus(session);
+    if (status.running) {
+      log(`detectFirstDevice: found running web session "${session}"`);
+      _cachedDeviceId = session;
+      return session;
     }
   }
 
