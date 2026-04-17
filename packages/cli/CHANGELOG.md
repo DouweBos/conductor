@@ -1,5 +1,11 @@
 # @houwert/conductor
 
+## 0.7.1
+
+### Patch Changes
+
+- 79b83d4: Fix web control
+
 ## 0.7.0
 
 ### Minor Changes
