@@ -45,6 +45,15 @@ const sessionName = process.argv[2] ?? 'default';
  */
 const cdpUrl = process.env.CONDUCTOR_CDP_URL || undefined;
 
+/**
+ * Optional CDP target ID to pick a specific page when the host app exposes
+ * multiple webviews over one CDP endpoint (e.g. one per workspace in
+ * Stagehand). When set, the web driver finds the page whose underlying
+ * `Target.targetId` matches and attaches to it, instead of falling back to
+ * URL heuristics.
+ */
+const cdpTargetId = process.env.CONDUCTOR_CDP_TARGET_ID || undefined;
+
 const SOCKET_PATH = socketPath(sessionName);
 const PID_FILE = pidFile(sessionName);
 const LOG_FILE = logFile(sessionName);
@@ -100,7 +109,7 @@ async function ensureDriverRunning(): Promise<void> {
         // Health-check restart — don't dismiss, to avoid disrupting user's app
         await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ false);
       } else if (driverPlatform === 'web') {
-        await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl);
+        await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl, cdpTargetId);
       } else {
         await startAndroidDriver(sessionName, driverPort);
       }
@@ -120,6 +129,9 @@ async function main(): Promise<void> {
   fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
   fs.writeFileSync(PID_FILE, String(process.pid));
   dlog(`daemon started pid=${process.pid} session=${sessionName}`);
+  dlog(
+    `env CONDUCTOR_CDP_URL=${cdpUrl ?? '<unset>'} CONDUCTOR_CDP_TARGET_ID=${cdpTargetId ?? '<unset>'}`
+  ); // kept intentionally — useful for future diagnosis of CDP attachment issues
 
   // Remove stale socket
   try {
@@ -237,7 +249,13 @@ async function main(): Promise<void> {
     const parsed = url.parse(req.url ?? '/', true);
 
     if (req.method === 'GET' && parsed.pathname === '/status') {
-      jsonResponse(res, { ok: true, platform: driverPlatform, driverPort });
+      jsonResponse(res, {
+        ok: true,
+        platform: driverPlatform,
+        driverPort,
+        cdpUrl: cdpUrl ?? null,
+        cdpTargetId: cdpTargetId ?? null,
+      });
       return;
     }
 
@@ -320,7 +338,13 @@ async function main(): Promise<void> {
                 // First install — dismiss the runner app to return to homescreen
                 await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ true);
               } else if (platform === 'web') {
-                await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl);
+                await startWebServer(
+                  driverPort,
+                  webBrowserName(sessionName),
+                  dlog,
+                  cdpUrl,
+                  cdpTargetId
+                );
               } else {
                 await startAndroidDriver(sessionName, driverPort);
               }

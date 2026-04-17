@@ -481,7 +481,8 @@ export async function startWebServer(
   port: number,
   browserName: 'chromium' | 'firefox' | 'webkit' = 'chromium',
   dlog: (msg: string) => void = () => {},
-  cdpUrl?: string
+  cdpUrl?: string,
+  cdpTargetId?: string
 ): Promise<void> {
   if (cdpUrl) {
     // ── CDP mode: attach to an existing browser (e.g. Electron webview) ───
@@ -489,31 +490,89 @@ export async function startWebServer(
     _browser = await chromium.connectOverCDP(cdpUrl);
     _cdpMode = true;
 
-    // Use the first existing context and page. The host app (e.g. Stagehand)
-    // already created them — we just take a handle.
+    // Use an existing context and page. The host app (e.g. Stagehand) already
+    // created them — we just take a handle.
     const contexts = _browser.contexts();
     if (contexts.length === 0) {
       throw new Error('No browser contexts found via CDP — is the webview loaded?');
     }
 
-    // Find the context with a real page (not about:blank, not the host app).
-    for (const ctx of contexts) {
-      const pages = ctx.pages();
-      const candidate = pages.find(
-        (p) => p.url() !== 'about:blank' && !p.url().startsWith('file://')
+    // Match the specific CDP target ID provided by the host app. Required —
+    // with multiple pages sharing one CDP port (Electron host window, webviews,
+    // DevTools), "guess the right one" is a foot-gun that ends in navigating
+    // the wrong window. If no targetId is supplied, or the supplied one can't
+    // be resolved to a Playwright Page, we throw rather than attaching to an
+    // arbitrary target.
+    if (!cdpTargetId) {
+      throw new Error(
+        'CDP mode requires CONDUCTOR_CDP_TARGET_ID — set it to the specific page target to control.'
       );
-      if (candidate) {
-        _context = ctx;
-        _page = candidate;
-        break;
+    }
+
+    dlog(`Selecting CDP target by ID: ${cdpTargetId}`);
+    const pageDiag: string[] = [];
+    outer: for (const ctx of contexts) {
+      for (const page of ctx.pages()) {
+        try {
+          const session = await ctx.newCDPSession(page);
+          const info = (await session.send('Target.getTargetInfo')) as {
+            targetInfo?: { targetId?: string; type?: string; url?: string };
+          };
+          await session.detach().catch(() => {});
+          const t = info.targetInfo;
+          pageDiag.push(
+            `page targetId=${t?.targetId ?? '?'} type=${t?.type ?? '?'} url=${t?.url ?? page.url()}`
+          );
+          if (t?.targetId === cdpTargetId) {
+            _context = ctx;
+            _page = page;
+            break outer;
+          }
+        } catch (err) {
+          pageDiag.push(
+            `page url=${page.url()} getTargetInfo failed: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
       }
     }
 
-    // Fallback: just use the first context's first page.
     if (!_page) {
-      _context = contexts[0];
-      const pages = _context.pages();
-      _page = pages[0] ?? (await _context.newPage());
+      // Enumerate all CDP targets to produce an actionable error — in
+      // particular so we can distinguish "wrong targetId" from "target exists
+      // but Playwright can't see it as a Page" (the latter happens when the
+      // host embeds content as a <webview> guest — type="webview" in CDP —
+      // rather than as a top-level page).
+      let diagExtra = '';
+      let expectedType: string | undefined;
+      try {
+        const browserSession = await _browser.newBrowserCDPSession();
+        const all = (await browserSession.send('Target.getTargets')) as {
+          targetInfos?: Array<{ targetId: string; type: string; url: string; title?: string }>;
+        };
+        await browserSession.detach().catch(() => {});
+        const enumerated =
+          all.targetInfos
+            ?.map((t) => `  - ${t.type.padEnd(10)} ${t.targetId.slice(0, 8)} ${t.url}`)
+            .join('\n') ?? '(none)';
+        const expected = all.targetInfos?.find((t) => t.targetId === cdpTargetId);
+        expectedType = expected?.type;
+        diagExtra =
+          `\nPages visible to Playwright (${pageDiag.length}):\n` +
+          pageDiag.map((l) => `  - ${l}`).join('\n') +
+          `\nAll CDP targets (${all.targetInfos?.length ?? 0}):\n${enumerated}\n` +
+          (expected
+            ? `Requested target exists but type="${expected.type}" — Playwright only surfaces type="page".`
+            : `Requested target not present in Target.getTargets — stale or wrong ID.`);
+      } catch (err) {
+        diagExtra = `\nTarget enumeration failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+      dlog(`CDP target id ${cdpTargetId} not matched by any Playwright Page.${diagExtra}`);
+      throw new Error(
+        `CDP target ${cdpTargetId} not reachable as a Playwright Page` +
+          (expectedType
+            ? ` (exists as type="${expectedType}" — Playwright only surfaces type="page")`
+            : ` (not in target list)`)
+      );
     }
 
     attachConsoleListeners(_page);
@@ -794,6 +853,11 @@ async function handleRequest(
         return;
       }
 
+      case '/runningApp': {
+        jsonResponse(res, { runningAppBundleId: (await getPage(dlog)).url() });
+        return;
+      }
+
       case '/title': {
         jsonResponse(res, { title: await (await getPage(dlog)).title() });
         return;
@@ -958,11 +1022,6 @@ async function handleRequest(
           try { sessionStorage.clear(); } catch {}
         })()`);
         jsonResponse(res, { ok: true });
-        return;
-      }
-
-      case '/runningApp': {
-        jsonResponse(res, { runningAppBundleId: (await getPage(dlog)).url() });
         return;
       }
 

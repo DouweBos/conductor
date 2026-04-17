@@ -11,19 +11,43 @@ import type { LogEntry } from '../drivers/log-sources/types.js';
 const STARTUP_POLL_MS = 200;
 const STARTUP_MAX_WAIT_MS = 10000;
 
-async function socketExists(sessionName: string): Promise<boolean> {
+interface DaemonStatus {
+  ok?: boolean;
+  platform?: string;
+  driverPort?: number;
+  cdpUrl?: string | null;
+  cdpTargetId?: string | null;
+}
+
+async function fetchStatus(sessionName: string): Promise<DaemonStatus | null> {
   return new Promise((resolve) => {
     const req = http.get({ socketPath: socketPath(sessionName), path: '/status' }, (res) => {
-      res.resume();
-      resolve(res.statusCode === 200);
+      if (res.statusCode !== 200) {
+        res.resume();
+        resolve(null);
+        return;
+      }
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')) as DaemonStatus);
+        } catch {
+          resolve(null);
+        }
+      });
     });
     req.setTimeout(500);
     req.on('timeout', () => {
       req.destroy();
-      resolve(false);
+      resolve(null);
     });
-    req.on('error', () => resolve(false));
+    req.on('error', () => resolve(null));
   });
+}
+
+async function socketExists(sessionName: string): Promise<boolean> {
+  return (await fetchStatus(sessionName)) !== null;
 }
 
 async function waitForDaemon(sessionName: string): Promise<boolean> {
@@ -35,8 +59,63 @@ async function waitForDaemon(sessionName: string): Promise<boolean> {
   return false;
 }
 
+/**
+ * Wait until a process with the given PID is no longer running.
+ * Uses `process.kill(pid, 0)` which throws if the process is gone.
+ */
+async function waitForProcessExit(pid: number, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+/**
+ * True when the running daemon's CDP attachment matches the current process's
+ * `CONDUCTOR_CDP_URL` / `CONDUCTOR_CDP_TARGET_ID` env. A mismatch means the
+ * daemon would control the wrong browser (e.g. a standalone Playwright
+ * instance when the caller expects to drive an embedded webview), so the
+ * daemon must be restarted with the correct env.
+ */
+function daemonMatchesCdpEnv(status: DaemonStatus): boolean {
+  const expectedCdpUrl = process.env.CONDUCTOR_CDP_URL ?? '';
+  const expectedCdpTargetId = process.env.CONDUCTOR_CDP_TARGET_ID ?? '';
+  const actualCdpUrl = status.cdpUrl ?? '';
+  const actualCdpTargetId = status.cdpTargetId ?? '';
+  return actualCdpUrl === expectedCdpUrl && actualCdpTargetId === expectedCdpTargetId;
+}
+
 export async function startDaemon(sessionName = 'default'): Promise<boolean> {
-  if (await socketExists(sessionName)) return true;
+  const existing = await fetchStatus(sessionName);
+  if (existing) {
+    if (daemonMatchesCdpEnv(existing)) return true;
+
+    log(
+      `daemon [${sessionName}] CDP env mismatch ` +
+        `(daemon cdpUrl="${existing.cdpUrl ?? ''}" targetId="${existing.cdpTargetId ?? ''}", ` +
+        `env cdpUrl="${process.env.CONDUCTOR_CDP_URL ?? ''}" targetId="${process.env.CONDUCTOR_CDP_TARGET_ID ?? ''}") — restarting`
+    );
+
+    // Capture the PID before stopDaemon removes the pidfile so we can wait
+    // for the old process to actually exit before respawning. Otherwise the
+    // old daemon's cleanup handler may unlink the new daemon's socket.
+    let oldPid: number | undefined;
+    try {
+      const raw = fs.readFileSync(pidFile(sessionName), 'utf-8').trim();
+      const n = parseInt(raw, 10);
+      if (!isNaN(n)) oldPid = n;
+    } catch {
+      /* no pid — continue */
+    }
+
+    await stopDaemon(sessionName);
+    if (oldPid !== undefined) await waitForProcessExit(oldPid);
+  }
 
   const serverScript = path.join(__dirname, 'server.js');
   log(`daemon [${sessionName}] not running — spawning ${serverScript}`);
