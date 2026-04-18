@@ -1,5 +1,11 @@
 # @houwert/conductor
 
+## 0.8.0
+
+### Minor Changes
+
+- 59f689c: Add web device management
+
 ## 0.7.1
 
 ### Patch Changes
