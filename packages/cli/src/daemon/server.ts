@@ -54,6 +54,27 @@ const cdpUrl = process.env.CONDUCTOR_CDP_URL || undefined;
  */
 const cdpTargetId = process.env.CONDUCTOR_CDP_TARGET_ID || undefined;
 
+/**
+ * PID of the process that should be considered the daemon's "owner". When set,
+ * the daemon polls for this process's existence and shuts down cleanly when it
+ * disappears. This prevents orphaned daemons (and their Playwright browsers)
+ * from piling up after the host app crashes or quits without calling
+ * `daemon-stop`.
+ *
+ * The daemon runs detached, so `process.ppid` becomes 1 after the parent exits
+ * and is useless for this purpose. The owner must be passed explicitly by the
+ * host app via the env when it invokes `conductor daemon-start` (or whatever
+ * code path ultimately triggers the daemon spawn).
+ */
+const parentPid = (() => {
+  const raw = process.env.CONDUCTOR_PARENT_PID;
+  if (!raw) return undefined;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+})();
+
+const PARENT_POLL_INTERVAL_MS = 10_000;
+
 const SOCKET_PATH = socketPath(sessionName);
 const PID_FILE = pidFile(sessionName);
 const LOG_FILE = logFile(sessionName);
@@ -143,6 +164,7 @@ async function main(): Promise<void> {
 
   let idleTimer: NodeJS.Timeout | undefined;
   let healthTimer: NodeJS.Timeout | undefined;
+  let parentWatchTimer: NodeJS.Timeout | undefined;
 
   const idleTimeoutMs = Number(process.env.CONDUCTOR_IDLE_TIMEOUT_MS) || IDLE_TIMEOUT_MS;
 
@@ -156,6 +178,8 @@ async function main(): Promise<void> {
 
   async function cleanup(): Promise<void> {
     if (healthTimer) clearInterval(healthTimer);
+    if (parentWatchTimer) clearInterval(parentWatchTimer);
+    if (idleTimer) clearTimeout(idleTimer);
     if (logCollector) {
       logCollector.stop();
       logCollector = null;
@@ -229,6 +253,29 @@ async function main(): Promise<void> {
       ensureDriverRunning().catch((err) => dlog(`Health check error: ${err.message}`));
     }, DRIVER_HEALTH_INTERVAL_MS);
     healthTimer.unref(); // Don't keep the process alive just for health checks
+  }
+
+  // If the host app told us who it is, shut down when it disappears. This is
+  // the primary defence against orphaned daemons + headless Chromiums when the
+  // host app crashes or force-quits without calling daemon-stop.
+  if (parentPid !== undefined) {
+    dlog(`Watching parent pid ${parentPid}`);
+    let shuttingDown = false;
+    parentWatchTimer = setInterval(() => {
+      if (shuttingDown) return;
+      try {
+        process.kill(parentPid, 0);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ESRCH') {
+          shuttingDown = true;
+          dlog(`Parent pid ${parentPid} exited — shutting down`);
+          cleanup().then(() => process.exit(0));
+        }
+        // EPERM means the process exists but we can't signal it — still alive.
+      }
+    }, PARENT_POLL_INTERVAL_MS);
+    parentWatchTimer.unref();
   }
 
   // ── HTTP server on Unix socket ─────────────────────────────────────────────
