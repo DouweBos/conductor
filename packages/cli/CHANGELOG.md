@@ -1,5 +1,11 @@
 # @houwert/conductor
 
+## 0.9.0
+
+### Minor Changes
+
+- 1c439e0: Auto kill chrome daemons when parent process stops
+
 ## 0.8.0
 
 ### Minor Changes

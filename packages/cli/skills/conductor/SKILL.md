@@ -1,6 +1,6 @@
 ---
 name: conductor
-version: 0.8.0
+version: 0.9.0
 description: "Token-efficient CLI for mobile UI testing (iOS simulator + Android emulator), designed for AI agents"
 metadata.openclaw:
   category: service
