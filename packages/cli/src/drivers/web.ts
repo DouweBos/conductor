@@ -197,6 +197,18 @@ export class WebDriver {
     return result.runningAppBundleId;
   }
 
+  async memory(): Promise<{
+    metrics: Record<string, number>;
+    pageMemory: {
+      usedJSHeapSize: number;
+      totalJSHeapSize: number;
+      jsHeapSizeLimit: number;
+    } | null;
+    url: string;
+  }> {
+    return this.get('memory');
+  }
+
   async eraseAllText(count = 50): Promise<void> {
     await this.post('eraseText', { count });
   }
