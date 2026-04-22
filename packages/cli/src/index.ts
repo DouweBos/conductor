@@ -62,6 +62,7 @@ import { startDevice, HELP as startDeviceHelp } from './commands/start-device.js
 import { stopDevice, HELP as stopDeviceHelp } from './commands/stop-device.js';
 import { deleteDevice, HELP as deleteDeviceHelp } from './commands/delete-device.js';
 import { logs, HELP as logsHelp } from './commands/logs.js';
+import { memory, HELP as memoryHelp } from './commands/memory.js';
 import { pickDevice } from './device-picker.js';
 import { checkForUpdates } from './update-check.js';
 import { findPkgRoot } from './pkg-root.js';
@@ -113,6 +114,7 @@ const COMMAND_HELP: Record<string, string> = {
   'device-pool': devicePoolHelp,
   'run-parallel': runParallelHelp,
   logs: logsHelp,
+  memory: memoryHelp,
 };
 
 const OPTIONS_HELP = `Options:
@@ -549,6 +551,12 @@ async function main(): Promise<void> {
         duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
       });
       break;
+
+    case 'memory': {
+      const appId = rest[0];
+      exitCode = await memory(appId, opts, sessionName);
+      break;
+    }
 
     case 'run-flow': {
       const file = rest[0] ?? '';
