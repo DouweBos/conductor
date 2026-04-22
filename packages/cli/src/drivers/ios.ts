@@ -29,6 +29,8 @@ export interface AXElement {
   selected: boolean;
   hasFocus: boolean;
   placeholderValue?: string;
+  /** Accessibility hint — populated by the driver when available. */
+  hint?: string;
   children?: AXElement[];
 }
 

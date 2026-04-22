@@ -23,6 +23,7 @@ import { androidExec } from './executor-android.test.js';
 import { fileBased } from './file-based.test.js';
 import { scriptSuite } from './run-script.test.js';
 import { elementResolver } from './element-resolver.test.js';
+import { a11ySuite } from './a11y.test.js';
 import { envFlag } from './env-flag.test.js';
 import { daemonIdle } from './daemon-idle.test.js';
 import { devicePoolSuite } from './device-pool.test.js';
@@ -68,7 +69,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, envFlag, daemonIdle, devicePoolSuite];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite];
 
   if (device) {
     console.log(`\nDevice: ${device}`);

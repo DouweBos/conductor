@@ -17,6 +17,7 @@ import { scroll, HELP as scrollHelp } from './commands/scroll.js';
 import { swipe, HELP as swipeHelp } from './commands/swipe.js';
 import { assertVisible, HELP as assertVisibleHelp } from './commands/assert-visible.js';
 import { screenshot, HELP as screenshotHelp } from './commands/screenshot.js';
+import { captureUI, HELP as captureUIHelp } from './commands/capture-ui.js';
 import { inspect, HELP as inspectHelp } from './commands/inspect.js';
 import { focused, HELP as focusedHelp } from './commands/focused.js';
 import { runFlow, HELP as runFlowHelp } from './commands/run-flow.js';
@@ -96,6 +97,7 @@ const COMMAND_HELP: Record<string, string> = {
   'set-location': setLocationHelp,
   'set-orientation': setOrientationHelp,
   'take-screenshot': screenshotHelp,
+  'capture-ui': captureUIHelp,
   inspect: inspectHelp,
   focused: focusedHelp,
   'run-flow': runFlowHelp,
@@ -515,6 +517,12 @@ async function main(): Promise<void> {
     case 'take-screenshot': {
       const outPath = argv['output'] as string | undefined;
       exitCode = await screenshot(outPath, opts, sessionName);
+      break;
+    }
+
+    case 'capture-ui': {
+      const outPath = argv['output'] as string | undefined;
+      exitCode = await captureUI(outPath, opts, sessionName);
       break;
     }
 

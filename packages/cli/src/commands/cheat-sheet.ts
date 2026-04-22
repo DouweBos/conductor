@@ -62,7 +62,8 @@ ASSERTIONS
 
 SCREENSHOTS & INSPECTION
   take-screenshot [--output <path>]          Take screenshot (default: ./screenshot-<ts>.png)
-  inspect                                   Print UI hierarchy
+  inspect [--dump]                          Print UI hierarchy (--dump: a11y-enriched JSON)
+  capture-ui [--output <path>]              Screenshot + hierarchy + a11y snapshot bundle (Argus)
 
 FLOW EXECUTION
   run-flow <file> [--device <id>]           Run a Maestro YAML flow file

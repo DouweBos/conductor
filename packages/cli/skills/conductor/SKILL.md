@@ -410,7 +410,53 @@ The hierarchy shows each element's type, text, and accessibility ID (resourceId 
 
 ```bash
 conductor inspect
+conductor inspect --dump            # full hierarchy as JSON with a11y fields
 ```
+
+`--dump` emits a11y-enriched JSON on all platforms. Each node carries
+`accessibilityOrder` (0-based screen-reader nav index, or `null`), `traits` / `role`,
+`nodeId` (stable per-capture path), and platform-specific fields:
+`isAccessibilityElement` + `accessibilityLabel/Hint/Value` on iOS,
+`contentDescription` + `screenReaderFocusable` + `importantForAccessibility` on Android,
+`accessibleName` + `focusable` on web. Existing fields (`label`, `frame`, `identifier`,
+`text`, `resource-id`, `bounds`, ...) are preserved.
+
+---
+
+### `capture-ui`
+
+Bundle everything Argus needs for a single UI inspection: screenshot (PNG base64) +
+full UI hierarchy (with a11y fields) + flat accessibility-order snapshot in one JSON
+document. Intended primarily for programmatic consumers (Argus UI panel); humans
+should prefer `inspect` + `take-screenshot`.
+
+```bash
+conductor capture-ui                            # prints bundle as JSON to stdout
+conductor capture-ui --output /tmp/capture.json # writes bundle to file
+```
+
+Output shape:
+
+```json
+{
+  "version": 1,
+  "capturedAt": "2026-04-22T12:34:56.000Z",
+  "device": { "platform": "ios", "deviceId": "...", "width": 390, "height": 844 },
+  "screenshot": { "kind": "composite", "encoding": "png", "data": "<base64>" },
+  "hierarchy": { /* platform-native hierarchy with a11y fields on each node */ },
+  "a11ySnapshot": [
+    { "nodeId": "0.2.1", "order": 0, "frame": {"x":0,"y":0,"w":80,"h":44},
+      "label": "Sign in", "hint": "", "role": "button", "traits": ["button"],
+      "announcement": "Sign in, button", "value": "",
+      "state": {"enabled": true, "selected": false, "focused": false} }
+  ],
+  "capabilities": { "perViewPixels": false, "depthData": false }
+}
+```
+
+`nodeId` is a stable per-capture path (dot-joined child indices) so Argus can
+correlate flat snapshot entries back to hierarchy nodes. `capabilities.perViewPixels`
+is `false` in v1; per-view pixel rendering is a future phase.
 
 ---
 

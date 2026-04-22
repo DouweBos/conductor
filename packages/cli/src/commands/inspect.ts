@@ -10,6 +10,7 @@ import {
   inspectAndroidToText,
   inspectWebToText,
 } from '../drivers/element-resolver.js';
+import { buildIOSA11y, buildAndroidA11y, buildWebA11y } from '../drivers/a11y.js';
 
 export interface InspectOptions {
   dump?: boolean;
@@ -27,11 +28,18 @@ export async function inspect(
       let raw: string;
       if (driver instanceof IOSDriver) {
         const hierarchy = await driver.viewHierarchy(false);
-        raw = JSON.stringify(hierarchy, null, 2);
+        // Augment each node with a11y fields (traits, accessibilityOrder,
+        // isAccessibilityElement, announcement). All existing fields are preserved.
+        const built = buildIOSA11y(hierarchy.axElement);
+        raw = JSON.stringify({ axElement: built.hierarchy, depth: hierarchy.depth }, null, 2);
       } else if (driver instanceof WebDriver) {
-        raw = JSON.stringify(await driver.viewHierarchy(), null, 2);
+        const vh = await driver.viewHierarchy();
+        const built = buildWebA11y(vh);
+        raw = JSON.stringify({ ...vh, elements: built.hierarchy }, null, 2);
       } else if (driver instanceof AndroidDriver) {
-        raw = await driver.viewHierarchy();
+        const xml = await driver.viewHierarchy();
+        const built = buildAndroidA11y(xml);
+        raw = JSON.stringify(built.hierarchy, null, 2);
       } else {
         throw new Error('Unknown driver type');
       }
