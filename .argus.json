@@ -1,0 +1,27 @@
+{
+  "setup": {
+    "copy": [
+      ".claude",
+      "node_modules"
+    ],
+    "symlink": [],
+    "commands": [
+      "pnpm install"
+    ]
+  },
+  "terminals": [
+    {
+      "name": "Shell",
+      "dir": "."
+    }
+  ],
+  "run": [
+    {
+      "title": "Test",
+      "command": "pnpm run test",
+      "restartOnRerun": false
+    }
+  ],
+  "workspace_env": [],
+  "protected_branches": []
+}
