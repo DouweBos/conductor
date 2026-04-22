@@ -55,3 +55,29 @@ jobs:
       - name: Publish to npm
         working-directory: packages/cli
         run: npm publish --provenance --access public
+
+      - name: Package drivers tarball
+        run: make package-drivers-tarball
+
+      - name: Extract release notes
+        run: |
+          # Pull the top section of the CLI package CHANGELOG.md (everything
+          # between the first '## ' heading and the next one) into release-notes.md.
+          awk '
+            /^## / { if (found) exit; found=1; next }
+            found { print }
+          ' packages/cli/CHANGELOG.md > release-notes.md || true
+          if [ ! -s release-notes.md ]; then
+            VERSION=$(node -p "require('./packages/cli/package.json').version")
+            echo "Release v${VERSION}" > release-notes.md
+          fi
+
+      - name: Create GitHub Release and upload drivers tarball
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./packages/cli/package.json').version")
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --notes-file release-notes.md \
+            dist-drivers/drivers.tar.gz

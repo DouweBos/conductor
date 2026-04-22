@@ -1,4 +1,6 @@
-.PHONY: build build-cli build-ios-driver build-tvos-driver build-android-driver package-cli
+.PHONY: build build-cli build-ios-driver build-tvos-driver build-android-driver package-cli package-drivers-tarball
+
+DRIVERS_TARBALL_DIR = dist-drivers
 
 ANDROID_OUT    = packages/android-driver/conductor-android/build/outputs/apk
 CLI_DRIVERS    = packages/cli/drivers
@@ -43,3 +45,7 @@ package-cli: build-ios-driver build-tvos-driver build-android-driver
 	cd $(TVOS_BUILD_PRODUCTS) && zip -qr $(CURDIR)/$(CLI_DRIVERS)/tvos/conductor-driver-tvosUITests-Runner.zip conductor-driver-tvosUITests-Runner.app
 	cp $$(find $(TVOS_DERIVED)/Build/Products -name "*.xctestrun" | head -1) \
 		$(CLI_DRIVERS)/tvos/conductor-driver-tvos-config.xctestrun
+
+package-drivers-tarball:
+	mkdir -p $(DRIVERS_TARBALL_DIR)
+	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios tvos

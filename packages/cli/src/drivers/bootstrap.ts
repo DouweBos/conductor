@@ -8,9 +8,10 @@
  * Driver binaries are bundled inside the npm package under drivers/android/ and
  * drivers/ios/ — no separate Conductor/JVM installation required.
  */
-import { spawn } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import crypto from 'crypto';
 import http from 'http';
+import https from 'https';
 import net from 'net';
 import os from 'os';
 import fs from 'fs';
@@ -151,30 +152,188 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
   });
 }
 
-// ── Bundled driver paths ───────────────────────────────────────────────────────
+// ── Driver paths (bundled dev fallback + runtime download cache) ──────────────
 
 /**
- * Root of the bundled drivers directory (packages/cli/drivers/).
- *
  * Walk up from __dirname to find the package root (the directory containing
- * package.json). This handles both the normal build (dist/drivers/bootstrap.js)
- * and the test build (dist-tests/src/drivers/bootstrap.js) where __dirname has
- * an extra src/ level, making a fixed relative path incorrect.
+ * package.json). Handles both the normal build (dist/drivers/bootstrap.js)
+ * and the test build (dist-tests/src/drivers/bootstrap.js) where __dirname
+ * has an extra src/ level.
  */
-function findBundledDriversDir(): string {
+function findPackageRoot(): string {
   let dir = __dirname;
   while (true) {
     if (fs.existsSync(path.join(dir, 'package.json'))) {
-      return path.join(dir, 'drivers');
+      return dir;
     }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  // Fallback to original relative path
-  return path.join(__dirname, '..', '..', 'drivers');
+  return path.join(__dirname, '..', '..');
 }
-const BUNDLED_DRIVERS_DIR = findBundledDriversDir();
+
+const DRIVERS_CACHE_ROOT = path.join(os.homedir(), '.conductor', 'drivers');
+const DRIVERS_DOWNLOAD_BASE = 'https://github.com/DouweBos/conductor/releases/download';
+const DRIVERS_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (download can be slow)
+const DRIVERS_LOCK_POLL_MS = 500;
+
+let _driversDirPromise: Promise<string> | null = null;
+
+/**
+ * Resolve the directory containing the platform driver artifacts
+ * (`<dir>/{android,ios,tvos}/...`).
+ *
+ * Lookup order:
+ *   1. Legacy bundled drivers at `<pkg-root>/drivers/` — populated by
+ *      `make build` for local development.
+ *   2. Runtime cache at `~/.conductor/drivers/<version>/` — downloaded
+ *      on first use from the matching GitHub Release.
+ */
+async function getDriversDir(): Promise<string> {
+  if (_driversDirPromise) return _driversDirPromise;
+  _driversDirPromise = (async () => {
+    const pkgRoot = findPackageRoot();
+    const legacyDir = path.join(pkgRoot, 'drivers');
+    if (fs.existsSync(legacyDir)) return legacyDir;
+    return await ensureDriversCache(pkgRoot);
+  })().catch((err) => {
+    _driversDirPromise = null;
+    throw err;
+  });
+  return _driversDirPromise;
+}
+
+async function ensureDriversCache(pkgRoot: string): Promise<string> {
+  const pkgJsonPath = path.join(pkgRoot, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8')) as { version: string };
+  const version = pkg.version;
+
+  const cacheDir = path.join(DRIVERS_CACHE_ROOT, version);
+  const completeMarker = path.join(cacheDir, '.complete');
+  if (fs.existsSync(completeMarker)) return cacheDir;
+
+  fs.mkdirSync(DRIVERS_CACHE_ROOT, { recursive: true });
+
+  const lockFile = path.join(DRIVERS_CACHE_ROOT, `${version}.lock`);
+  await acquireDriversLock(lockFile);
+  try {
+    // Re-check after acquiring lock — another process may have finished.
+    if (fs.existsSync(completeMarker)) return cacheDir;
+
+    const tmpDir = path.join(DRIVERS_CACHE_ROOT, `.tmp-${version}-${process.pid}-${Date.now()}`);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const tarball = path.join(tmpDir, 'drivers.tar.gz');
+    const url = `${DRIVERS_DOWNLOAD_BASE}/v${version}/drivers.tar.gz`;
+    log(`Downloading conductor drivers v${version} from ${url}...`);
+    try {
+      await downloadToFile(url, tarball);
+      execFileSync('tar', ['-xzf', tarball, '-C', tmpDir], { stdio: 'ignore' });
+      fs.unlinkSync(tarball);
+
+      if (fs.existsSync(cacheDir)) {
+        fs.rmSync(cacheDir, { recursive: true, force: true });
+      }
+      fs.renameSync(tmpDir, cacheDir);
+      fs.writeFileSync(completeMarker, version);
+      log(`Conductor drivers v${version} ready at ${cacheDir}`);
+      pruneOldDriverCaches(version);
+      return cacheDir;
+    } catch (err) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      throw new Error(
+        `Failed to download conductor drivers v${version} from ${url}: ${(err as Error).message}`
+      );
+    }
+  } finally {
+    try {
+      fs.unlinkSync(lockFile);
+    } catch {
+      /* ok */
+    }
+  }
+}
+
+/**
+ * Remove cached driver versions other than the current one. Old CLI builds
+ * would just re-download on demand, so there's no reason to keep them.
+ * Errors are swallowed — pruning is best-effort and must never block startup.
+ */
+function pruneOldDriverCaches(currentVersion: string): void {
+  try {
+    for (const entry of fs.readdirSync(DRIVERS_CACHE_ROOT, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === currentVersion) continue;
+      if (entry.name.startsWith('.tmp-')) continue; // active concurrent extraction
+      const stale = path.join(DRIVERS_CACHE_ROOT, entry.name);
+      try {
+        fs.rmSync(stale, { recursive: true, force: true });
+        log(`Pruned stale driver cache ${stale}`);
+      } catch {
+        /* ok — another process may be using it */
+      }
+    }
+  } catch {
+    /* ok */
+  }
+}
+
+async function acquireDriversLock(lockFile: string): Promise<void> {
+  const deadline = Date.now() + DRIVERS_LOCK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const fd = fs.openSync(lockFile, 'wx');
+      fs.closeSync(fd);
+      return;
+    } catch {
+      await sleep(DRIVERS_LOCK_POLL_MS);
+    }
+  }
+  throw new Error(`Could not acquire drivers cache lock (${lockFile})`);
+}
+
+function downloadToFile(url: string, dest: string, maxRedirects = 5): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const fetch = (u: string, remaining: number) => {
+      const req = https.get(u, (res) => {
+        const status = res.statusCode ?? 0;
+        if (
+          (status === 301 ||
+            status === 302 ||
+            status === 303 ||
+            status === 307 ||
+            status === 308) &&
+          res.headers.location
+        ) {
+          res.resume();
+          if (remaining <= 0) {
+            reject(new Error(`Too many redirects fetching ${url}`));
+            return;
+          }
+          const next = new URL(res.headers.location, u).toString();
+          fetch(next, remaining - 1);
+          return;
+        }
+        if (status !== 200) {
+          res.resume();
+          reject(new Error(`HTTP ${status} for ${u}`));
+          return;
+        }
+        const file = fs.createWriteStream(dest);
+        res.pipe(file);
+        file.on('finish', () => file.close((err) => (err ? reject(err) : resolve())));
+        file.on('error', (err) => {
+          fs.rmSync(dest, { force: true });
+          reject(err);
+        });
+      });
+      req.on('error', reject);
+    };
+    fetch(url, maxRedirects);
+  });
+}
 
 /**
  * Install the Conductor Android driver APKs on the device.
@@ -183,12 +342,13 @@ const BUNDLED_DRIVERS_DIR = findBundledDriversDir();
 export async function installDriver(deviceId: string): Promise<void> {
   log(`installDriver: installing Android driver on ${deviceId}`);
 
-  const appApk = path.join(BUNDLED_DRIVERS_DIR, 'android', 'conductor-app.apk');
-  const serverApk = path.join(BUNDLED_DRIVERS_DIR, 'android', 'conductor-server.apk');
+  const driversDir = await getDriversDir();
+  const appApk = path.join(driversDir, 'android', 'conductor-app.apk');
+  const serverApk = path.join(driversDir, 'android', 'conductor-server.apk');
 
   if (!fs.existsSync(appApk) || !fs.existsSync(serverApk)) {
     throw new Error(
-      `Conductor driver APKs not found at ${path.join(BUNDLED_DRIVERS_DIR, 'android')}.\n` +
+      `Conductor driver APKs not found at ${path.join(driversDir, 'android')}.\n` +
         `Run 'make package-cli' from the repo root to build and bundle the drivers.`
     );
   }
@@ -214,17 +374,10 @@ const IOS_DRIVER_CACHE = path.join(os.homedir(), '.conductor', 'ios-driver');
  * dir. Re-extracts only when the bundled xctestrun has changed (tracked by mtime).
  */
 async function setupIOSDriverCache(): Promise<void> {
-  const bundledXctestrun = path.join(
-    BUNDLED_DRIVERS_DIR,
-    'ios',
-    'conductor-driver-ios-config.xctestrun'
-  );
-  const bundledDriverZip = path.join(BUNDLED_DRIVERS_DIR, 'ios', 'conductor-driver-ios.zip');
-  const bundledRunnerZip = path.join(
-    BUNDLED_DRIVERS_DIR,
-    'ios',
-    'conductor-driver-iosUITests-Runner.zip'
-  );
+  const driversDir = await getDriversDir();
+  const bundledXctestrun = path.join(driversDir, 'ios', 'conductor-driver-ios-config.xctestrun');
+  const bundledDriverZip = path.join(driversDir, 'ios', 'conductor-driver-ios.zip');
+  const bundledRunnerZip = path.join(driversDir, 'ios', 'conductor-driver-iosUITests-Runner.zip');
 
   if (
     !fs.existsSync(bundledXctestrun) ||
@@ -232,7 +385,7 @@ async function setupIOSDriverCache(): Promise<void> {
     !fs.existsSync(bundledRunnerZip)
   ) {
     throw new Error(
-      `Conductor iOS driver files not found at ${path.join(BUNDLED_DRIVERS_DIR, 'ios')}.\n` +
+      `Conductor iOS driver files not found at ${path.join(driversDir, 'ios')}.\n` +
         `Run 'make package-cli' from the repo root to build and bundle the drivers.`
     );
   }
@@ -379,17 +532,10 @@ const TVOS_DRIVER_CACHE = path.join(os.homedir(), '.conductor', 'tvos-driver');
  * dir. Re-extracts only when the bundled xctestrun has changed (tracked by mtime).
  */
 export async function setupTvOSDriverCache(): Promise<void> {
-  const bundledXctestrun = path.join(
-    BUNDLED_DRIVERS_DIR,
-    'tvos',
-    'conductor-driver-tvos-config.xctestrun'
-  );
-  const bundledDriverZip = path.join(BUNDLED_DRIVERS_DIR, 'tvos', 'conductor-driver-tvos.zip');
-  const bundledRunnerZip = path.join(
-    BUNDLED_DRIVERS_DIR,
-    'tvos',
-    'conductor-driver-tvosUITests-Runner.zip'
-  );
+  const driversDir = await getDriversDir();
+  const bundledXctestrun = path.join(driversDir, 'tvos', 'conductor-driver-tvos-config.xctestrun');
+  const bundledDriverZip = path.join(driversDir, 'tvos', 'conductor-driver-tvos.zip');
+  const bundledRunnerZip = path.join(driversDir, 'tvos', 'conductor-driver-tvosUITests-Runner.zip');
 
   if (
     !fs.existsSync(bundledXctestrun) ||
@@ -397,7 +543,7 @@ export async function setupTvOSDriverCache(): Promise<void> {
     !fs.existsSync(bundledRunnerZip)
   ) {
     throw new Error(
-      `Conductor tvOS driver files not found at ${path.join(BUNDLED_DRIVERS_DIR, 'tvos')}.\n` +
+      `Conductor tvOS driver files not found at ${path.join(driversDir, 'tvos')}.\n` +
         `Run 'make package-cli' from the repo root to build and bundle the drivers.`
     );
   }
