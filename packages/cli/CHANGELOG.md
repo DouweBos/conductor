@@ -1,5 +1,11 @@
 # @houwert/conductor
 
+## 0.11.0
+
+### Minor Changes
+
+- 10dd2a6: Add capture-ui command and a11y fields to inspect
+
 ## 0.10.0
 
 ### Minor Changes
