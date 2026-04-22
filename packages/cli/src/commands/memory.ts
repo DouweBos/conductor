@@ -373,6 +373,77 @@ async function collectIOS(
   return report;
 }
 
+// ── Web (Playwright via CDP) ──────────────────────────────────────────────────
+
+async function collectWeb(deviceId: string, sessionName: string): Promise<MemoryReport> {
+  const report: MemoryReport = { platform: 'web', deviceId, notes: [] };
+  let driver: WebDriver;
+  try {
+    const d = await getDriver(sessionName);
+    if (!(d instanceof WebDriver)) {
+      report.notes!.push('Expected web driver, got something else.');
+      return report;
+    }
+    driver = d;
+  } catch (err) {
+    report.notes!.push(
+      `Could not attach to web driver: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return report;
+  }
+
+  const data = await driver.memory().catch((err: Error) => {
+    report.notes!.push(`Performance.getMetrics failed: ${err.message}`);
+    return null;
+  });
+  if (!data) {
+    if (report.notes!.length === 0) delete report.notes;
+    return report;
+  }
+
+  report.appId = data.url;
+  const m = data.metrics;
+  const pm = data.pageMemory;
+
+  report.app = {
+    // Heap totals — prefer page-context performance.memory (Chromium) over
+    // CDP's JSHeapUsedSize (which can lag). Both are JS heap only.
+    nativeHeapBytes: pm?.usedJSHeapSize ?? m['JSHeapUsedSize'],
+    codeBytes: m['JSHeapTotalSize'] ? m['JSHeapTotalSize'] - (m['JSHeapUsedSize'] ?? 0) : undefined,
+    // Roll the raw CDP metrics into `regions` so they're inspectable verbatim.
+    regions: { ...m },
+  };
+  if (pm) {
+    report.app.regions = {
+      ...report.app.regions,
+      'JS Heap Used': pm.usedJSHeapSize,
+      'JS Heap Total': pm.totalJSHeapSize,
+      'JS Heap Limit': pm.jsHeapSizeLimit,
+    };
+  }
+
+  // Object counts — direct CDP equivalents of Android's "Views/Activities/Binders".
+  const objectKeys = [
+    'Nodes',
+    'Documents',
+    'Frames',
+    'JSEventListeners',
+    'LayoutCount',
+    'RecalcStyleCount',
+  ];
+  const objects: Record<string, number> = {};
+  for (const k of objectKeys) {
+    if (m[k] !== undefined) objects[k] = m[k];
+  }
+  if (Object.keys(objects).length > 0) report.objects = objects;
+
+  report.notes!.push(
+    'Web memory is per-page (Performance.getMetrics + performance.memory). Run-wide RSS for the browser process is not exposed via CDP.'
+  );
+  if (report.notes!.length === 0) delete report.notes;
+  return report;
+}
+
 // ── Formatting ────────────────────────────────────────────────────────────────
 
 function fmtBytes(n: number | undefined): string {
@@ -471,21 +542,16 @@ export async function memory(
 
   const platform = await detectPlatform(deviceId);
 
-  if (platform === 'web') {
-    printError(
-      'memory is not supported on web. Use browser devtools (Performance / Memory tab).',
-      opts
-    );
-    return 1;
-  }
-
-  const appId = await resolveAppId(appIdArg, sessionName);
-
   let report: MemoryReport;
-  if (platform === 'android') {
-    report = await collectAndroid(deviceId, appId);
+  if (platform === 'web') {
+    report = await collectWeb(deviceId, sessionName);
   } else {
-    report = await collectIOS(deviceId, platform, appId);
+    const appId = await resolveAppId(appIdArg, sessionName);
+    if (platform === 'android') {
+      report = await collectAndroid(deviceId, appId);
+    } else {
+      report = await collectIOS(deviceId, platform, appId);
+    }
   }
 
   if (opts.json) {

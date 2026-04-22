@@ -946,6 +946,44 @@ async function handleRequest(
         return;
       }
 
+      case '/memory': {
+        const p = await getPage(dlog);
+        const session = await p.context().newCDPSession(p);
+        try {
+          await session.send('Performance.enable').catch(() => {});
+          const perf = (await session.send('Performance.getMetrics')) as {
+            metrics: Array<{ name: string; value: number }>;
+          };
+          const metricsMap: Record<string, number> = {};
+          for (const m of perf.metrics) metricsMap[m.name] = m.value;
+          // Chrome-only: performance.memory in the page context.
+          const pageMemory = await p
+            .evaluate(() => {
+              const pm = (
+                performance as unknown as {
+                  memory?: {
+                    usedJSHeapSize: number;
+                    totalJSHeapSize: number;
+                    jsHeapSizeLimit: number;
+                  };
+                }
+              ).memory;
+              return pm
+                ? {
+                    usedJSHeapSize: pm.usedJSHeapSize,
+                    totalJSHeapSize: pm.totalJSHeapSize,
+                    jsHeapSizeLimit: pm.jsHeapSizeLimit,
+                  }
+                : null;
+            })
+            .catch(() => null);
+          jsonResponse(res, { metrics: metricsMap, pageMemory, url: p.url() });
+        } finally {
+          await session.detach().catch(() => {});
+        }
+        return;
+      }
+
       case '/consoleLogs': {
         const since = (parsedUrl.query['since'] as string) ?? '';
         const entries = since
