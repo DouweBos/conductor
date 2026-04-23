@@ -66,7 +66,140 @@ struct ViewHierarchyHandler: HTTPHandler {
         }
         #endif
 
-        return AXElement(children: [appHierarchy, AXElement(children: statusBars), safariWebViewHierarchy].compactMap { $0 })
+        // In windowed modes (iPadOS Stage Manager, Slide Over) the foreground
+        // app's snapshot hierarchy reports frames in window-local coordinates
+        // (root at 0,0) while the screenshot alongside is full-device.
+        // `XCUIApplication.frame` and `attributesForElement:` both resolve
+        // through the same window-local path. SpringBoard, however, is always
+        // fullscreen, so its own snapshot contains the windowed app as a
+        // descendant element whose frame IS in screen space. Match that
+        // descendant by its dimensions (unique enough per window) and take
+        // its origin.
+        let appFrame = appHierarchy.frame
+        let appWidth = appFrame["Width"] ?? 0
+        let appHeight = appFrame["Height"] ?? 0
+        var windowOriginX: Double = 0
+        var windowOriginY: Double = 0
+        if appWidth > 0, appHeight > 0 {
+            if let origin = findWindowOriginInSpringBoard(width: appWidth, height: appHeight) {
+                windowOriginX = origin.x
+                windowOriginY = origin.y
+            }
+        }
+        NSLog("Resolved windowOrigin=(\(windowOriginX),\(windowOriginY)) for appSize=(\(appWidth),\(appHeight))")
+
+        let appHierarchyForResponse: AXElement
+        if windowOriginX != 0 || windowOriginY != 0 {
+            let offset = WindowOffset(offsetX: windowOriginX, offsetY: windowOriginY)
+            // The app's root reports its window-local size, which becomes the
+            // window's screen-space bounds once translated. Elements whose
+            // translated frame falls entirely outside that bound are clipped
+            // by the window compositor and not interactable, so drop them —
+            // this keeps `tap-on` honest and stops consumers from drawing
+            // outlines on bits of the app that live off-window.
+            let windowRect = CGRect(x: windowOriginX, y: windowOriginY,
+                                    width: appWidth, height: appHeight)
+            NSLog("Translating windowed app frames by \(offset); clipping to \(windowRect)")
+            appHierarchyForResponse = translateFrames(appHierarchy, offset: offset, clipTo: windowRect)
+        } else {
+            appHierarchyForResponse = appHierarchy
+        }
+
+        return AXElement(children: [appHierarchyForResponse, AXElement(children: statusBars), safariWebViewHierarchy].compactMap { $0 })
+    }
+
+    /// Walks the SpringBoard (shell) snapshot hierarchy looking for a
+    /// descendant element whose size matches the foreground app's window
+    /// size. Returns the screen-space origin of that descendant.
+    ///
+    /// SpringBoard is always fullscreen, so every descendant's frame is in
+    /// full-device screen coordinates — this is what we need to translate
+    /// the foreground app's window-local snapshot frames back into screen
+    /// space for iPadOS Stage Manager / Slide Over.
+    private func findWindowOriginInSpringBoard(width: Double, height: Double) -> CGPoint? {
+        do {
+            let sb = try elementHierarchy(xcuiElement: homescreenApplication)
+            let tolerance = 0.5
+            var found: CGPoint?
+            func walk(_ el: AXElement) {
+                if found != nil { return }
+                let w = el.frame["Width"] ?? 0
+                let h = el.frame["Height"] ?? 0
+                if abs(w - width) < tolerance, abs(h - height) < tolerance {
+                    let x = el.frame["X"] ?? 0
+                    let y = el.frame["Y"] ?? 0
+                    // Treat (0,0) as "no useful offset" — same as fullscreen.
+                    if x != 0 || y != 0 {
+                        found = CGPoint(x: x, y: y)
+                        return
+                    }
+                }
+                for c in el.children ?? [] {
+                    walk(c)
+                    if found != nil { return }
+                }
+            }
+            walk(sb)
+            return found
+        } catch {
+            NSLog("findWindowOriginInSpringBoard: snapshot failed \(error)")
+            return nil
+        }
+    }
+
+    /// Recursively add `offset` to every element's frame origin, dropping
+    /// any subtree whose translated frame lies entirely outside `clipTo`.
+    /// Used to lift window-local snapshot frames into full-device screen
+    /// space when the foreground app runs windowed, while trimming elements
+    /// the window compositor clips (scrolled-off list items, sibling
+    /// containers the app keeps measured but not visible, etc).
+    func translateFrames(_ element: AXElement, offset: WindowOffset, clipTo windowRect: CGRect) -> AXElement {
+        let tx = (element.frame["X"] ?? 0) + offset.offsetX
+        let ty = (element.frame["Y"] ?? 0) + offset.offsetY
+        let tw = element.frame["Width"] ?? 0
+        let th = element.frame["Height"] ?? 0
+        let translatedFrame: AXFrame = [
+            "X": tx,
+            "Y": ty,
+            "Width": tw,
+            "Height": th,
+        ]
+        let translatedChildren = (element.children ?? [])
+            .compactMap { child -> AXElement? in
+                let cx = (child.frame["X"] ?? 0) + offset.offsetX
+                let cy = (child.frame["Y"] ?? 0) + offset.offsetY
+                let cw = child.frame["Width"] ?? 0
+                let ch = child.frame["Height"] ?? 0
+                // Preserve zero-size elements (invisible layout anchors can
+                // still matter for hit-testing siblings) — only drop
+                // explicitly-sized rects whose screen-space bounds miss the
+                // window entirely.
+                if cw > 0, ch > 0 {
+                    let childRect = CGRect(x: cx, y: cy, width: cw, height: ch)
+                    if !windowRect.intersects(childRect) {
+                        return nil
+                    }
+                }
+                return translateFrames(child, offset: offset, clipTo: windowRect)
+            }
+
+        return AXElement(
+            identifier: element.identifier,
+            frame: translatedFrame,
+            value: element.value,
+            title: element.title,
+            label: element.label,
+            elementType: element.elementType,
+            enabled: element.enabled,
+            horizontalSizeClass: element.horizontalSizeClass,
+            verticalSizeClass: element.verticalSizeClass,
+            placeholderValue: element.placeholderValue,
+            selected: element.selected,
+            hasFocus: element.hasFocus,
+            displayID: element.displayID,
+            windowContextID: element.windowContextID,
+            children: translatedChildren
+        )
     }
 
     func getHierarchyWithFallback(_ element: XCUIElement) throws -> AXElement {

@@ -8,6 +8,11 @@ struct ViewHierarchy : Codable {
     let depth: Int
 }
 
+struct WindowOffset: Codable {
+    let offsetX: Double
+    let offsetY: Double
+}
+
 // MARK: - XCTest-specific AXElement Extension
 
 extension AXElement {
