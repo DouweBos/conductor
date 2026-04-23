@@ -38,4 +38,24 @@
     return [self appsInfoWithAxElements:[AXClientProxy.sharedClient activeApplications]];
 }
 
++ (XCUIApplication *)conductor_applicationWithBundleID:(NSString *)bundleID processID:(pid_t)pid
+{
+    // iOS 26 removed +[XCUIApplication applicationWithPID:]. We approximate the
+    // same binding by constructing via bundle identifier and then overriding the
+    // processID via the private setter. That keeps .snapshot() / .query targeted
+    // at the PID we discovered via AXClientProxy activeApplications, bypassing
+    // scene-based resolution (which in iPadOS 26 windowed / Stage Manager modes
+    // can pick the wrong process, e.g. DockFolderViewService).
+    XCUIApplication *app = [[XCUIApplication alloc] initWithBundleIdentifier:bundleID];
+    SEL setPID = NSSelectorFromString(@"setProcessID:");
+    if ([app respondsToSelector:setPID]) {
+        IMP imp = [app methodForSelector:setPID];
+        void (*fn)(id, SEL, pid_t) = (void *)imp;
+        fn(app, setPID, pid);
+    } else {
+        NSLog(@"[conductor] -setProcessID: not available on XCUIApplication; PID binding skipped");
+    }
+    return app;
+}
+
 @end
