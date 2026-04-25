@@ -75,3 +75,26 @@ jobs:
             --title "v${VERSION}" \
             --notes-file release-notes.md \
             dist-drivers/drivers.tar.gz
+
+      - name: Notify houwert.dev to sync changelogs
+        # Fires a repository_dispatch on DouweBos/houwert.dev so its
+        # `Sync changelogs` workflow regenerates src/data/changelogs.generated.json
+        # and commits it to main. That commit is what triggers the
+        # Cloudflare Pages rebuild — keeps the repo and the deployed site
+        # in lockstep. WEBSITE_DISPATCH_TOKEN is a fine-grained PAT with
+        # `Actions: Read and write` on DouweBos/houwert.dev. Skipped silently
+        # if not configured.
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "WEBSITE_DISPATCH_TOKEN not set — skipping website notify"
+            exit 0
+          fi
+          VERSION=$(node -p "require('./packages/cli/package.json').version")
+          gh api repos/DouweBos/houwert.dev/dispatches \
+            --method POST \
+            -f event_type=upstream-release \
+            -F "client_payload[product]=conductor" \
+            -F "client_payload[version]=${VERSION}"
+          echo "Notified houwert.dev of conductor v${VERSION}"
