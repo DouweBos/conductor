@@ -1,5 +1,11 @@
 # @houwert/conductor
 
+## 0.13.1
+
+### Patch Changes
+
+- 87d1d73: Fix conductor memory using stale session appId
+
 ## 0.13.0
 
 ### Minor Changes
