@@ -1,8 +1,0 @@
-skills:
-  - name: conductor
-    path: conductor/SKILL.md
-    description: "Token-efficient CLI for mobile UI testing, designed for AI agents"
-    category: service
-    version: 0.12.3
-    requires:
-      bins: [conductor]

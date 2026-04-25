@@ -38,34 +38,9 @@ One agent writes the feature. Another taps through the app. They talk. It works.
 npm install -g @houwert/conductor
 ```
 
-That's it. The postinstall script registers Conductor as a Claude Code plugin automatically — Claude gains full mobile UI control without any extra steps.
+That's it. Conductor is a pure CLI — no Claude Code plugin or skill is registered. Wire it into your agent however you like (a custom `CLAUDE.md`, a project skill, a slash command — it's up to you). Run `conductor --help` for the full command reference, or `conductor <command> --help` for per-command flags.
 
-## 🧠 Claude Skills
-
-The plugin registers itself globally in `~/.claude/plugins/` and ships two skill files:
-
-```
-skills/conductor/
-├── SKILL.md               # Full command reference and agent workflow guide
-└── references/
-    └── flow-syntax.md     # Maestro YAML flow syntax reference
-```
-
-Claude learns every available command, how to coordinate across devices, and how to write and run Maestro YAML flows. See [`skills/conductor/SKILL.md`](./skills/conductor/SKILL.md) for the full reference.
-
-### Install modes
-
-| Command | What it does |
-|---|---|
-| `npm install -g @houwert/conductor` | Registers or updates the global Claude Code plugin (via package postinstall) |
-| `conductor install-plugin` | Re-register or update the global Claude Code plugin (same as postinstall) |
-| `conductor install-plugin --check` | Print whether the global plugin is registered (no changes) |
-| `conductor install-skills` | Copy skills into `.claude/skills/conductor/` in the current project |
-| `conductor install-skills --check` | Print whether local skills are installed (no changes) |
-| `conductor install-web` | Install a Playwright browser for web automation (default: chromium) |
-| `conductor install-web --check` | Print which Playwright browsers are installed (no changes) |
-
-### 📱 What Claude can do
+### 📱 What the CLI can do
 
 | Capability | Commands |
 |---|---|
@@ -76,6 +51,7 @@ Claude learns every available command, how to coordinate across devices, and how
 | Navigation | `open-link`, `back` |
 | Flows | `run-flow`, `run-flow-inline`, `run-parallel` |
 | Devices | `start-device`, `list-devices`, `set-location`, `set-orientation` |
+| Web setup | `install-web [browser]` (installs a Playwright browser; `--check` prints status) |
 
 ## 🔨 Building locally
 
@@ -113,7 +89,6 @@ make build-cli          # CLI TypeScript only
 make build-ios-driver   # iOS XCTest driver
 make build-android-driver # Android instrumentation driver
 make package-cli        # Bundle drivers into CLI package
-make copy-skills        # Copy skills/ into packages/cli/skills/ (build artifact)
 ```
 
 ## 🗂️ Repository structure

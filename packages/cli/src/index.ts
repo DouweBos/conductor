@@ -24,7 +24,6 @@ import { runFlow, HELP as runFlowHelp } from './commands/run-flow.js';
 import { runFlowInline, HELP as runFlowInlineHelp } from './commands/run-flow-inline.js';
 import { pressKey, HELP as pressKeyHelp } from './commands/press-key.js';
 import { sessionCmd, HELP as sessionHelp } from './commands/session.js';
-import { cheatSheet, HELP as cheatSheetHelp } from './commands/cheat-sheet.js';
 import {
   daemonStart,
   daemonStop,
@@ -33,14 +32,7 @@ import {
   HELP_DAEMON_STOP as daemonStopHelp,
   HELP_DAEMON_STATUS as daemonStatusHelp,
 } from './commands/daemon.js';
-import {
-  installPluginCli,
-  installSkillsCli,
-  installWebCli,
-  HELP_INSTALL_PLUGIN,
-  HELP_INSTALL_SKILLS,
-  HELP_INSTALL_WEB,
-} from './commands/install.js';
+import { installWebCli, HELP_INSTALL_WEB } from './commands/install.js';
 import { devicePool, HELP as devicePoolHelp } from './commands/device-pool.js';
 import { runParallel, HELP as runParallelHelp } from './commands/run-parallel.js';
 import { foregroundApp, HELP as foregroundAppHelp } from './commands/foreground-app.js';
@@ -104,9 +96,6 @@ const COMMAND_HELP: Record<string, string> = {
   'run-flow': runFlowHelp,
   'run-flow-inline': runFlowInlineHelp,
   session: sessionHelp,
-  'cheat-sheet': cheatSheetHelp,
-  'install-plugin': HELP_INSTALL_PLUGIN,
-  'install-skills': HELP_INSTALL_SKILLS,
   'install-web': HELP_INSTALL_WEB,
   'daemon-start': daemonStartHelp,
   'daemon-stop': daemonStopHelp,
@@ -220,9 +209,6 @@ async function main(): Promise<void> {
     'start-device',
     'stop-device',
     'delete-device',
-    'cheat-sheet',
-    'install-plugin',
-    'install-skills',
     'install-web',
     'copy-app',
     'device-pool',
@@ -578,18 +564,6 @@ async function main(): Promise<void> {
         opts,
         sessionName
       );
-      break;
-
-    case 'cheat-sheet':
-      exitCode = await cheatSheet();
-      break;
-
-    case 'install-plugin':
-      exitCode = await installPluginCli(opts, argv['check'] as boolean);
-      break;
-
-    case 'install-skills':
-      exitCode = await installSkillsCli(opts, argv['check'] as boolean);
       break;
 
     case 'install-web':

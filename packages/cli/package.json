@@ -17,17 +17,14 @@
   "main": "./dist/index.js",
   "files": [
     "dist/",
-    "skills/",
-    "proto/",
-    ".claude-plugin/"
+    "proto/"
   ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "tsc -p tests/tsconfig.json && node dist-tests/tests/all-tests.js",
     "lint": "eslint src && prettier --check src",
-    "lint:fix": "eslint src --fix && prettier --write src",
-    "postinstall": "node dist/postinstall.js"
+    "lint:fix": "eslint src --fix && prettier --write src"
   },
   "packageManager": "pnpm@9.0.0",
   "dependencies": {
