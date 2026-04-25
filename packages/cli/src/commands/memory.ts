@@ -2,6 +2,7 @@ export const HELP = `  memory [<appId>]                    Show device + app mem
 
 import { spawnCommand, detectFirstDevice, getDriver } from '../runner.js';
 import { getSession } from '../session.js';
+import { getInstalledAppIds } from './foreground-app.js';
 import { printError, printData, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 import { IOSDriver } from '../drivers/ios.js';
@@ -63,17 +64,21 @@ async function resolveDeviceId(sessionName: string): Promise<string | undefined>
 
 async function resolveAppId(
   explicit: string | undefined,
-  sessionName: string
+  sessionName: string,
+  deviceId: string
 ): Promise<string | undefined> {
   if (explicit) return explicit;
-  const session = await getSession(sessionName);
-  if (session.appId) return session.appId;
-  // Fall back to whatever's in the foreground.
+  // No arg: always resolve from the live foreground app, not the session file.
+  // The session's appId reflects the last `launch-app` call, which can be stale
+  // if the user switched apps on the device by other means.
   try {
     const driver = await getDriver(sessionName);
     if (driver instanceof AndroidDriver) return await driver.getForegroundApp();
     if (driver instanceof WebDriver) return await driver.runningApp();
-    if (driver instanceof IOSDriver) return await driver.runningApp([]);
+    if (driver instanceof IOSDriver) {
+      const appIds = await getInstalledAppIds(deviceId);
+      return await driver.runningApp(appIds);
+    }
   } catch {
     /* ignore */
   }
@@ -546,7 +551,7 @@ export async function memory(
   if (platform === 'web') {
     report = await collectWeb(deviceId, sessionName);
   } else {
-    const appId = await resolveAppId(appIdArg, sessionName);
+    const appId = await resolveAppId(appIdArg, sessionName, deviceId);
     if (platform === 'android') {
       report = await collectAndroid(deviceId, appId);
     } else {

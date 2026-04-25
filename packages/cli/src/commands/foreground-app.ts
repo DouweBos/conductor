@@ -11,7 +11,7 @@ async function resolveDeviceId(sessionName: string): Promise<string | undefined>
   return detectFirstDevice();
 }
 
-async function getInstalledAppIds(deviceId: string): Promise<string[]> {
+export async function getInstalledAppIds(deviceId: string): Promise<string[]> {
   const result = await spawnCommand('bash', [
     '-c',
     `xcrun simctl listapps ${deviceId} | plutil -convert json - -o -`,
