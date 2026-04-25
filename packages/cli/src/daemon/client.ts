@@ -215,23 +215,17 @@ export async function findRunningWebSession(
  * Fetch buffered log entries from the daemon's /logs HTTP endpoint.
  * Used by `conductor logs --recent` for snapshot access.
  *
- * Pass `metro` port to opt in to Metro auto-discovery for React Native apps.
- * The daemon will start polling Metro's /json endpoint for a debugger target
- * matching this device and merge JS console entries into the log buffer.
+ * The daemon always auto-discovers Metro for the device in this session and
+ * merges JS console entries (source='metro') alongside platform logs.
  */
 export async function fetchDaemonLogs(
   sessionName: string,
-  opts: { since?: string; level?: string; limit?: number; metro?: number | 'auto' } = {}
+  opts: { since?: string; level?: string; limit?: number } = {}
 ): Promise<LogEntry[]> {
   const params = new URLSearchParams();
   if (opts.since) params.set('since', opts.since);
   if (opts.level) params.set('level', opts.level);
   if (opts.limit) params.set('limit', String(opts.limit));
-  if (opts.metro === 'auto') {
-    params.set('metro', '');
-  } else if (opts.metro) {
-    params.set('metro', String(opts.metro));
-  }
   const qs = params.toString();
   const reqPath = qs ? `/logs?${qs}` : '/logs';
 

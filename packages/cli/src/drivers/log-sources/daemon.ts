@@ -16,12 +16,8 @@ export class DaemonLogSource implements LogSource {
   private since = new Date().toISOString();
   private stopped = false;
   private readonly sockPath: string;
-  private metroSent = false;
 
-  constructor(
-    private readonly sessionName: string,
-    private readonly metroPort?: number | 'auto'
-  ) {
+  constructor(private readonly sessionName: string) {
     this.sockPath = socketPath(sessionName);
   }
 
@@ -68,12 +64,7 @@ export class DaemonLogSource implements LogSource {
   }
 
   private fetchLogs(): Promise<LogEntry[]> {
-    // Include metro param on the first poll to trigger discovery in the daemon
-    let reqPath = `/logs?since=${encodeURIComponent(this.since)}`;
-    if (this.metroPort !== undefined && !this.metroSent) {
-      reqPath += this.metroPort === 'auto' ? '&metro' : `&metro=${this.metroPort}`;
-      this.metroSent = true;
-    }
+    const reqPath = `/logs?since=${encodeURIComponent(this.since)}`;
 
     return new Promise((resolve, reject) => {
       const req = http.get(

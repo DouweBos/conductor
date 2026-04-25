@@ -306,6 +306,7 @@ async function main(): Promise<void> {
         chromiumCdpPort: driverPlatform === 'web' ? getCdpPort() : null,
         pageTargetId: driverPlatform === 'web' ? getPageTargetId() : null,
         driverStartError: _driverStartError,
+        metro: logCollector?.getMetroStatus() ?? null,
       });
       return;
     }
@@ -316,17 +317,6 @@ async function main(): Promise<void> {
         return;
       }
       const q = parsed.query;
-
-      // Opt-in Metro discovery: ?metro=8081 uses that port directly,
-      // ?metro (no value) or ?metro=auto triggers auto-discovery.
-      if (q.metro !== undefined) {
-        const metroPort = typeof q.metro === 'string' ? parseInt(q.metro, 10) : NaN;
-        if (metroPort > 0) {
-          logCollector.enableMetro(metroPort);
-        } else {
-          logCollector.enableMetro(); // auto-discover
-        }
-      }
 
       const entries = logCollector.query({
         since: typeof q.since === 'string' ? q.since : undefined,

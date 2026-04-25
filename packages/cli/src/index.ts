@@ -184,7 +184,6 @@ async function main(): Promise<void> {
       'from',
       'to',
       'source',
-      'metro-port',
       'level',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version' },
@@ -229,7 +228,7 @@ async function main(): Promise<void> {
     'device-pool',
     'run-parallel',
     // `logs --list` and `logs --source metro` only query Metro on localhost — no device needed
-    ...(command === 'logs' && (argv['list'] || argv['source'] === 'metro') ? ['logs'] : []),
+    // `logs` always needs a device session — Metro discovery is device-scoped.
     // `daemon-stop --all` stops every daemon — no device needed
     ...(command === 'daemon-stop' && argv['all'] ? ['daemon-stop'] : []),
   ]);
@@ -543,9 +542,6 @@ async function main(): Promise<void> {
       exitCode = await logs(opts, sessionName, {
         source: argv['source'] as string | undefined,
         level: argv['level'] as string | undefined,
-        metro: (argv['metro'] as boolean) || argv['metro-port'] !== undefined,
-        metroPort: argv['metro-port'] !== undefined ? Number(argv['metro-port']) : undefined,
-        target: argv['target'] !== undefined ? Number(argv['target']) : undefined,
         list: argv['list'] as boolean,
         recent: argv['recent'] !== undefined ? Number(argv['recent']) : undefined,
         duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,

@@ -1,10 +1,7 @@
 export const HELP = `  logs [--source <source>] [--level <level>]  Stream app logs (console, Metro, or device)
-    --source <source>               Log source: metro, device, or auto (default: auto)
+    --source <source>               Filter by source: metro, device (default: both)
     --level <level>                 Minimum level: verbose, debug, log, info, warn, error
-    --metro                         Enable Metro logs for React Native apps (auto-discovers port)
-    --metro-port <port>             Override Metro dev server port (skips auto-discovery)
-    --target <n>                    Metro debugger target index (when multiple devices share one Metro)
-    --list                          List available Metro debugger targets and exit
+    --list                          List Metro debugger targets for this device and exit
     --recent <n>                    Return the last N buffered log entries and exit (agent-friendly)
     --duration <seconds>            Stream logs for N seconds, then exit
     --json                          Output as NDJSON (one JSON object per line)`;
@@ -15,7 +12,12 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { LogEntry, LEVEL_SEVERITY } from '../drivers/log-sources/types.js';
-import { MetroLogSource, fetchTargets } from '../drivers/log-sources/metro.js';
+import { fetchTargets } from '../drivers/log-sources/metro.js';
+import {
+  discoverMetroPortForDevice,
+  getDeviceDisplayName,
+  targetsForDevice,
+} from '../drivers/log-sources/metro-discovery.js';
 import { DaemonLogSource } from '../drivers/log-sources/daemon.js';
 import { fetchDaemonLogs } from '../daemon/client.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
@@ -23,9 +25,6 @@ import { detectPlatform } from '../drivers/bootstrap.js';
 export interface LogsOptions {
   source?: string;
   level?: string;
-  metro?: boolean;
-  metroPort?: number;
-  target?: number;
   list?: boolean;
   recent?: number;
   duration?: number;
@@ -55,74 +54,104 @@ function formatEntry(entry: LogEntry, opts: OutputOptions): string {
   return line;
 }
 
+async function resolvePlatformAndDevice(
+  sessionName: string
+): Promise<{ platform: string; deviceId: string } | null> {
+  try {
+    const driver = await getDriver(sessionName);
+    let platform = 'unknown';
+    if (driver instanceof IOSDriver) platform = driver.platform;
+    else if (driver instanceof AndroidDriver) platform = 'android';
+    else if (driver instanceof WebDriver) platform = 'web';
+    else platform = await detectPlatform(sessionName);
+    return { platform, deviceId: sessionName };
+  } catch {
+    return null;
+  }
+}
+
 export async function logs(
   opts: OutputOptions = {},
   sessionName = 'default',
-  { source = 'auto', level, metro, metroPort, target, list, recent, duration }: LogsOptions = {}
+  { source, level, list, recent, duration }: LogsOptions = {}
 ): Promise<number> {
-  // --list: query Metro targets and print them without starting a log stream
+  const sourceFilter = source === 'metro' || source === 'device' ? source : undefined;
+
+  // --list: resolve the device's Metro port deterministically, then print its targets.
   if (list) {
     try {
-      const targets = await fetchTargets(metroPort ?? 8081, 'localhost');
-      const withWs = targets.filter((t) => t.webSocketDebuggerUrl);
-      if (withWs.length === 0) {
-        if (opts.json) {
-          console.log(JSON.stringify({ status: 'ok', targets: [] }));
-        } else {
-          console.log('No Metro debugger targets found. Is the app running?');
+      const ctx = await resolvePlatformAndDevice(sessionName);
+      if (!ctx) {
+        const msg = 'Could not resolve device session for --list';
+        if (opts.json) console.log(JSON.stringify({ status: 'error', message: msg }));
+        else console.error(`✗ logs --list — ${msg}`);
+        return 1;
+      }
+
+      const port = await discoverMetroPortForDevice(ctx.platform, ctx.deviceId);
+      if (port === null) {
+        if (opts.json) console.log(JSON.stringify({ status: 'ok', port: null, targets: [] }));
+        else {
+          console.log(
+            'No Metro connection detected for this device. The daemon will keep trying — ' +
+              'launch the React Native app on this device and retry, or confirm the app is not RN.'
+          );
         }
         return 0;
       }
+
+      const allTargets = await fetchTargets(port, 'localhost');
+      const displayName = await getDeviceDisplayName(ctx.platform, ctx.deviceId);
+      const deviceTargets = displayName ? targetsForDevice(allTargets, displayName) : [];
+
       if (opts.json) {
-        const items = withWs.map((t, i) => ({
-          index: i,
-          title: t.title ?? null,
-          description: t.description ?? null,
-          deviceName: t.deviceName ?? null,
-          deviceId: t.deviceId ?? null,
-          appId: t.appId ?? null,
-          logicalDeviceId: t.reactNative?.logicalDeviceId ?? null,
-        }));
-        console.log(JSON.stringify({ status: 'ok', targets: items }));
+        console.log(
+          JSON.stringify({
+            status: 'ok',
+            port,
+            deviceName: displayName,
+            targets: deviceTargets.map((t, i) => ({
+              index: i,
+              title: t.title ?? null,
+              description: t.description ?? null,
+              deviceName: t.deviceName ?? null,
+              appId: t.appId ?? null,
+              logicalDeviceId: t.reactNative?.logicalDeviceId ?? null,
+              webSocketDebuggerUrl: t.webSocketDebuggerUrl ?? null,
+            })),
+          })
+        );
       } else {
-        console.log('Metro debugger targets:');
-        for (let i = 0; i < withWs.length; i++) {
-          const t = withWs[i];
-          const label = t.title ?? t.deviceName ?? '(unnamed)';
-          const desc = t.description ? `  — ${t.description}` : '';
-          console.log(`  ${i}: ${label}${desc}`);
+        console.log(`Metro on port ${port} (device: ${displayName ?? 'unknown'})`);
+        if (deviceTargets.length === 0) {
+          console.log('  No targets for this device.');
+        } else {
+          for (let i = 0; i < deviceTargets.length; i++) {
+            const t = deviceTargets[i];
+            const desc = t.description ? `  — ${t.description}` : '';
+            console.log(`  ${i}: ${t.title ?? '(unnamed)'}${desc}`);
+          }
         }
       }
       return 0;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (opts.json) {
-        console.log(JSON.stringify({ status: 'error', message: msg }));
-      } else {
-        console.error(`\u2717 logs --list \u2014 ${msg}`);
-      }
+      if (opts.json) console.log(JSON.stringify({ status: 'error', message: msg }));
+      else console.error(`✗ logs --list — ${msg}`);
       return 1;
     }
   }
 
   try {
     // ── Snapshot mode (--recent N) ──────────────────────────────────────────
-    // Single fetch from the daemon's log buffer, print, and exit immediately.
-    // This is the primary agent-friendly mode.
     if (recent !== undefined) {
-      // Ensure daemon is running (starts it if needed)
       await getDriver(sessionName);
 
       const minSeverity = level ? (LEVEL_SEVERITY[level] ?? 0) : 0;
-      // --metro with explicit port → use that port; --metro without port → auto-discover
-      const metroOpt: number | 'auto' | undefined = metro ? (metroPort ?? 'auto') : undefined;
-      const entries = await fetchDaemonLogs(sessionName, {
-        limit: recent,
-        level,
-        metro: metroOpt,
-      });
+      const entries = await fetchDaemonLogs(sessionName, { limit: recent, level });
 
       for (const entry of entries) {
+        if (sourceFilter && entry.source !== sourceFilter) continue;
         const entrySeverity = LEVEL_SEVERITY[entry.level] ?? 0;
         if (entrySeverity < minSeverity) continue;
         console.log(formatEntry(entry, opts));
@@ -130,41 +159,14 @@ export async function logs(
       return 0;
     }
 
-    // ── Determine platform for streaming modes ─────────────────────────────
-    // When source is explicitly 'metro', skip device resolution entirely —
-    // Metro runs on the host, so we don't need a running driver or session.
-    let _platform = 'unknown';
-    if (source !== 'metro') {
-      const driver = await getDriver(sessionName);
-      if (driver instanceof IOSDriver) {
-        _platform = driver.platform;
-      } else if (driver instanceof AndroidDriver) {
-        _platform = 'android';
-      } else if (driver instanceof WebDriver) {
-        _platform = 'web';
-      } else {
-        _platform = await detectPlatform(sessionName);
-      }
-    }
+    // ── Streaming modes ─────────────────────────────────────────────────────
+    // Ensure daemon is running; its log collector auto-discovers Metro.
+    await getDriver(sessionName);
 
     const minSeverity = level ? (LEVEL_SEVERITY[level] ?? 0) : 0;
+    const logSource = new DaemonLogSource(sessionName);
+    await logSource.connect();
 
-    // ── Create log source ──────────────────────────────────────────────────
-    let logSource: MetroLogSource | DaemonLogSource;
-
-    if (source === 'metro') {
-      // Explicit --source metro: connect directly to Metro via CLI
-      logSource = new MetroLogSource(metroPort ?? 8081, 'localhost', target);
-      await logSource.connect();
-    } else {
-      // Device logs via daemon. When --metro is set, pass the metro port
-      // (or 'auto' for auto-discovery) so the daemon finds Metro for this device.
-      const metroOpt: number | 'auto' | undefined = metro ? (metroPort ?? 'auto') : undefined;
-      logSource = new DaemonLogSource(sessionName, metroOpt);
-      await logSource.connect();
-    }
-
-    // Set up graceful shutdown
     const cleanup = (): void => {
       logSource.disconnect();
       process.exit(0);
@@ -173,12 +175,12 @@ export async function logs(
     process.on('SIGTERM', cleanup);
 
     logSource.onEntry((entry: LogEntry) => {
+      if (sourceFilter && entry.source !== sourceFilter) return;
       const entrySeverity = LEVEL_SEVERITY[entry.level] ?? 0;
       if (entrySeverity < minSeverity) return;
       console.log(formatEntry(entry, opts));
     });
 
-    // ── Duration mode (--duration N) ───────────────────────────────────────
     if (duration !== undefined) {
       await new Promise<void>((resolve) => {
         setTimeout(() => {
@@ -189,11 +191,8 @@ export async function logs(
       return 0;
     }
 
-    // ── Streaming mode (default) ───────────────────────────────────────────
-    // Keep the process alive — the log source streams entries via callbacks
-    await new Promise<void>(() => {
-      // Never resolves — exits via SIGINT/SIGTERM
-    });
+    // Streaming — never resolves; exits via SIGINT/SIGTERM
+    await new Promise<void>(() => {});
 
     return 0;
   } catch (err) {
@@ -201,7 +200,7 @@ export async function logs(
     if (opts.json) {
       console.log(JSON.stringify({ status: 'error', message: msg }));
     } else {
-      console.error(`\u2717 logs \u2014 ${msg}`);
+      console.error(`✗ logs — ${msg}`);
     }
     return 1;
   }

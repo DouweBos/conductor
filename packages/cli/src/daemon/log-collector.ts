@@ -6,47 +6,41 @@
  * simctl / adb logcat). For web, polls the co-located web-server's
  * /consoleLogs endpoint.
  *
- * Optionally discovers and connects to a Metro dev server for React Native
- * JS-level console logs. This is opt-in: call enableMetro(port) to start
- * background discovery. Metro entries are merged into the same buffer with
- * source='metro'.
+ * Also deterministically detects whether this device is connected to a Metro
+ * dev server and, if so, connects to it. Metro entries are merged into the
+ * same buffer with source='metro'. Discovery is automatic — callers do not
+ * pass a port.
+ *
+ * iOS/tvOS discovery: locate PIDs running inside the simulator via
+ *   `xcrun simctl spawn <UDID> launchctl list`, then `lsof` each PID for
+ *   ESTABLISHED TCP connections to a Metro port on localhost. The remote
+ *   port is the Metro port for this specific simulator.
+ * Android discovery: `adb -s <serial> reverse --list` for forwarded Metro
+ *   ports — already device-scoped.
+ * Target selection: Metro's /json exposes `deviceName` (e.g. the simulator
+ *   display name, or Android Build.MODEL). We resolve the device's display
+ *   name from its UDID/serial and filter targets to only those matching —
+ *   this disambiguates multiple devices sharing a single Metro instance.
  */
 import http from 'http';
-import { spawn } from 'child_process';
 import { LogEntry, LogSource, LEVEL_SEVERITY } from '../drivers/log-sources/types.js';
 import { IOSLogSource } from '../drivers/log-sources/ios.js';
 import { AndroidLogSource } from '../drivers/log-sources/android.js';
-import { MetroLogSource, fetchTargets, MetroTarget } from '../drivers/log-sources/metro.js';
+import { MetroLogSource, fetchTargets } from '../drivers/log-sources/metro.js';
+import {
+  discoverMetroPortForDevice,
+  getDeviceDisplayName,
+  selectTargetForDevice,
+} from '../drivers/log-sources/metro-discovery.js';
 
 const MAX_BUFFER = 5000;
 const RESTART_DELAY_MS = 2000;
 const WEB_POLL_INTERVAL_MS = 500;
-const METRO_DISCOVERY_INTERVAL_MS = 3000;
-const METRO_AUTO_DISCOVERY_MAX_ATTEMPTS = 10;
-
-/** Known Metro dev server port ranges. */
-const METRO_PORT_RANGES: [number, number][] = [
-  [8080, 8099], // Metro default range
-  [19000, 19002], // Expo
-];
-
-function isMetroPort(port: number): boolean {
-  return METRO_PORT_RANGES.some(([lo, hi]) => port >= lo && port <= hi);
-}
-
-function spawnCapture(cmd: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'ignore'] });
-    let out = '';
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      out += chunk.toString();
-    });
-    proc.on('close', (code) =>
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} failed (${code})`))
-    );
-    proc.on('error', reject);
-  });
-}
+// Metro discovery retries forever while the daemon is alive — the app may be
+// launched long after the daemon starts. Backoff grows to a ceiling so we're
+// not wasteful when discovery keeps failing (e.g. native-only app).
+const METRO_DISCOVERY_MIN_INTERVAL_MS = 1_500;
+const METRO_DISCOVERY_MAX_INTERVAL_MS = 15_000;
 
 export interface LogQueryOptions {
   since?: string;
@@ -69,8 +63,9 @@ export class LogCollector {
   private metroDiscoveryTimer: NodeJS.Timeout | null = null;
   private metroPort: number | null = null;
   private metroConnected = false;
-  private metroAutoDiscovery = false;
-  private metroAutoDiscoveryAttempts = 0;
+  private metroDiscoveryAttempts = 0;
+  private cachedDeviceName: string | null = null;
+  private lastAnnouncedState: 'none' | 'searching' | 'connected' = 'none';
 
   constructor(
     private readonly platform: string,
@@ -89,6 +84,13 @@ export class LogCollector {
     }
 
     await this.startSource();
+
+    // Metro is always auto-discovered. Discovery retries forever with a
+    // backoff ceiling — the app may be launched long after the daemon starts,
+    // and the cost per attempt is tiny (a few spawns + one HTTP call).
+    if (this.platform === 'ios' || this.platform === 'tvos' || this.platform === 'android') {
+      this.startMetroAutoDiscovery();
+    }
   }
 
   stop(): void {
@@ -113,37 +115,6 @@ export class LogCollector {
       this.metroSource.disconnect();
       this.metroSource = null;
       this.metroConnected = false;
-    }
-  }
-
-  /**
-   * Enable Metro log collection for React Native apps.
-   *
-   * When `port` is given, connects directly to that Metro port.
-   * When omitted, auto-discovers the Metro port by probing the device:
-   *   - Android: parses `adb reverse --list` for forwarded Metro ports
-   *   - iOS/tvOS: scans `lsof` for node listeners in Metro port ranges,
-   *     then probes `/json` and matches by deviceId (strict — no appId fallback)
-   *
-   * This is opt-in — only call this for React Native apps.
-   */
-  enableMetro(port?: number): void {
-    if (this.platform === 'web') return; // Web already has console logs
-
-    if (port !== undefined) {
-      // Explicit port — same as before
-      if (this.metroPort === port) return;
-      this.teardownMetro();
-      this.metroAutoDiscovery = false;
-      this.metroPort = port;
-      this.startMetroDiscovery();
-    } else {
-      // Auto-discover
-      if (this.metroAutoDiscovery || this.metroConnected) return;
-      this.teardownMetro();
-      this.metroAutoDiscovery = true;
-      this.metroAutoDiscoveryAttempts = 0;
-      this.startAutoDiscovery();
     }
   }
 
@@ -265,183 +236,107 @@ export class LogCollector {
     });
   }
 
-  // ── Metro auto-discovery ─────────────────────────────────────────────────
+  // ── Metro auto-discovery (deterministic) ─────────────────────────────────
 
-  private async startAutoDiscovery(): Promise<void> {
+  private startMetroAutoDiscovery(): void {
+    if (this.stopped || this.metroConnected) return;
+    void this.tryDiscoverAndConnect();
+  }
+
+  private async tryDiscoverAndConnect(): Promise<void> {
     if (this.stopped || this.metroConnected) return;
 
-    this.metroAutoDiscoveryAttempts++;
+    this.metroDiscoveryAttempts++;
     try {
-      const port = await this.discoverMetroPort();
+      const port = await discoverMetroPortForDevice(this.platform, this.deviceId);
       if (port !== null) {
-        this.dlog?.(`Metro auto-discovered on port ${port} for device ${this.deviceId}`);
-        this.metroPort = port;
-        this.startMetroDiscovery();
-        return;
+        const connected = await this.connectMetro(port);
+        if (connected) return;
       }
     } catch {
-      // Discovery failed — retry
+      // fall through to retry
     }
 
-    if (this.metroAutoDiscoveryAttempts >= METRO_AUTO_DISCOVERY_MAX_ATTEMPTS) {
-      this.dlog?.(
-        `Metro auto-discovery: no Metro instance found for device ${this.deviceId} after ${this.metroAutoDiscoveryAttempts} attempts. Use --metro-port to specify.`
+    // Announce "searching" exactly once so callers can tell discovery is live.
+    if (this.lastAnnouncedState === 'none' && this.metroDiscoveryAttempts >= 3) {
+      this.lastAnnouncedState = 'searching';
+      this.pushSyntheticMetroEntry(
+        `[conductor] Searching for Metro connection on device ${this.deviceId}… (this is normal for native apps — ignore if not using React Native)`
       );
-      this.metroAutoDiscovery = false;
-      return;
     }
 
-    // Retry — app may not have started yet
     if (!this.stopped) {
+      const delay = Math.min(
+        METRO_DISCOVERY_MIN_INTERVAL_MS * Math.pow(1.5, this.metroDiscoveryAttempts - 1),
+        METRO_DISCOVERY_MAX_INTERVAL_MS
+      );
       this.metroDiscoveryTimer = setTimeout(() => {
         this.metroDiscoveryTimer = null;
-        this.startAutoDiscovery();
-      }, METRO_DISCOVERY_INTERVAL_MS);
+        void this.tryDiscoverAndConnect();
+      }, delay);
     }
   }
 
   /**
-   * Discover the Metro dev server port by probing the device.
-   *
-   * Android: parse `adb reverse --list` for forwarded ports in Metro ranges.
-   * iOS/tvOS: scan `lsof` for node listeners in Metro ranges, probe `/json`,
-   * and strictly match by deviceId (no appId/single-target fallback).
+   * Push a synthetic log entry into the buffer so that Metro connection state
+   * is visible to anyone reading the log stream.
    */
-  private async discoverMetroPort(): Promise<number | null> {
-    if (this.platform === 'android') {
-      return this.discoverMetroPortAndroid();
-    }
-    if (this.platform === 'ios' || this.platform === 'tvos') {
-      return this.discoverMetroPortIOS();
-    }
-    return null;
+  private pushSyntheticMetroEntry(message: string): void {
+    this.pushEntry({
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message,
+      stackTrace: null,
+      source: 'metro',
+    });
   }
 
-  private async discoverMetroPortAndroid(): Promise<number | null> {
-    try {
-      const output = await spawnCapture('adb', ['-s', this.deviceId, 'reverse', '--list']);
-      // Lines look like: host-13 tcp:8082 tcp:8082
-      for (const line of output.split('\n')) {
-        const match = line.match(/tcp:(\d+)\s+tcp:(\d+)/);
-        if (!match) continue;
-        const hostPort = parseInt(match[2], 10);
-        if (isMetroPort(hostPort)) return hostPort;
-      }
-    } catch {
-      // adb not available or device not connected
-    }
-    return null;
+  /** Metro connection state for the /status endpoint. */
+  getMetroStatus(): { connected: boolean; port: number | null; attempts: number } {
+    return {
+      connected: this.metroConnected,
+      port: this.metroPort,
+      attempts: this.metroDiscoveryAttempts,
+    };
   }
 
-  private async discoverMetroPortIOS(): Promise<number | null> {
-    try {
-      const output = await spawnCapture('lsof', ['-iTCP', '-sTCP:LISTEN', '-n', '-P']);
-      const ports = new Set<number>();
-      for (const line of output.split('\n')) {
-        if (!line.startsWith('node')) continue;
-        // Column 9 is NAME, e.g. "*:8082" or "[::1]:8082" or "127.0.0.1:8082"
-        const match = line.match(/:(\d+)\s/);
-        if (!match) continue;
-        const port = parseInt(match[1], 10);
-        if (isMetroPort(port)) ports.add(port);
-      }
-
-      if (ports.size === 0) return null;
-
-      // Probe all candidate ports in parallel
-      const results = await Promise.all(
-        [...ports].map(async (port) => {
-          try {
-            const targets = await fetchTargets(port, 'localhost');
-            const withWs = targets.filter((t) => t.webSocketDebuggerUrl);
-            // Strict deviceId match only — no appId or single-target fallback
-            const match = withWs.find(
-              (t) =>
-                t.deviceId === this.deviceId || t.reactNative?.logicalDeviceId === this.deviceId
-            );
-            return match ? port : null;
-          } catch {
-            return null;
-          }
-        })
-      );
-
-      return results.find((p) => p !== null) ?? null;
-    } catch {
-      // lsof not available
-    }
-    return null;
-  }
-
-  private startMetroDiscovery(): void {
-    if (this.stopped || this.metroPort === null) return;
-    this.tryConnectMetro();
-  }
-
-  private async tryConnectMetro(): Promise<void> {
-    if (this.stopped || this.metroPort === null || this.metroConnected) return;
+  /**
+   * Connect to Metro on the given port, picking the target matching this
+   * device's display name. Returns true on success.
+   */
+  private async connectMetro(port: number): Promise<boolean> {
+    if (this.stopped || this.metroConnected) return false;
 
     try {
-      const targets = await fetchTargets(this.metroPort, 'localhost');
-      const target = this.findTargetForDevice(targets);
+      const targets = await fetchTargets(port, 'localhost');
+      const displayName =
+        this.cachedDeviceName ?? (await getDeviceDisplayName(this.platform, this.deviceId));
+      if (!displayName) return false;
+      this.cachedDeviceName = displayName;
 
-      if (!target || !target.webSocketDebuggerUrl) {
-        // Target not found yet — app may still be starting. Retry later.
-        this.scheduleMetroDiscovery();
-        return;
-      }
+      const target = selectTargetForDevice(targets, displayName);
+      if (!target?.webSocketDebuggerUrl) return false;
 
-      // Found a matching target — connect
-      const targetIndex = targets.filter((t) => t.webSocketDebuggerUrl).indexOf(target);
+      const withWs = targets.filter((t) => t.webSocketDebuggerUrl);
+      const targetIndex = withWs.indexOf(target);
 
       this.metroSource = new MetroLogSource(
-        this.metroPort,
+        port,
         'localhost',
         targetIndex >= 0 ? targetIndex : undefined
       );
       this.metroSource.onEntry((entry) => this.pushEntry(entry));
       await this.metroSource.connect();
       this.metroConnected = true;
-      this.dlog?.(`Metro connected for device ${this.deviceId} on port ${this.metroPort}`);
+      this.metroPort = port;
+      this.lastAnnouncedState = 'connected';
+      this.pushSyntheticMetroEntry(
+        `[conductor] Metro connected on port ${port} for device "${displayName}"`
+      );
+      this.dlog?.(`Metro connected for device ${this.deviceId} on port ${port}`);
+      return true;
     } catch {
-      // Metro not running or connection failed — retry
-      this.scheduleMetroDiscovery();
+      return false;
     }
-  }
-
-  /**
-   * Find a Metro debugger target that matches this daemon's device.
-   * Checks deviceId (simulator UDID / emulator serial) first,
-   * then falls back to matching by appId if available.
-   */
-  private findTargetForDevice(targets: MetroTarget[]): MetroTarget | undefined {
-    const withWs = targets.filter((t) => t.webSocketDebuggerUrl);
-    if (withWs.length === 0) return undefined;
-
-    // Prefer exact deviceId match (simulator UDID / emulator serial)
-    const byDevice = withWs.find(
-      (t) => t.deviceId === this.deviceId || t.reactNative?.logicalDeviceId === this.deviceId
-    );
-    if (byDevice) return byDevice;
-
-    // Fall back to appId match if we know the app
-    if (this.appId) {
-      const byApp = withWs.find((t) => t.appId === this.appId);
-      if (byApp) return byApp;
-    }
-
-    // Single target — safe to use without matching
-    if (withWs.length === 1) return withWs[0];
-
-    // Multiple targets, no match — don't guess
-    return undefined;
-  }
-
-  private scheduleMetroDiscovery(): void {
-    if (this.stopped || this.metroConnected) return;
-    this.metroDiscoveryTimer = setTimeout(() => {
-      this.metroDiscoveryTimer = null;
-      this.tryConnectMetro();
-    }, METRO_DISCOVERY_INTERVAL_MS);
   }
 }
