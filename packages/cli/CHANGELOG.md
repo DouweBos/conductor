@@ -1,5 +1,12 @@
 # @houwert/conductor
 
+## 0.13.0
+
+### Minor Changes
+
+- 51fd7a4: Drop the bundled Claude Code plugin and skill. Conductor is now a pure CLI — no postinstall plugin registration, no `SKILL.md`, and no `install-plugin` / `install-skills` / `cheat-sheet` commands. Wire Conductor into your agent however you like (a custom `CLAUDE.md`, a project skill, a slash command); use `conductor --help` for the full command reference.
+- ffbd62f: Improve Metro log discovery and simplify the `logs` command. Metro targets are now resolved deterministically per device — no more `--metro`, `--metro-port`, or `--target` flags. The `--source` flag is now a filter (`metro` | `device`); when omitted, both sources stream together. `--list` prints only the Metro targets bound to the current device.
+
 ## 0.12.3
 
 ### Patch Changes
