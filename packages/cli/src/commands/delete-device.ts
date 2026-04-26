@@ -4,6 +4,7 @@ export const HELP = `  delete-device <name-or-id>
 
 import fs from 'fs';
 import { spawnCommand } from '../runner.js';
+import { resolveAndroidTool } from '../android/sdk.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 import { listDaemonSessions, stopDaemon, daemonStatus } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
@@ -52,7 +53,7 @@ async function deleteSimulator(udid: string): Promise<void> {
 // ── Android ──────────────────────────────────────────────────────────────────
 
 async function listAVDs(): Promise<string[]> {
-  const result = await spawnCommand('emulator', ['-list-avds']);
+  const result = await spawnCommand(resolveAndroidTool('emulator'), ['-list-avds']);
   if (!result.success) return [];
   return result.stdout
     .split('\n')
@@ -63,7 +64,7 @@ async function listAVDs(): Promise<string[]> {
 /** Map running emulator serial → AVD name */
 async function runningAVDs(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const result = await spawnCommand('adb', ['devices']);
+  const result = await spawnCommand(resolveAndroidTool('adb'), ['devices']);
   if (!result.success) return map;
 
   const serials = result.stdout
@@ -73,7 +74,13 @@ async function runningAVDs(): Promise<Map<string, string>> {
     .filter((s) => s && s.startsWith('emulator-'));
 
   for (const serial of serials) {
-    const name = await spawnCommand('adb', ['-s', serial, 'emu', 'avd', 'name']);
+    const name = await spawnCommand(resolveAndroidTool('adb'), [
+      '-s',
+      serial,
+      'emu',
+      'avd',
+      'name',
+    ]);
     if (name.success) {
       const avdName = name.stdout.trim().split('\n')[0];
       if (avdName) map.set(avdName, serial);
@@ -83,14 +90,19 @@ async function runningAVDs(): Promise<Map<string, string>> {
 }
 
 async function killEmulator(serial: string): Promise<void> {
-  const result = await spawnCommand('adb', ['-s', serial, 'emu', 'kill']);
+  const result = await spawnCommand(resolveAndroidTool('adb'), ['-s', serial, 'emu', 'kill']);
   if (!result.success) {
     throw new Error(`Failed to kill emulator ${serial}: ${result.stderr.trim()}`);
   }
 }
 
 async function deleteAVD(name: string): Promise<void> {
-  const result = await spawnCommand('avdmanager', ['delete', 'avd', '-n', name]);
+  const result = await spawnCommand(resolveAndroidTool('avdmanager'), [
+    'delete',
+    'avd',
+    '-n',
+    name,
+  ]);
   if (!result.success) {
     throw new Error(`Failed to delete AVD "${name}": ${result.stderr.trim()}`);
   }

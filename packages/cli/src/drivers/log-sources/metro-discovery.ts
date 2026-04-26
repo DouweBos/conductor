@@ -17,6 +17,7 @@
  */
 import { spawn } from 'child_process';
 import { fetchTargets, MetroTarget } from './metro.js';
+import { resolveAndroidTool } from '../../android/sdk.js';
 
 /** Metro dev-server port ranges we consider. */
 const METRO_PORT_RANGES: [number, number][] = [
@@ -61,7 +62,12 @@ export async function discoverMetroPortForDevice(
 
 async function discoverMetroPortAndroid(deviceId: string): Promise<number | null> {
   try {
-    const output = await spawnCapture('adb', ['-s', deviceId, 'reverse', '--list']);
+    const output = await spawnCapture(resolveAndroidTool('adb'), [
+      '-s',
+      deviceId,
+      'reverse',
+      '--list',
+    ]);
     // Lines look like: host-13 tcp:8082 tcp:8082
     for (const line of output.split('\n')) {
       const match = line.match(/tcp:(\d+)\s+tcp:(\d+)/);
@@ -170,7 +176,7 @@ export async function getDeviceDisplayName(
   }
   if (platform === 'android') {
     try {
-      const output = await spawnCapture('adb', [
+      const output = await spawnCapture(resolveAndroidTool('adb'), [
         '-s',
         deviceId,
         'shell',

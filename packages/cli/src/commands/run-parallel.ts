@@ -15,6 +15,7 @@ export const HELP = `  run-parallel --flows-dir <path>     Run flows in parallel
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { resolveAndroidTool } from '../android/sdk.js';
 import { printError, OutputOptions } from '../output.js';
 
 interface ShardResult {
@@ -129,7 +130,7 @@ async function discoverAllDevices(): Promise<string[]> {
   const devices: string[] = [];
 
   try {
-    const out = await spawnCapture('adb', ['devices']);
+    const out = await spawnCapture(resolveAndroidTool('adb'), ['devices']);
     for (const line of out.split('\n').slice(1)) {
       const id = line.trim().split(/\s+/)[0];
       if (id && !line.includes('offline') && id !== '') devices.push(id);

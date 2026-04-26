@@ -1,7 +1,8 @@
 /**
  * Android log source — streams logs from an Android device/emulator via `adb logcat`.
  */
-import { spawn, ChildProcess, execSync } from 'child_process';
+import { spawn, ChildProcess, execFileSync } from 'child_process';
+import { resolveAndroidTool } from '../../android/sdk.js';
 import { LogSource, LogEntry } from './types.js';
 
 function mapPriority(priority: number | string): LogEntry['level'] {
@@ -46,10 +47,11 @@ export class AndroidLogSource implements LogSource {
     let pid: string | undefined;
     if (this.appId) {
       try {
-        pid = execSync(`adb -s ${this.deviceId} shell pidof ${this.appId}`, {
-          encoding: 'utf-8',
-          timeout: 5000,
-        }).trim();
+        pid = execFileSync(
+          resolveAndroidTool('adb'),
+          ['-s', this.deviceId, 'shell', 'pidof', this.appId],
+          { encoding: 'utf-8', timeout: 5000 }
+        ).trim();
       } catch {
         // App may not be running yet — proceed without PID filter
       }
@@ -57,7 +59,9 @@ export class AndroidLogSource implements LogSource {
 
     // Clear existing logcat buffer so we start fresh
     try {
-      execSync(`adb -s ${this.deviceId} logcat -c`, { timeout: 5000 });
+      execFileSync(resolveAndroidTool('adb'), ['-s', this.deviceId, 'logcat', '-c'], {
+        timeout: 5000,
+      });
     } catch {
       // Ignore clear failures
     }
@@ -73,7 +77,7 @@ export class AndroidLogSource implements LogSource {
       args.push('--pid', pid);
     }
 
-    this.proc = spawn('adb', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    this.proc = spawn(resolveAndroidTool('adb'), args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
     let stderrChunks = '';
     this.proc.stderr!.on('data', (chunk: Buffer) => {

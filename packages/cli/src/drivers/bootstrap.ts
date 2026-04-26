@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { log } from '../verbose.js';
 import { sleep } from '../utils.js';
+import { resolveAndroidTool } from '../android/sdk.js';
 
 // ── Platform detection ────────────────────────────────────────────────────────
 
@@ -353,8 +354,24 @@ export async function installDriver(deviceId: string): Promise<void> {
     );
   }
 
-  await spawnAndWait('adb', ['-s', deviceId, 'install', '-r', '-t', '-g', appApk]);
-  await spawnAndWait('adb', ['-s', deviceId, 'install', '-r', '-t', '-g', serverApk]);
+  await spawnAndWait(resolveAndroidTool('adb'), [
+    '-s',
+    deviceId,
+    'install',
+    '-r',
+    '-t',
+    '-g',
+    appApk,
+  ]);
+  await spawnAndWait(resolveAndroidTool('adb'), [
+    '-s',
+    deviceId,
+    'install',
+    '-r',
+    '-t',
+    '-g',
+    serverApk,
+  ]);
   log(`installDriver: done`);
 }
 
@@ -680,10 +697,16 @@ export async function startAndroidDriver(
   log(`Starting Android driver for device ${deviceId} on port ${port}`);
 
   // Step 1: ADB port forward
-  await spawnAndWait('adb', ['-s', deviceId, 'forward', `tcp:${port}`, `tcp:${port}`]);
+  await spawnAndWait(resolveAndroidTool('adb'), [
+    '-s',
+    deviceId,
+    'forward',
+    `tcp:${port}`,
+    `tcp:${port}`,
+  ]);
 
   // Step 2: Get device API level to decide instrumentation flags
-  const apiResult = await spawnCapture('adb', [
+  const apiResult = await spawnCapture(resolveAndroidTool('adb'), [
     '-s',
     deviceId,
     'shell',
@@ -713,7 +736,7 @@ export async function startAndroidDriver(
     CONDUCTOR_TEST_RUNNER,
   ];
 
-  const proc = spawn('adb', instrArgs, {
+  const proc = spawn(resolveAndroidTool('adb'), instrArgs, {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
   });
@@ -737,7 +760,7 @@ export async function startAndroidDriver(
 }
 
 export async function stopAndroidDriver(deviceId: string, port = ANDROID_BASE_PORT): Promise<void> {
-  await spawnAndWait('adb', [
+  await spawnAndWait(resolveAndroidTool('adb'), [
     '-s',
     deviceId,
     'shell',
@@ -745,7 +768,13 @@ export async function stopAndroidDriver(deviceId: string, port = ANDROID_BASE_PO
     'force-stop',
     'dev.houwert.conductor',
   ]).catch(() => {});
-  await spawnAndWait('adb', ['-s', deviceId, 'forward', '--remove', `tcp:${port}`]).catch(() => {});
+  await spawnAndWait(resolveAndroidTool('adb'), [
+    '-s',
+    deviceId,
+    'forward',
+    '--remove',
+    `tcp:${port}`,
+  ]).catch(() => {});
 }
 
 // ── Web bootstrap ────────────────────────────────────────────────────────────
@@ -898,12 +927,18 @@ export async function uninstallDriver(deviceId: string, platform: Platform): Pro
       () => {}
     );
   } else {
-    await spawnAndWait('adb', ['-s', deviceId, 'uninstall', 'dev.houwert.conductor']).catch(
-      () => {}
-    );
-    await spawnAndWait('adb', ['-s', deviceId, 'uninstall', 'dev.houwert.conductor.test']).catch(
-      () => {}
-    );
+    await spawnAndWait(resolveAndroidTool('adb'), [
+      '-s',
+      deviceId,
+      'uninstall',
+      'dev.houwert.conductor',
+    ]).catch(() => {});
+    await spawnAndWait(resolveAndroidTool('adb'), [
+      '-s',
+      deviceId,
+      'uninstall',
+      'dev.houwert.conductor.test',
+    ]).catch(() => {});
   }
 }
 

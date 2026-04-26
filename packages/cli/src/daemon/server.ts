@@ -14,6 +14,7 @@ import url from 'url';
 import fs from 'fs';
 import path from 'path';
 import { socketPath, pidFile, logFile, IDLE_TIMEOUT_MS } from './protocol.js';
+import { ensureAndroidEnv } from '../android/sdk.js';
 import {
   detectPlatform,
   getDriverPort,
@@ -147,6 +148,7 @@ async function ensureDriverRunning(): Promise<void> {
 // ── Daemon main ──────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  ensureAndroidEnv();
   // Ensure per-session daemon directory exists
   fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
   fs.writeFileSync(PID_FILE, String(process.pid));

@@ -16,6 +16,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
+import { resolveAndroidTool } from '../android/sdk.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 
 function poolFilePath(): string {
@@ -86,7 +87,7 @@ async function discoverAllDevices(): Promise<string[]> {
 
   // Android: adb devices
   try {
-    const out = await spawnCapture('adb', ['devices', '-l']);
+    const out = await spawnCapture(resolveAndroidTool('adb'), ['devices', '-l']);
     for (const line of out.split('\n').slice(1)) {
       const id = line.trim().split(/\s+/)[0];
       if (id && !line.includes('offline') && id !== '') {

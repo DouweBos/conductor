@@ -1,6 +1,7 @@
 export const HELP = `  install-app <path>                   Install .app / .ipa / .apk onto device`;
 
 import { spawnCommand, detectFirstDevice } from '../runner.js';
+import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { getSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
@@ -39,15 +40,11 @@ export async function installApp(
       return 1;
     }
   } else {
-    const result = await spawnCommand('adb', [
-      '-s',
-      deviceId,
-      'install',
-      '-r',
-      '-t',
-      '-g',
-      appPath,
-    ]);
+    const result = await spawnCommand(
+      resolveAndroidTool('adb'),
+      ['-s', deviceId, 'install', '-r', '-t', '-g', appPath],
+      { env: androidSpawnEnv() }
+    );
     if (!result.success) {
       printError(`install-app failed: ${result.stderr}`, opts);
       return 1;

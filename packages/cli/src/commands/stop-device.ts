@@ -3,6 +3,7 @@ export const HELP = `  stop-device [<name-or-id>]
     --all                             Stop all booted simulators / running emulators / web sessions`;
 
 import { spawnCommand } from '../runner.js';
+import { resolveAndroidTool } from '../android/sdk.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 import { stopDaemon } from '../daemon/client.js';
 import { discoverBootedDevices } from './list-devices.js';
@@ -19,7 +20,7 @@ async function shutdownSimulator(udid: string): Promise<void> {
 // ── Android ──────────────────────────────────────────────────────────────────
 
 async function killEmulator(serial: string): Promise<void> {
-  const result = await spawnCommand('adb', ['-s', serial, 'emu', 'kill']);
+  const result = await spawnCommand(resolveAndroidTool('adb'), ['-s', serial, 'emu', 'kill']);
   if (!result.success) {
     throw new Error(`Failed to kill emulator ${serial}: ${result.stderr.trim()}`);
   }

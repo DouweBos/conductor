@@ -11,6 +11,7 @@ import * as protoLoader from '@grpc/proto-loader';
 import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { resolveAndroidTool } from '../android/sdk.js';
 
 // __dirname is available in CommonJS — points to dist/drivers/
 const PROTO_PATH = path.join(__dirname, '../../proto/conductor_android.proto');
@@ -128,7 +129,9 @@ export class AndroidDriver {
 
   private adb(args: string[]): Promise<void> {
     return new Promise((resolve, reject) => {
-      const proc = spawn('adb', ['-s', this.deviceId, ...args], { stdio: 'ignore' });
+      const proc = spawn(resolveAndroidTool('adb'), ['-s', this.deviceId, ...args], {
+        stdio: 'ignore',
+      });
       proc.on('close', (code) => {
         if (code === 0) resolve();
         else reject(new Error(`adb ${args.join(' ')} failed with exit code ${code}`));
@@ -171,7 +174,7 @@ export class AndroidDriver {
 
   private adbOutput(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      const proc = spawn('adb', ['-s', this.deviceId, ...args], {
+      const proc = spawn(resolveAndroidTool('adb'), ['-s', this.deviceId, ...args], {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = '';
@@ -326,7 +329,7 @@ export class AndroidDriver {
     if (this._recordingProcess) await this.stopRecording();
     this._recordingOutputPath = outputPath;
     this._recordingProcess = spawn(
-      'adb',
+      resolveAndroidTool('adb'),
       ['-s', this.deviceId, 'shell', 'screenrecord', '/sdcard/conductor_recording.mp4'],
       { stdio: 'ignore' }
     );

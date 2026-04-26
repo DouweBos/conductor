@@ -1,6 +1,7 @@
 export const HELP = `  list-apps                           List installed app IDs / package names`;
 
 import { spawnCommand, detectFirstDevice } from '../runner.js';
+import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { getSession } from '../session.js';
 import { printData, printError, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
@@ -45,7 +46,11 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
       return 1;
     }
   } else {
-    const result = await spawnCommand('adb', ['-s', deviceId, 'shell', 'pm', 'list', 'packages']);
+    const result = await spawnCommand(
+      resolveAndroidTool('adb'),
+      ['-s', deviceId, 'shell', 'pm', 'list', 'packages'],
+      { env: androidSpawnEnv() }
+    );
     if (!result.success) {
       printError(`list-apps failed: ${result.stderr}`, opts);
       return 1;

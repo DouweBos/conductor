@@ -16,6 +16,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnCommand, detectFirstDevice, getDriver } from '../runner.js';
+import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { getSession } from '../session.js';
 import { getInstalledAppIds } from './foreground-app.js';
 import { printError, printData, OutputOptions } from '../output.js';
@@ -297,7 +298,11 @@ async function collectAndroid(
 ): Promise<MemoryReport> {
   const report: MemoryReport = { platform: 'android', deviceId, appId, notes: [] };
 
-  const meminfo = await spawnCommand('adb', ['-s', deviceId, 'shell', 'cat', '/proc/meminfo']);
+  const meminfo = await spawnCommand(
+    resolveAndroidTool('adb'),
+    ['-s', deviceId, 'shell', 'cat', '/proc/meminfo'],
+    { env: androidSpawnEnv() }
+  );
   if (meminfo.success) {
     const sys = parseAndroidMeminfo(meminfo.stdout);
     report.system = {
@@ -312,7 +317,11 @@ async function collectAndroid(
   }
 
   if (appId) {
-    const dump = await spawnCommand('adb', ['-s', deviceId, 'shell', 'dumpsys', 'meminfo', appId]);
+    const dump = await spawnCommand(
+      resolveAndroidTool('adb'),
+      ['-s', deviceId, 'shell', 'dumpsys', 'meminfo', appId],
+      { env: androidSpawnEnv() }
+    );
     if (dump.success && !dump.stdout.includes('No process found')) {
       const { app, objects, pid } = parseAndroidDumpsysMeminfo(dump.stdout);
       report.app = app;

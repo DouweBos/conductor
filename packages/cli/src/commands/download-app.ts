@@ -2,6 +2,7 @@ export const HELP = `  download-app <appId> --output <path>  Download installed 
 
 import path from 'path';
 import { spawnCommand, detectFirstDevice } from '../runner.js';
+import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { getSession } from '../session.js';
 import { printData, printSuccess, printError, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
@@ -68,7 +69,11 @@ export async function downloadApp(
     return 0;
   } else {
     // Android: find the APK path, then pull it
-    const pmPath = await spawnCommand('adb', ['-s', deviceId, 'shell', 'pm', 'path', appId]);
+    const pmPath = await spawnCommand(
+      resolveAndroidTool('adb'),
+      ['-s', deviceId, 'shell', 'pm', 'path', appId],
+      { env: androidSpawnEnv() }
+    );
     if (!pmPath.success) {
       printError(`Failed to locate app on device: ${pmPath.stderr}`, opts);
       return 1;
@@ -83,7 +88,11 @@ export async function downloadApp(
 
     const dest = output ?? path.join(process.cwd(), `${appId}.apk`);
 
-    const pull = await spawnCommand('adb', ['-s', deviceId, 'pull', apkPath, dest]);
+    const pull = await spawnCommand(
+      resolveAndroidTool('adb'),
+      ['-s', deviceId, 'pull', apkPath, dest],
+      { env: androidSpawnEnv() }
+    );
     if (!pull.success) {
       printError(`Failed to pull APK: ${pull.stderr}`, opts);
       return 1;

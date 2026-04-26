@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import minimist from 'minimist';
 import { setVerbose } from './verbose.js';
+import { ensureAndroidEnv } from './android/sdk.js';
 import {
   listDevices,
   discoverBootedDevices,
@@ -123,6 +124,7 @@ ${Object.values(COMMAND_HELP).join('\n')}
 ${OPTIONS_HELP}`;
 
 async function main(): Promise<void> {
+  ensureAndroidEnv();
   checkForUpdates();
 
   const argv = minimist(process.argv.slice(2), {

@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { resolveAndroidTool, androidSpawnEnv } from './android/sdk.js';
 import { getSession } from './session.js';
 import { parseFlowString, executeFlow } from './drivers/flow-runner.js';
 import { log } from './verbose.js';
@@ -31,7 +32,9 @@ export async function detectFirstDevice(): Promise<string | undefined> {
   if (_cachedDeviceId !== undefined) return _cachedDeviceId ?? undefined;
 
   // Android: adb devices
-  const adb = await spawnCommand('adb', ['devices', '-l']).catch(() => null);
+  const adb = await spawnCommand(resolveAndroidTool('adb'), ['devices', '-l'], {
+    env: androidSpawnEnv(),
+  }).catch(() => null);
   if (adb) {
     for (const line of adb.stdout.split('\n').slice(1)) {
       const id = line.trim().split(/\s+/)[0];
@@ -256,9 +259,16 @@ export async function runDirect(
 
 // ── Spawn helpers ─────────────────────────────────────────────────────────────
 
-export async function spawnCommand(cmd: string, args: string[]): Promise<RunResult> {
+export async function spawnCommand(
+  cmd: string,
+  args: string[],
+  options?: { env?: NodeJS.ProcessEnv }
+): Promise<RunResult> {
   return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn(cmd, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: options?.env,
+    });
     let stdout = '';
     let stderr = '';
 

@@ -2,6 +2,7 @@ export const HELP = `  list-devices                        List booted and avail
 
 import fs from 'fs';
 import { spawnCommand } from '../runner.js';
+import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { printData, printError, OutputOptions } from '../output.js';
 import { isPlaywrightBrowserInstalled, webBrowserName } from '../drivers/bootstrap.js';
 import { listDaemonSessions, daemonStatus } from '../daemon/client.js';
@@ -14,11 +15,18 @@ export interface Device {
   status: string;
 }
 
+// Captured during discoverAvailableDevices so listDevices() can report it.
+// Module-scoped because the discover function returns Device[]; bolting an
+// extra return field onto the public type would ripple beyond this fix.
+let listAvdsError: string | undefined;
+
 export async function discoverBootedDevices(): Promise<Device[]> {
   const devices: Device[] = [];
 
   // Try adb devices (Android)
-  const adb = await spawnCommand('adb', ['devices', '-l']);
+  const adb = await spawnCommand(resolveAndroidTool('adb'), ['devices', '-l'], {
+    env: androidSpawnEnv(),
+  });
   if (adb.success || adb.stdout.includes('List of devices')) {
     const lines = adb.stdout.split('\n').slice(1); // skip header
     for (const line of lines) {
@@ -89,6 +97,7 @@ export async function discoverBootedDevices(): Promise<Device[]> {
 
 export async function discoverAvailableDevices(): Promise<Device[]> {
   const devices: Device[] = [];
+  listAvdsError = undefined;
 
   // iOS: all available simulators that are not booted
   const xcrun = await spawnCommand('xcrun', ['simctl', 'list', 'devices', '--json']);
@@ -118,7 +127,9 @@ export async function discoverAvailableDevices(): Promise<Device[]> {
   }
 
   // Android: list available AVDs
-  const emu = await spawnCommand('emulator', ['-list-avds']);
+  const emu = await spawnCommand(resolveAndroidTool('emulator'), ['-list-avds'], {
+    env: androidSpawnEnv(),
+  });
   if (emu.success) {
     for (const line of emu.stdout.split('\n')) {
       const name = line.trim();
@@ -126,6 +137,10 @@ export async function discoverAvailableDevices(): Promise<Device[]> {
         devices.push({ id: name, name, platform: 'android', status: 'available' });
       }
     }
+  } else {
+    // Surface the failure so users know why no AVDs showed up. Stash the
+    // message on the function for listDevices() to log/include.
+    listAvdsError = (emu.stderr || emu.stdout || 'unknown error').trim();
   }
 
   // Web: installed Playwright browsers that aren't currently running
@@ -155,13 +170,21 @@ export async function listDevices(opts: OutputOptions): Promise<number> {
   ]);
 
   if (devices.length === 0 && availableDevices.length === 0) {
+    if (listAvdsError && !opts.json) {
+      console.error(`warning: emulator -list-avds failed: ${listAvdsError}`);
+    }
     printError('No devices found. Start an emulator or simulator first.', opts);
     return 1;
   }
 
   if (opts.json) {
-    printData({ status: 'ok', devices, availableDevices }, opts);
+    const payload: Record<string, unknown> = { status: 'ok', devices, availableDevices };
+    if (listAvdsError) payload['warnings'] = [`emulator -list-avds failed: ${listAvdsError}`];
+    printData(payload, opts);
   } else {
+    if (listAvdsError) {
+      console.error(`warning: emulator -list-avds failed: ${listAvdsError}`);
+    }
     if (devices.length > 0) {
       console.log('Booted devices:');
       for (const d of devices) {

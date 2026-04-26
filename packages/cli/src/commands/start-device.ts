@@ -9,6 +9,7 @@ export const HELP = `  start-device
 import fs from 'fs';
 import { spawn } from 'child_process';
 import { spawnCommand } from '../runner.js';
+import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { startDaemon, findRunningWebSession } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
 import { generateWebSessionId } from '../drivers/bootstrap.js';
@@ -466,7 +467,9 @@ async function startTvOS(
 // ── Android ───────────────────────────────────────────────────────────────────
 
 async function listAVDs(): Promise<string[]> {
-  const result = await spawnCommand('emulator', ['-list-avds']);
+  const result = await spawnCommand(resolveAndroidTool('emulator'), ['-list-avds'], {
+    env: androidSpawnEnv(),
+  });
   if (!result.success) throw new Error(`emulator -list-avds failed: ${result.stderr}`);
   return result.stdout
     .split('\n')
@@ -479,7 +482,9 @@ async function waitForAndroidBoot(avdName: string): Promise<string> {
   const connectedBefore = new Set<string>();
 
   // Snapshot currently connected devices so we can identify the new one
-  const before = await spawnCommand('adb', ['devices']);
+  const before = await spawnCommand(resolveAndroidTool('adb'), ['devices'], {
+    env: androidSpawnEnv(),
+  });
   for (const line of before.stdout.split('\n').slice(1)) {
     const id = line.trim().split(/\s+/)[0];
     if (id) connectedBefore.add(id);
@@ -487,7 +492,9 @@ async function waitForAndroidBoot(avdName: string): Promise<string> {
 
   while (Date.now() < deadline) {
     await sleep(POLL_MS);
-    const result = await spawnCommand('adb', ['devices']);
+    const result = await spawnCommand(resolveAndroidTool('adb'), ['devices'], {
+      env: androidSpawnEnv(),
+    });
     if (!result.success) continue;
     for (const line of result.stdout.split('\n').slice(1)) {
       const parts = line.trim().split(/\s+/);
@@ -495,13 +502,11 @@ async function waitForAndroidBoot(avdName: string): Promise<string> {
       const status = parts[1];
       if (id && status === 'device' && !connectedBefore.has(id)) {
         // Check boot completed
-        const boot = await spawnCommand('adb', [
-          '-s',
-          id,
-          'shell',
-          'getprop',
-          'sys.boot_completed',
-        ]);
+        const boot = await spawnCommand(
+          resolveAndroidTool('adb'),
+          ['-s', id, 'shell', 'getprop', 'sys.boot_completed'],
+          { env: androidSpawnEnv() }
+        );
         if (boot.stdout.trim() === '1') return id;
       }
     }
@@ -533,10 +538,11 @@ async function startAndroid(avdName: string | undefined, opts: OutputOptions): P
 
   console.log(`Launching emulator: ${target}...`);
 
-  const proc = spawn('emulator', ['-avd', target, '-netdelay', 'none', '-netspeed', 'full'], {
-    detached: true,
-    stdio: 'ignore',
-  });
+  const proc = spawn(
+    resolveAndroidTool('emulator'),
+    ['-avd', target, '-netdelay', 'none', '-netspeed', 'full'],
+    { detached: true, stdio: 'ignore', env: androidSpawnEnv() }
+  );
   proc.unref();
 
   let deviceId: string;
