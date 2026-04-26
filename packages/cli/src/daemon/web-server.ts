@@ -984,6 +984,44 @@ async function handleRequest(
         return;
       }
 
+      case '/heapSnapshot': {
+        // V8 heap snapshot via CDP. The snapshot streams as JSON chunks via
+        // `HeapProfiler.addHeapSnapshotChunk` events; we concatenate them and
+        // return the assembled JSON. Snapshots are large (10-100+ MB on real
+        // pages) — fine over localhost HTTP.
+        const p = await getPage(dlog);
+        const session = await p.context().newCDPSession(p);
+        const chunks: string[] = [];
+        const onChunk = (e: { chunk: string }): void => {
+          chunks.push(e.chunk);
+        };
+        try {
+          await session.send('HeapProfiler.enable').catch(() => {});
+          // Optional: collect garbage before snapshotting so transient
+          // allocations don't muddy diff comparisons. Triggered via ?gc=1.
+          if (parsedUrl.query['gc']) {
+            await session.send('HeapProfiler.collectGarbage').catch(() => {});
+          }
+          session.on('HeapProfiler.addHeapSnapshotChunk', onChunk);
+          await session.send('HeapProfiler.takeHeapSnapshot', {
+            reportProgress: false,
+            captureNumericValue: false,
+            exposeInternals: false,
+          });
+          // Each chunk is already JSON text; concatenation yields the full snapshot JSON.
+          const body = chunks.join('');
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+          });
+          res.end(body);
+        } finally {
+          session.off('HeapProfiler.addHeapSnapshotChunk', onChunk);
+          await session.detach().catch(() => {});
+        }
+        return;
+      }
+
       case '/consoleLogs': {
         const since = (parsedUrl.query['since'] as string) ?? '';
         const entries = since

@@ -43,7 +43,8 @@ export class WebDriver {
   private request(
     method: 'GET' | 'POST',
     path: string,
-    body?: unknown
+    body?: unknown,
+    timeoutMs = 30000
   ): Promise<{ status: number; data: Buffer }> {
     return new Promise((resolve, reject) => {
       const bodyBuf = body !== undefined ? Buffer.from(JSON.stringify(body), 'utf-8') : undefined;
@@ -66,7 +67,7 @@ export class WebDriver {
         res.on('error', reject);
       });
 
-      req.setTimeout(30000, () => {
+      req.setTimeout(timeoutMs, () => {
         req.destroy(new Error(`Web driver request timed out: ${method} ${path}`));
       });
       req.on('error', reject);
@@ -207,6 +208,23 @@ export class WebDriver {
     url: string;
   }> {
     return this.get('memory');
+  }
+
+  /**
+   * Take a V8 heap snapshot via CDP. Returns the raw JSON text (large; tens
+   * of MB on a real page). Caller can write it to a `.heapsnapshot` file for
+   * Chrome DevTools and/or parse it for class statistics.
+   */
+  async heapSnapshot(opts: { gc?: boolean } = {}): Promise<string> {
+    // 5-minute timeout — large pages can take 30-60s to snapshot + transfer.
+    const qs = opts.gc ? '?gc=1' : '';
+    const { status, data } = await this.request('GET', `/heapSnapshot${qs}`, undefined, 5 * 60_000);
+    if (status < 200 || status >= 300) {
+      throw new Error(
+        `Web driver heapSnapshot failed (HTTP ${status}): ${data.toString('utf-8').slice(0, 200)}`
+      );
+    }
+    return data.toString('utf-8');
   }
 
   async eraseAllText(count = 50): Promise<void> {

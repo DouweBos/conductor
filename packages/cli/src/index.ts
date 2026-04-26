@@ -145,6 +145,11 @@ async function main(): Promise<void> {
       'optional',
       'benchmark',
       'dump',
+      'objects',
+      'heap',
+      'leaks',
+      'snapshots',
+      'growth-only',
     ],
     string: [
       'device',
@@ -174,6 +179,11 @@ async function main(): Promise<void> {
       'to',
       'source',
       'level',
+      'save',
+      'diff',
+      'vs',
+      'top',
+      'filter',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version' },
   });
@@ -536,7 +546,20 @@ async function main(): Promise<void> {
 
     case 'memory': {
       const appId = rest[0];
-      exitCode = await memory(appId, opts, sessionName);
+      const all = argv['all'] as boolean;
+      exitCode = await memory(appId, opts, sessionName, {
+        objects: (argv['objects'] as boolean) || (argv['heap'] as boolean) || all,
+        leaks: (argv['leaks'] as boolean) || all,
+        top: argv['top'] !== undefined ? Number(argv['top']) : undefined,
+        save: argv['save'] as string | undefined,
+        diff: argv['diff'] as string | undefined,
+        diffOther: argv['vs'] as string | undefined,
+        listSnapshots: argv['snapshots'] as boolean,
+        // minimist treats --no-gc as gc=false; default-on lives in memory.ts.
+        gc: argv['gc'] as boolean | undefined,
+        filter: argv['filter'] as string | undefined,
+        growthOnly: argv['growth-only'] as boolean,
+      });
       break;
     }
 
