@@ -191,8 +191,10 @@ export class AndroidDriver {
 
   async getForegroundApp(): Promise<string> {
     const output = await this.adbOutput(['shell', 'dumpsys', 'activity', 'activities']);
+    // API 28- prints `mResumedActivity:`; API 29+ uses `ResumedActivity:` /
+    // `topResumedActivity=`. Accept all three so this works across versions.
     const match = output.match(
-      /mResumedActivity.*?([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)\//
+      /(?:m|top)?ResumedActivity[=:].*?([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)\//
     );
     if (!match) throw new Error('Could not determine foreground app');
     return match[1];

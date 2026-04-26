@@ -141,12 +141,35 @@ async function resolveDeviceId(sessionName: string): Promise<string | undefined>
 async function resolveAppId(
   explicit: string | undefined,
   sessionName: string,
-  deviceId: string
+  deviceId: string,
+  platform: 'ios' | 'tvos' | 'android' | 'web'
 ): Promise<string | undefined> {
   if (explicit) return explicit;
   // No arg: always resolve from the live foreground app, not the session file.
   // The session's appId reflects the last `launch-app` call, which can be stale
   // if the user switched apps on the device by other means.
+  //
+  // On Android, foreground-app detection only needs `adb shell dumpsys` — going
+  // through getDriver() would force the gRPC daemon to start (and require the
+  // driver APK to be installed), which is wasteful for a read-only memory dump.
+  if (platform === 'android') {
+    const dump = await spawnCommand(
+      resolveAndroidTool('adb'),
+      ['-s', deviceId, 'shell', 'dumpsys', 'activity', 'activities'],
+      { env: androidSpawnEnv() }
+    );
+    if (dump.success) {
+      // Different Android versions print this differently:
+      //   API 28-:  mResumedActivity: ActivityRecord{... pkg/.Activity ...}
+      //   API 29+:  topResumedActivity=ActivityRecord{... pkg/.Activity ...}
+      //             ResumedActivity:    ActivityRecord{... pkg/.Activity ...}
+      const m = dump.stdout.match(
+        /(?:m|top)?ResumedActivity[=:].*?([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+)\//
+      );
+      if (m) return m[1];
+    }
+    return undefined;
+  }
   try {
     const driver = await getDriver(sessionName);
     if (driver instanceof AndroidDriver) return await driver.getForegroundApp();
@@ -1364,11 +1387,17 @@ export async function memory(
   if (platform === 'web') {
     report = await collectWeb(deviceId, sessionName, memOpts);
   } else {
-    const appId = await resolveAppId(appIdArg, sessionName, deviceId);
+    const appId = await resolveAppId(appIdArg, sessionName, deviceId, platform);
     if (platform === 'android') {
       report = await collectAndroid(deviceId, appId, memOpts);
     } else {
       report = await collectIOS(deviceId, platform, appId, memOpts);
+    }
+    if (!appId) {
+      report.notes ??= [];
+      report.notes.push(
+        'No foreground app detected — pass an app id (e.g. `conductor memory com.example.app --all`) to get per-app memory, objects, and leaks.'
+      );
     }
   }
   report.capturedAt = new Date().toISOString();
