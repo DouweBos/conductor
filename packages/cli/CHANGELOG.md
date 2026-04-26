@@ -1,5 +1,22 @@
 # @houwert/conductor
 
+## 0.15.0
+
+### Minor Changes
+
+- 6e0bf14: `conductor start-device --platform android` can now auto-create an AVD when one
+  doesn't exist, mirroring the iOS `--device-type` flow. Pass `--avd <name>
+--device-type <profile>` (e.g. `--device-type pixel_7`) and conductor will pick
+  an installed system image for the host arch (`arm64-v8a` on Apple Silicon, else
+  `x86_64`), filtered by `--os-version` if provided, then run `avdmanager create
+avd` and boot it. `--system-image <id>` lets you override the auto-pick. If no
+  matching system image is installed, conductor exits with the exact `sdkmanager`
+  command needed to install one — no automatic multi-gigabyte downloads.
+
+### Patch Changes
+
+- b1ec5c2: Fix Android foreground-app detection on API 29+. The `dumpsys activity activities` regex only matched the legacy `mResumedActivity:` label; modern Android prints `ResumedActivity:` / `topResumedActivity=`, causing `conductor foreground-app` to fail with "Could not determine foreground app" and `conductor memory` (without an explicit app id) to silently fall back to system-only output. The regex now matches all three forms. As a side fix, `conductor memory` no longer requires the gRPC driver daemon to be running just to resolve the foreground app — it queries adb directly — and emits a clear note when no app can be resolved.
+
 ## 0.14.0
 
 ### Minor Changes
