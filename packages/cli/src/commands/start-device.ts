@@ -1,9 +1,12 @@
 export const HELP = `  start-device
     --platform <ios|android|tvos|web> Boot a simulator/emulator, or start the web driver (Playwright)
     --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
-    --avd <name>                      Android AVD name (default: first available)
+    --avd <name>                      Android AVD name (default: first available; created if missing + --device-type)
     --name <name>                     Set a custom name on the device after creation (iOS/tvOS/web)
-    --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K"); creates if needed
+    --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K") or
+                                      Android device profile (e.g. "pixel_7"); creates if needed
+    --system-image <id>               Android only: override auto-picked system image
+                                      (e.g. "system-images;android-34;google_apis;arm64-v8a")
     --browser <chromium|firefox|webkit> Web only: which Playwright browser to launch (default: chromium)`;
 
 import fs from 'fs';
@@ -466,6 +469,10 @@ async function startTvOS(
 
 // ── Android ───────────────────────────────────────────────────────────────────
 
+// TODO: Replace bare command names with the resolver from `android-sdk-path-resolver-68477d`
+// once it lands on main. For now we rely on `emulator`/`adb`/`avdmanager`/`sdkmanager`
+// being on PATH.
+
 async function listAVDs(): Promise<string[]> {
   const result = await spawnCommand(resolveAndroidTool('emulator'), ['-list-avds'], {
     env: androidSpawnEnv(),
@@ -475,6 +482,156 @@ async function listAVDs(): Promise<string[]> {
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
+}
+
+/** Pick the Android system-image arch tag based on the host CPU. */
+export function pickAndroidArch(arch: NodeJS.Architecture = process.arch): 'arm64-v8a' | 'x86_64' {
+  return arch === 'arm64' ? 'arm64-v8a' : 'x86_64';
+}
+
+/**
+ * Parse `sdkmanager --list_installed` (or --list) output, returning installed
+ * system-image package paths like "system-images;android-34;google_apis;arm64-v8a".
+ */
+export function parseInstalledSystemImages(stdout: string): string[] {
+  const images: string[] = [];
+  for (const rawLine of stdout.split('\n')) {
+    const line = rawLine.trim();
+    if (!line.startsWith('system-images;')) continue;
+    // Format is "<path> | <version> | <description> | <location>" with leading whitespace
+    const path = line.split(/[|\s]+/)[0];
+    if (path && !images.includes(path)) images.push(path);
+  }
+  return images;
+}
+
+/**
+ * Pick the best installed system image matching the requested API level and arch.
+ * Prefers `google_apis` over `default` (no Play store dependency on Apple Silicon
+ * where Play images often lack arm64). Returns undefined if no match.
+ */
+export function pickSystemImage(
+  installed: string[],
+  apiLevel: string | undefined,
+  arch: string
+): string | undefined {
+  const filtered = installed.filter((img) => {
+    const parts = img.split(';');
+    // parts: ["system-images", "android-<api>", "<variant>", "<arch>"]
+    if (parts.length < 4) return false;
+    if (parts[3] !== arch) return false;
+    if (apiLevel && parts[1] !== `android-${apiLevel}`) return false;
+    return true;
+  });
+  if (filtered.length === 0) return undefined;
+
+  // Variant preference: google_apis > google_apis_playstore > default > others
+  const rank = (img: string): number => {
+    const variant = img.split(';')[2];
+    if (variant === 'google_apis') return 0;
+    if (variant === 'google_apis_playstore') return 1;
+    if (variant === 'default') return 2;
+    return 3;
+  };
+  filtered.sort((a, b) => {
+    const r = rank(a) - rank(b);
+    if (r !== 0) return r;
+    // Then prefer higher API level
+    const ai = parseInt(a.split(';')[1].replace('android-', ''), 10) || 0;
+    const bi = parseInt(b.split(';')[1].replace('android-', ''), 10) || 0;
+    return bi - ai;
+  });
+  return filtered[0];
+}
+
+/** Build the avdmanager argv for AVD creation — pure, exported for tests. */
+export function buildAvdmanagerCreateArgs(
+  avdName: string,
+  systemImage: string,
+  deviceProfile: string
+): string[] {
+  return ['create', 'avd', '-n', avdName, '-k', systemImage, '-d', deviceProfile];
+}
+
+async function listInstalledSystemImages(): Promise<string[]> {
+  const result = await spawnCommand('sdkmanager', ['--list_installed']);
+  if (!result.success) {
+    throw new Error(
+      `sdkmanager --list_installed failed: ${result.stderr.trim() || result.stdout.trim()}`
+    );
+  }
+  return parseInstalledSystemImages(result.stdout);
+}
+
+/** Run avdmanager create avd, piping "no\n" so it skips the custom hardware prompt. */
+async function spawnAvdmanagerCreate(args: string[]): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('avdmanager', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = '';
+    proc.stdout.on('data', () => {
+      /* discard */
+    });
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    proc.on('error', (err) => reject(err));
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`avdmanager exited ${code}: ${stderr.trim()}`));
+    });
+    proc.stdin.end('no\n');
+  });
+}
+
+async function createAndroidAVD(
+  avdName: string,
+  deviceProfile: string,
+  apiLevel: string | undefined,
+  systemImageOverride: string | undefined
+): Promise<void> {
+  const arch = pickAndroidArch();
+
+  let systemImage: string;
+  if (systemImageOverride) {
+    systemImage = systemImageOverride;
+  } else {
+    let installed: string[];
+    try {
+      installed = await listInstalledSystemImages();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        `Could not list installed Android system images (${msg}). ` +
+          `Ensure the Android SDK command-line tools are installed and on PATH.`
+      );
+    }
+    const picked = pickSystemImage(installed, apiLevel, arch);
+    if (!picked) {
+      const apiHint = apiLevel ?? '34';
+      throw new Error(
+        `No installed Android system image matches arch=${arch}` +
+          (apiLevel ? `, api=${apiLevel}` : '') +
+          `.\nInstall one with:\n  sdkmanager "system-images;android-${apiHint};google_apis;${arch}"`
+      );
+    }
+    systemImage = picked;
+  }
+
+  const args = buildAvdmanagerCreateArgs(avdName, systemImage, deviceProfile);
+  try {
+    await spawnAvdmanagerCreate(args);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Failed to create AVD "${avdName}": ${msg}`);
+  }
+
+  // Validate the AVD now appears in emulator -list-avds
+  const avds = await listAVDs();
+  if (!avds.includes(avdName)) {
+    throw new Error(
+      `AVD "${avdName}" was not registered after creation (not in emulator -list-avds).`
+    );
+  }
 }
 
 async function waitForAndroidBoot(avdName: string): Promise<string> {
@@ -516,7 +673,13 @@ async function waitForAndroidBoot(avdName: string): Promise<string> {
   );
 }
 
-async function startAndroid(avdName: string | undefined, opts: OutputOptions): Promise<number> {
+async function startAndroid(
+  avdName: string | undefined,
+  opts: OutputOptions,
+  deviceType?: string,
+  osVersion?: string,
+  systemImage?: string
+): Promise<number> {
   let avds: string[];
   try {
     avds = await listAVDs();
@@ -525,14 +688,40 @@ async function startAndroid(avdName: string | undefined, opts: OutputOptions): P
     return 1;
   }
 
-  if (avds.length === 0) {
-    printError('No Android AVDs found. Create one in Android Studio → Device Manager.', opts);
-    return 1;
-  }
+  let target = avdName ?? avds[0];
 
-  const target = avdName ?? avds[0];
-  if (!avds.includes(target)) {
-    printError(`AVD "${target}" not found. Available: ${avds.join(', ')}`, opts);
+  // If the requested AVD doesn't exist (or none exist) and a device profile was
+  // provided, create the AVD before booting.
+  const needsCreate =
+    (avds.length === 0 || (avdName !== undefined && !avds.includes(avdName))) &&
+    deviceType !== undefined;
+
+  if (needsCreate) {
+    if (!avdName) {
+      printError('--avd <name> is required when creating an AVD with --device-type.', opts);
+      return 1;
+    }
+    console.log(`No AVD "${avdName}" found. Creating one with device profile "${deviceType}"...`);
+    try {
+      await createAndroidAVD(avdName, deviceType!, osVersion, systemImage);
+    } catch (e) {
+      printError(e instanceof Error ? e.message : String(e), opts);
+      return 1;
+    }
+    target = avdName;
+  } else if (avds.length === 0) {
+    printError(
+      'No Android AVDs found. Pass --device-type <profile> --avd <name> to create one, ' +
+        'or create one in Android Studio → Device Manager.',
+      opts
+    );
+    return 1;
+  } else if (!avds.includes(target)) {
+    printError(
+      `AVD "${target}" not found. Available: ${avds.join(', ')}. ` +
+        `Pass --device-type to create it.`,
+      opts
+    );
     return 1;
   }
 
@@ -623,7 +812,14 @@ async function startWebDriver(
 export async function startDevice(
   platform: string | undefined,
   opts: OutputOptions,
-  flags: { osVersion?: string; avd?: string; name?: string; deviceType?: string; browser?: string }
+  flags: {
+    osVersion?: string;
+    avd?: string;
+    name?: string;
+    deviceType?: string;
+    systemImage?: string;
+    browser?: string;
+  }
 ): Promise<number> {
   if (!platform) {
     printError('start-device requires --platform ios|android|tvos|web', opts);
@@ -636,7 +832,7 @@ export async function startDevice(
     case 'tvos':
       return startTvOS(flags.osVersion, opts, flags.name, flags.deviceType);
     case 'android':
-      return startAndroid(flags.avd, opts);
+      return startAndroid(flags.avd, opts, flags.deviceType, flags.osVersion, flags.systemImage);
     case 'web':
       return startWebDriver(opts, flags.browser, flags.name);
     default:
