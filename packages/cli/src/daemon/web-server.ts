@@ -480,6 +480,27 @@ let _cdpMode = false;
 let _cdpPort = 0;
 let _pageTargetId: string | null = null;
 
+/**
+ * Default User-Agent applied to created contexts. Derived from the launched
+ * browser's UA with "HeadlessChrome" rewritten to "Chrome" so remote servers
+ * don't see automation/headless markers in the UA string.
+ */
+let _defaultUserAgent: string | undefined;
+
+async function deriveDefaultUserAgent(browser: Browser): Promise<string | undefined> {
+  try {
+    const tmpCtx = await browser.newContext();
+    const tmpPage = await tmpCtx.newPage();
+    const ua = await tmpPage.evaluate(
+      () => (globalThis as unknown as { navigator: { userAgent: string } }).navigator.userAgent
+    );
+    await tmpCtx.close().catch(() => {});
+    return ua.replace(/HeadlessChrome/g, 'Chrome');
+  } catch {
+    return undefined;
+  }
+}
+
 /** Find a free TCP port by briefly binding to port 0. */
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -629,8 +650,11 @@ export async function startWebServer(
           : undefined,
     });
 
+    _defaultUserAgent = await deriveDefaultUserAgent(_browser);
+
     _context = await _browser.newContext({
       viewport: DEFAULT_VIEWPORT,
+      userAgent: _defaultUserAgent,
     });
 
     _page = await _context.newPage();
@@ -782,6 +806,7 @@ async function recreateBrowserContext(dlog?: (msg: string) => void): Promise<voi
 
   _context = await _browser.newContext({
     viewport: DEFAULT_VIEWPORT,
+    userAgent: _defaultUserAgent,
   });
   _page = await _context.newPage();
   attachConsoleListeners(_page);
@@ -1209,7 +1234,7 @@ async function handleRequest(
 
         _context = await _browser.newContext({
           viewport: { width: vpWidth, height: vpHeight },
-          userAgent: vpUserAgent,
+          userAgent: vpUserAgent ?? _defaultUserAgent,
           deviceScaleFactor: vpScaleFactor,
           isMobile: vpIsMobile,
           hasTouch: vpIsMobile,
