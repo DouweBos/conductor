@@ -17,10 +17,8 @@ nothing to opt into.
 
 You can verify this yourself: the source is open at
 [github.com/DouweBos/conductor](https://github.com/DouweBos/conductor).
-Search for `posthog`, `sentry`, `amplitude`, `segment`, `analytics`,
-or `telemetry` and you'll find no matches. The `dependencies` section
-of `packages/cli/package.json` lists only platform tooling
-(`@grpc/grpc-js`, `js-yaml`, `minimist`, `playwright-core`, `ws`).
+Search the source for `posthog`, `sentry`, `amplitude`, `segment`,
+`analytics`, or `telemetry` and you'll find no matches.
 
 ---
 
@@ -28,16 +26,15 @@ of `packages/cli/package.json` lists only platform tooling
 
 Two outbound network calls exist, and you control both:
 
-1. **The npm registry** — once every 24 hours, the CLI fetches
-   `https://registry.npmjs.org/@houwert/conductor/latest` to see if a
-   newer version exists, and prints a one-line nag if so. The result
-   is cached at `~/.conductor/update-check.json` and the request times
-   out after 3 seconds. If the network is offline the CLI continues
-   silently. There is no payload — it's a plain GET and only the npm
-   registry sees it.
-2. **Whatever your driver hits.** When Playwright drives a browser, the
-   browser obviously talks to whatever site you point it at. When the
-   iOS or Android driver runs your app, your app makes whatever network
+1. **The npm registry** — once every 24 hours, the CLI checks the npm
+   registry for a newer version of `@houwert/conductor` and prints a
+   one-line nag if there is one. The result is cached locally and the
+   request times out quickly. If the network is offline the CLI just
+   continues. No payload, no identifiers — only the npm registry sees
+   the request.
+2. **Whatever your driver hits.** When Playwright drives a browser,
+   the browser talks to whatever site you point it at. When the iOS
+   or Android driver runs your app, your app makes whatever network
    calls it normally would. Conductor itself is not in that path.
 
 ---

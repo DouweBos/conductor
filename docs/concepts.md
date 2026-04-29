@@ -14,17 +14,15 @@ actions.
 
 Conductor bundles three of them:
 
-- **iOS driver** — an XCTest UI-testing target written in Swift.
-  Conductor installs and launches it on the simulator the first time
-  you run a command.
-- **Android driver** — a Kotlin instrumentation APK driven via `adb`.
-  Same lifecycle: installed lazily, kept warm by the daemon.
-- **Web driver** — a thin wrapper around
-  [Playwright](https://playwright.dev). `conductor install-web`
-  fetches the browser binary; the driver itself is just code.
+- **iOS driver** — installed onto the simulator the first time you
+  run a command.
+- **Android driver** — installed via `adb` the first time you target
+  an Android device.
+- **Web driver** — uses [Playwright](https://playwright.dev). Run
+  `conductor install-web` once to fetch the browser binary.
 
-You don't manage drivers explicitly — Conductor does that. They appear
-in `~/.conductor/` after first run.
+You don't manage drivers explicitly — Conductor does that. They live
+under `~/.conductor/` after first run.
 
 ---
 
@@ -66,9 +64,8 @@ start-device <name>` boots a specific simulator or emulator;
 
 ## Daemon
 
-The driver process takes a moment to start (Xcode boots an XCTest
-runner; Gradle starts an instrumentation host). For interactive use
-that's fine; for an AI agent issuing dozens of commands it adds up.
+The driver takes a moment to start. For interactive use that's fine;
+for an AI agent issuing dozens of commands the cold-start adds up.
 
 The **daemon** is an optional long-running process per session that
 keeps the driver warm:
