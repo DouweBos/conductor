@@ -1,0 +1,59 @@
+{
+  "_comment": "Drives the public docs site at houwert.dev/conductor/docs. Each entry pulls a markdown file from this directory, parses it, and publishes it to the marketing site at build time. To expose a new doc, add it here. Categories appear in declaration order; pages within a category appear in declaration order too.",
+  "categories": [
+    {
+      "id": "start",
+      "label": "Get started",
+      "pages": [
+        {
+          "slug": "getting-started",
+          "file": "getting-started.md",
+          "title": "Getting started",
+          "summary": "Install Conductor, point it at a simulator or emulator, and run your first command in under a minute."
+        },
+        {
+          "slug": "concepts",
+          "file": "concepts.md",
+          "title": "Concepts",
+          "summary": "Drivers, sessions, devices, the daemon, and how Conductor stays out of the way of your AI agent."
+        }
+      ]
+    },
+    {
+      "id": "reference",
+      "label": "Reference",
+      "pages": [
+        {
+          "slug": "commands",
+          "file": "commands.md",
+          "title": "Command catalogue",
+          "summary": "Every command grouped by purpose — app lifecycle, interaction, inspection, assertions, devices, flows, and web."
+        },
+        {
+          "slug": "flows",
+          "file": "flows.md",
+          "title": "Flows",
+          "summary": "Run Maestro-compatible YAML flow files. Single-file, inline, and parallel-across-devices execution."
+        },
+        {
+          "slug": "web",
+          "file": "web.md",
+          "title": "Web testing",
+          "summary": "The same commands you use on iOS and Android, driving Playwright-managed Chromium, Firefox, or WebKit instead."
+        }
+      ]
+    },
+    {
+      "id": "transparency",
+      "label": "Transparency",
+      "pages": [
+        {
+          "slug": "privacy",
+          "file": "privacy.md",
+          "title": "Privacy",
+          "summary": "Conductor is a pure CLI. No telemetry, no analytics, no phone-home — what you run on your machine stays on your machine."
+        }
+      ]
+    }
+  ]
+}
