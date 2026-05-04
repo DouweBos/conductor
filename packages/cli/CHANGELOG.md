@@ -1,5 +1,23 @@
 # @houwert/conductor
 
+## 0.16.0
+
+### Minor Changes
+
+- 13f514e: Add `--full-page` flag to `take-screenshot` for the web platform. When set,
+  the web driver passes `fullPage: true` to Playwright so the entire scrollable
+  document is captured in a single image instead of just the viewport. The flag
+  is a no-op on iOS/Android.
+
+### Patch Changes
+
+- 23534d1: Added a public documentation manifest plus six user-facing pages (Getting started, Concepts, Command catalogue, Flows, Web testing, Privacy). These power a new multi-page documentation site at houwert.dev/conductor/docs covering everything Conductor supports — including a complete privacy disclosure since the CLI sends no telemetry of any kind.
+- b06bee9: Trimmed the public-facing docs to drop internal implementation details (driver languages, build hosts, exact npm registry URL paths) while keeping the user-relevant content — concepts, command catalogue, flow format, web testing, and the full privacy disclosure.
+- a040cf1: Web driver now strips the `HeadlessChrome` marker from the browser's
+  User-Agent before any context is created, so sites loaded through the
+  web driver see a normal `Chrome` UA. Custom UAs passed to `setViewport`
+  still take precedence.
+
 ## 0.15.0
 
 ### Minor Changes
