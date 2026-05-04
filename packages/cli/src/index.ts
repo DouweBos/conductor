@@ -517,7 +517,8 @@ async function main(): Promise<void> {
 
     case 'take-screenshot': {
       const outPath = argv['output'] as string | undefined;
-      exitCode = await screenshot(outPath, opts, sessionName);
+      const fullPage = Boolean(argv['full-page']);
+      exitCode = await screenshot(outPath, opts, sessionName, fullPage);
       break;
     }
 

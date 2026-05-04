@@ -917,7 +917,9 @@ async function handleRequest(
       }
 
       case '/screenshot': {
-        const buf = await (await getPage(dlog)).screenshot({ type: 'png' });
+        const fullPageRaw = parsedUrl.query.fullPage;
+        const fullPage = fullPageRaw === '1' || fullPageRaw === 'true';
+        const buf = await (await getPage(dlog)).screenshot({ type: 'png', fullPage });
         res.writeHead(200, {
           'Content-Type': 'image/png',
           'Content-Length': buf.length,

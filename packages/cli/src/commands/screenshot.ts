@@ -1,4 +1,5 @@
-export const HELP = `  take-screenshot [--output <path>]    Take screenshot`;
+export const HELP = `  take-screenshot [--output <path>] [--full-page]
+                                       Take screenshot (--full-page: web only, capture entire scrollable page)`;
 
 import path from 'path';
 import fs from 'fs/promises';
@@ -8,7 +9,8 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 export async function screenshot(
   outputPath?: string,
   opts: OutputOptions = {},
-  sessionName = 'default'
+  sessionName = 'default',
+  fullPage = false
 ): Promise<number> {
   const timestamp = Date.now();
   const defaultName = `screenshot-${timestamp}.png`;
@@ -17,7 +19,7 @@ export async function screenshot(
     : path.resolve(process.cwd(), defaultName);
 
   const result = await runDirect(async (driver) => {
-    const buf = await driver.screenshot();
+    const buf = await driver.screenshot({ fullPage });
     await fs.writeFile(resolvedPath, buf);
   }, sessionName);
 

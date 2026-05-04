@@ -120,7 +120,7 @@ export class AndroidDriver {
     return resp.hierarchy;
   }
 
-  async screenshot(): Promise<Buffer> {
+  async screenshot(_opts: { fullPage?: boolean } = {}): Promise<Buffer> {
     const resp = await this.call<{ bytes: Buffer | Uint8Array }>('screenshot', {});
     return Buffer.from(resp.bytes);
   }

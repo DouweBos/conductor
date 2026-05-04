@@ -399,7 +399,7 @@ export class IOSDriver {
     return JSON.parse(data.toString('utf-8')) as IOSViewHierarchy;
   }
 
-  async screenshot(): Promise<Buffer> {
+  async screenshot(_opts: { fullPage?: boolean } = {}): Promise<Buffer> {
     const { status, data } = await this.request('GET', '/screenshot');
     if (status < 200 || status >= 300) {
       throw new Error(`iOS driver screenshot failed (HTTP ${status})`);

@@ -180,8 +180,9 @@ export class WebDriver {
     return this.get<WebViewHierarchy>('viewHierarchy');
   }
 
-  async screenshot(): Promise<Buffer> {
-    const { status, data } = await this.request('GET', '/screenshot');
+  async screenshot(opts: { fullPage?: boolean } = {}): Promise<Buffer> {
+    const path = opts.fullPage ? '/screenshot?fullPage=1' : '/screenshot';
+    const { status, data } = await this.request('GET', path);
     if (status < 200 || status >= 300) {
       throw new Error(`Web driver screenshot failed (HTTP ${status})`);
     }
