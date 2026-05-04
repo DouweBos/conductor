@@ -6,6 +6,8 @@
     ],
     "symlink": [],
     "commands": [
+      "mise trust",
+      "mise install",
       "pnpm install"
     ]
   },
