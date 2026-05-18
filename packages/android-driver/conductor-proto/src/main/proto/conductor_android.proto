@@ -12,6 +12,8 @@ service ConductorDriver {
 
   rpc tap(TapRequest) returns (TapResponse) {}
 
+  rpc gesturePath(GesturePathRequest) returns (GesturePathResponse) {}
+
   rpc inputText(InputTextRequest) returns (InputTextResponse) {}
 
   rpc eraseAllText(EraseAllTextRequest) returns (EraseAllTextResponse) {}
@@ -75,6 +77,33 @@ message TapRequest {
 }
 
 message TapResponse {}
+
+// One step in a finger's path.
+//   x, y      pixel coordinates on the device's natural orientation.
+//   dt_ms     delay in milliseconds since the previous step. For the first
+//             step in a path, this is the initial offset before the touch
+//             goes down.
+message GestureStep {
+  double x = 1;
+  double y = 2;
+  uint32 dt_ms = 3;
+}
+
+// A single finger's traced path. Must have at least one step. The first step
+// is the down position; subsequent steps are moves; the finger lifts after
+// the last step.
+message GestureFingerPath {
+  repeated GestureStep steps = 1;
+}
+
+// Multi-finger gesture request. paths.size() == 1 is a single-finger gesture;
+// paths.size() >= 2 dispatches a true multi-touch gesture via
+// UiAutomation.dispatchGesture (API 24+).
+message GesturePathRequest {
+  repeated GestureFingerPath paths = 1;
+}
+
+message GesturePathResponse {}
 
 message InputTextRequest {
   string text = 1;
