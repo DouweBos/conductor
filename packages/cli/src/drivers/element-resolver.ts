@@ -695,3 +695,224 @@ function visitWeb(nodes: WebElement[], lines: string[], depth: number): void {
     }
   }
 }
+
+// ── Point-based hierarchy queries ─────────────────────────────────────────────
+
+export interface PointHit {
+  /** Indented one-line summary, same shape as the per-line inspect output. */
+  summary: string;
+  /** Pixel rect of the matched node. */
+  rect: { x: number; y: number; width: number; height: number };
+  /** Optional identifiers — populated when available on the platform. */
+  id?: string;
+  text?: string;
+  role?: string;
+  enabled?: boolean;
+  /** Whether the node looks tappable (clickable on Android, enabled on iOS/Web). */
+  tappable: boolean;
+}
+
+function iosRectAt(el: AXElement): { x: number; y: number; width: number; height: number } {
+  return { x: el.frame.X, y: el.frame.Y, width: el.frame.Width, height: el.frame.Height };
+}
+
+function iosContains(el: AXElement, x: number, y: number): boolean {
+  const r = iosRectAt(el);
+  return x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height;
+}
+
+// iOS element types that are typically interactive (XCUIElementType enum values).
+// 9=button, 50=staticText skipped, 49=textField, 65=secureTextField, 14=switch, 38=slider, etc.
+const IOS_TAPPABLE_TYPES = new Set([9, 49, 65, 14, 38, 51, 52, 76, 53, 55, 56, 57]);
+
+function iosNodeTappable(el: AXElement): boolean {
+  return el.enabled && IOS_TAPPABLE_TYPES.has(el.elementType);
+}
+
+function iosSummarize(el: AXElement): string {
+  const parts = [`type=${el.elementType}`];
+  if (el.identifier) parts.push(`id=${el.identifier}`);
+  if (el.label) parts.push(`label="${el.label}"`);
+  if (el.value) parts.push(`value="${String(el.value)}"`);
+  const r = iosRectAt(el);
+  parts.push(
+    `bounds=[${Math.round(r.x)},${Math.round(r.y)}][${Math.round(r.x + r.width)},${Math.round(r.y + r.height)}]`
+  );
+  if (!el.enabled) parts.push('disabled');
+  return parts.join(' ');
+}
+
+/**
+ * Walk the iOS AX tree depth-first and return the deepest element whose frame
+ * contains (x,y). When `tappableOnly` is true, restrict to elements that look
+ * interactive (button, text field, switch, slider, etc.).
+ */
+export function findIOSViewAtPoint(
+  root: AXElement,
+  x: number,
+  y: number,
+  tappableOnly = false
+): PointHit | null {
+  let best: AXElement | null = null;
+  let bestArea = Infinity;
+
+  function visit(node: AXElement): void {
+    if (!iosContains(node, x, y)) return;
+    if (!tappableOnly || iosNodeTappable(node)) {
+      const r = iosRectAt(node);
+      const area = r.width * r.height;
+      if (area <= bestArea) {
+        bestArea = area;
+        best = node;
+      }
+    }
+    if (node.children) {
+      for (const child of node.children) visit(child);
+    }
+  }
+
+  visit(root);
+  if (!best) return null;
+  const matched = best as AXElement;
+  return {
+    summary: iosSummarize(matched),
+    rect: iosRectAt(matched),
+    id: matched.identifier || undefined,
+    text: matched.label || (matched.value as string | undefined),
+    enabled: matched.enabled,
+    tappable: iosNodeTappable(matched),
+  };
+}
+
+function androidContains(n: AndroidNode, x: number, y: number): boolean {
+  return x >= n.bounds.x1 && x < n.bounds.x2 && y >= n.bounds.y1 && y < n.bounds.y2;
+}
+
+function androidRect(n: AndroidNode): { x: number; y: number; width: number; height: number } {
+  return {
+    x: n.bounds.x1,
+    y: n.bounds.y1,
+    width: n.bounds.x2 - n.bounds.x1,
+    height: n.bounds.y2 - n.bounds.y1,
+  };
+}
+
+function androidSummarize(n: AndroidNode): string {
+  const parts: string[] = [];
+  if (n.className) parts.push(`class=${n.className}`);
+  if (n.resourceId) parts.push(`id=${n.resourceId}`);
+  if (n.text) parts.push(`text="${n.text}"`);
+  if (n.contentDesc) parts.push(`desc="${n.contentDesc}"`);
+  parts.push(`bounds=[${n.bounds.x1},${n.bounds.y1}][${n.bounds.x2},${n.bounds.y2}]`);
+  if (n.clickable) parts.push('clickable');
+  if (!n.enabled) parts.push('disabled');
+  return parts.join(' ');
+}
+
+export function findAndroidViewAtPoint(
+  xml: string,
+  x: number,
+  y: number,
+  tappableOnly = false
+): PointHit | null {
+  const nodes = parseAndroidHierarchy(xml);
+  let best: AndroidNode | null = null;
+  let bestArea = Infinity;
+  for (const n of nodes) {
+    if (!androidContains(n, x, y)) continue;
+    if (tappableOnly && !n.clickable) continue;
+    const r = androidRect(n);
+    const area = r.width * r.height;
+    if (area <= bestArea) {
+      bestArea = area;
+      best = n;
+    }
+  }
+  if (!best) return null;
+  const matched = best as AndroidNode;
+  return {
+    summary: androidSummarize(matched),
+    rect: androidRect(matched),
+    id: matched.resourceId || undefined,
+    text: matched.text || matched.contentDesc || undefined,
+    enabled: matched.enabled,
+    tappable: matched.clickable,
+  };
+}
+
+const WEB_TAPPABLE_ROLES = new Set([
+  'button',
+  'link',
+  'checkbox',
+  'radio',
+  'menuitem',
+  'tab',
+  'option',
+  'switch',
+  'textbox',
+  'searchbox',
+  'combobox',
+  'slider',
+  'spinbutton',
+]);
+
+function webRectContains(
+  b: { x: number; y: number; width: number; height: number },
+  x: number,
+  y: number
+): boolean {
+  return x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height;
+}
+
+function webNodeTappable(node: WebElement): boolean {
+  return node.enabled && WEB_TAPPABLE_ROLES.has(node.role);
+}
+
+function webSummarize(node: WebElement): string {
+  const parts = [`role=${node.role}`];
+  if (node.name) parts.push(`name="${node.name}"`);
+  if (node.ref) parts.push(`ref=${node.ref}`);
+  if (node.bounds) {
+    const b = node.bounds;
+    parts.push(
+      `bounds=[${Math.round(b.x)},${Math.round(b.y)}][${Math.round(b.x + b.width)},${Math.round(b.y + b.height)}]`
+    );
+  }
+  if (!node.enabled) parts.push('disabled');
+  return parts.join(' ');
+}
+
+export function findWebViewAtPoint(
+  hierarchy: WebViewHierarchy,
+  x: number,
+  y: number,
+  tappableOnly = false
+): PointHit | null {
+  let best: WebElement | null = null;
+  let bestArea = Infinity;
+
+  function visit(node: WebElement): void {
+    if (node.bounds && webRectContains(node.bounds, x, y)) {
+      if (!tappableOnly || webNodeTappable(node)) {
+        const area = node.bounds.width * node.bounds.height;
+        if (area <= bestArea) {
+          bestArea = area;
+          best = node;
+        }
+      }
+    }
+    if (node.children) for (const c of node.children) visit(c);
+  }
+
+  for (const root of hierarchy.elements) visit(root);
+  if (!best) return null;
+  const matched = best as WebElement;
+  return {
+    summary: webSummarize(matched),
+    rect: matched.bounds ?? { x: 0, y: 0, width: 0, height: 0 },
+    text: matched.name || undefined,
+    role: matched.role,
+    enabled: matched.enabled,
+    tappable: webNodeTappable(matched),
+  };
+}

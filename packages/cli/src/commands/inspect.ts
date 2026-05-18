@@ -1,7 +1,8 @@
-export const HELP = `  inspect [--dump]                     Print UI hierarchy (--dump for raw driver output)`;
+export const HELP = `  inspect [--dump]                     Print UI hierarchy (--dump for raw driver output)
+  inspect --at <x,y> [--tappable]      Print the topmost view at a screen point`;
 
 import { getDriver } from '../runner.js';
-import { printError, OutputOptions } from '../output.js';
+import { printError, printData, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
@@ -9,11 +10,18 @@ import {
   inspectIOSToText,
   inspectAndroidToText,
   inspectWebToText,
+  findIOSViewAtPoint,
+  findAndroidViewAtPoint,
+  findWebViewAtPoint,
 } from '../drivers/element-resolver.js';
 import { buildIOSA11y, buildAndroidA11y, buildWebA11y } from '../drivers/a11y.js';
 
 export interface InspectOptions {
   dump?: boolean;
+  /** Point query: "x,y" pixel coordinates. */
+  at?: string;
+  /** When `at` is set, restrict to tappable/interactive elements. */
+  tappableOnly?: boolean;
 }
 
 export async function inspect(
@@ -23,6 +31,42 @@ export async function inspect(
 ): Promise<number> {
   try {
     const driver = await getDriver(sessionName);
+
+    if (inspectOpts.at) {
+      const m = inspectOpts.at.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (!m) {
+        printError(`inspect --at expects "<x>,<y>", got "${inspectOpts.at}"`, opts);
+        return 1;
+      }
+      const x = Number(m[1]);
+      const y = Number(m[2]);
+      const tappable = !!inspectOpts.tappableOnly;
+
+      let hit;
+      if (driver instanceof IOSDriver) {
+        const hierarchy = await driver.viewHierarchy(false);
+        hit = findIOSViewAtPoint(hierarchy.axElement, x, y, tappable);
+      } else if (driver instanceof AndroidDriver) {
+        const xml = await driver.viewHierarchy();
+        hit = findAndroidViewAtPoint(xml, x, y, tappable);
+      } else if (driver instanceof WebDriver) {
+        const vh = await driver.viewHierarchy();
+        hit = findWebViewAtPoint(vh, x, y, tappable);
+      } else {
+        throw new Error('Unknown driver type');
+      }
+
+      if (!hit) {
+        const message = `No ${tappable ? 'tappable view' : 'view'} found at (${x}, ${y})`;
+        if (opts.json) printData({ found: false, x, y, tappable }, opts);
+        else console.log(message);
+        return tappable ? 1 : 0;
+      }
+
+      if (opts.json) printData({ found: true, x, y, tappable, hit }, opts);
+      else console.log(hit.summary);
+      return 0;
+    }
 
     if (inspectOpts.dump) {
       let raw: string;
