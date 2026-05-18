@@ -36,6 +36,34 @@ import {
 import { installWebCli, HELP_INSTALL_WEB } from './commands/install.js';
 import { devicePool, HELP as devicePoolHelp } from './commands/device-pool.js';
 import { runParallel, HELP as runParallelHelp } from './commands/run-parallel.js';
+import { runSequence, HELP as runSequenceHelp } from './commands/run-sequence.js';
+import { pinch, rotateGesture, gesture, HELP as gesturesHelp } from './commands/gestures.js';
+import { workspaceCmd, HELP as workspaceHelp } from './commands/workspace.js';
+import {
+  debugStatus,
+  debugEvaluate,
+  debugComponentTree,
+  debugInspectElement,
+  debugLogRegistry,
+  debugReload,
+  HELP as debugHelp,
+} from './commands/debug.js';
+import { networkLogs, networkRequest, HELP as networkHelp } from './commands/network.js';
+import { flowRecord, HELP as flowRecordHelp } from './commands/flow-record.js';
+import {
+  profileCpu,
+  profileMemory,
+  profileReactStart,
+  profileReactStop,
+  HELP as profileHelp,
+} from './commands/profile.js';
+import {
+  crashesList,
+  crashesShow,
+  crashesTail,
+  HELP as crashesHelp,
+} from './commands/crashes.js';
+import { getActiveRecording, appendStep, commandToYamlStep } from './drivers/flow-recorder.js';
 import { foregroundApp, HELP as foregroundAppHelp } from './commands/foreground-app.js';
 import { listApps, HELP as listAppsHelp } from './commands/list-apps.js';
 import { copyApp, HELP as copyAppHelp } from './commands/copy-app.js';
@@ -56,6 +84,13 @@ import { stopDevice, HELP as stopDeviceHelp } from './commands/stop-device.js';
 import { deleteDevice, HELP as deleteDeviceHelp } from './commands/delete-device.js';
 import { logs, HELP as logsHelp } from './commands/logs.js';
 import { memory, HELP as memoryHelp } from './commands/memory.js';
+import { metroStop, metroReload, HELP as metroHelp } from './commands/metro.js';
+import {
+  clipboardRead,
+  clipboardWrite,
+  paste,
+  HELP as clipboardHelp,
+} from './commands/clipboard.js';
 import { pickDevice } from './device-picker.js';
 import { checkForUpdates } from './update-check.js';
 import { findPkgRoot } from './pkg-root.js';
@@ -103,8 +138,19 @@ const COMMAND_HELP: Record<string, string> = {
   'daemon-status': daemonStatusHelp,
   'device-pool': devicePoolHelp,
   'run-parallel': runParallelHelp,
+  'run-sequence': runSequenceHelp,
+  gestures: gesturesHelp,
+  workspace: workspaceHelp,
+  debug: debugHelp,
+  network: networkHelp,
+  'flow record': flowRecordHelp,
+  profile: profileHelp,
+  crashes: crashesHelp,
   logs: logsHelp,
   memory: memoryHelp,
+  metro: metroHelp,
+  clipboard: clipboardHelp,
+  paste: '  paste                                Trigger OS-level paste (or type clipboard on iOS)',
 };
 
 const OPTIONS_HELP = `Options:
@@ -147,6 +193,7 @@ async function main(): Promise<void> {
       'optional',
       'benchmark',
       'dump',
+      'tappable',
       'objects',
       'heap',
       'leaks',
@@ -187,6 +234,24 @@ async function main(): Promise<void> {
       'vs',
       'top',
       'filter',
+      'port',
+      'target',
+      'at',
+      'file',
+      'scale',
+      'center',
+      'degrees',
+      'angle',
+      'limit',
+      'method',
+      'body',
+      'header',
+      'url',
+      'out',
+      'track',
+      'interval',
+      'app',
+      'since',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version' },
   });
@@ -226,6 +291,8 @@ async function main(): Promise<void> {
     'copy-app',
     'device-pool',
     'run-parallel',
+    'metro',
+    'workspace',
     // `logs --list` and `logs --source metro` only query Metro on localhost — no device needed
     // `logs` always needs a device session — Metro discovery is device-scoped.
     // `daemon-stop --all` stops every daemon — no device needed
@@ -529,7 +596,11 @@ async function main(): Promise<void> {
     }
 
     case 'inspect':
-      exitCode = await inspect(opts, sessionName, { dump: argv['dump'] as boolean });
+      exitCode = await inspect(opts, sessionName, {
+        dump: argv['dump'] as boolean,
+        at: argv['at'] as string | undefined,
+        tappableOnly: argv['tappable'] as boolean,
+      });
       break;
 
     case 'focused':
@@ -619,9 +690,210 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'run-sequence': {
+      const file = (argv['file'] as string | undefined) ?? rest[0];
+      exitCode = await runSequence(file, opts, sessionName);
+      break;
+    }
+
     case 'run-parallel': {
       const flowsDir = (argv['flows-dir'] as string | undefined) ?? rest[0] ?? '';
       exitCode = await runParallel(flowsDir, opts);
+      break;
+    }
+
+    case 'crashes': {
+      const sub = (rest[0] ?? 'list').toLowerCase();
+      if (sub === 'list') {
+        exitCode = await crashesList(opts, sessionName, {
+          app: argv['app'] as string | undefined,
+          since: argv['since'] as string | undefined,
+        });
+      } else if (sub === 'show') {
+        exitCode = await crashesShow(rest[1] ?? '', opts);
+      } else if (sub === 'tail') {
+        exitCode = await crashesTail(opts, sessionName);
+      } else {
+        console.error('Usage: conductor crashes <list|show|tail>');
+        exitCode = 1;
+      }
+      break;
+    }
+
+    case 'profile': {
+      const sub = (rest[0] ?? '').toLowerCase();
+      const port = argv['port'] !== undefined ? Number(argv['port']) : undefined;
+      const targetIndex = argv['target'] !== undefined ? Number(argv['target']) : undefined;
+      if (sub === 'cpu') {
+        const durationSec = argv['duration'] !== undefined ? Number(argv['duration']) : 10;
+        exitCode = await profileCpu(opts, sessionName, {
+          durationSec,
+          out: argv['out'] as string | undefined,
+          appId: rest[1],
+        });
+      } else if (sub === 'memory') {
+        const trackSec = argv['track'] !== undefined ? Number(argv['track']) : 10;
+        const intervalMs = argv['interval'] !== undefined ? Number(argv['interval']) : 1000;
+        exitCode = await profileMemory(opts, sessionName, {
+          trackSec,
+          intervalMs,
+          appId: rest[1],
+        });
+      } else if (sub === 'react') {
+        const sub2 = (rest[1] ?? '').toLowerCase();
+        const top = argv['top'] !== undefined ? Number(argv['top']) : 20;
+        if (sub2 === 'start') {
+          exitCode = await profileReactStart(opts, sessionName, { port, targetIndex });
+        } else if (sub2 === 'stop') {
+          exitCode = await profileReactStop(opts, sessionName, { port, targetIndex }, top);
+        } else {
+          console.error('Usage: conductor profile react <start|stop>');
+          exitCode = 1;
+        }
+      } else {
+        console.error('Usage: conductor profile <cpu|memory|react> [args]');
+        exitCode = 1;
+      }
+      break;
+    }
+
+    case 'flow': {
+      const sub1 = (rest[0] ?? '').toLowerCase();
+      if (sub1 !== 'record') {
+        console.error('Usage: conductor flow record <start|finish|echo|status>');
+        exitCode = 1;
+        break;
+      }
+      const sub2 = (rest[1] ?? '').toLowerCase();
+      exitCode = await flowRecord(
+        sub2,
+        rest.slice(2).map(String),
+        opts,
+        sessionName,
+        argv as unknown as Record<string, unknown>
+      );
+      break;
+    }
+
+    case 'network': {
+      const sub = (rest[0] ?? '').toLowerCase();
+      const port = argv['port'] !== undefined ? Number(argv['port']) : undefined;
+      const targetIndex = argv['target'] !== undefined ? Number(argv['target']) : undefined;
+      if (sub === 'logs') {
+        const limit = argv['limit'] !== undefined ? Number(argv['limit']) : undefined;
+        exitCode = await networkLogs(opts, sessionName, { port, targetIndex, limit });
+      } else if (sub === 'request') {
+        const url = rest[1] ?? (argv['url'] as string | undefined) ?? '';
+        const rawHeaders = argv['header'];
+        const headers = Array.isArray(rawHeaders)
+          ? (rawHeaders as string[])
+          : rawHeaders
+            ? [rawHeaders as string]
+            : [];
+        exitCode = await networkRequest(url, opts, sessionName, {
+          port,
+          targetIndex,
+          method: argv['method'] as string | undefined,
+          body: argv['body'] as string | undefined,
+          headers,
+        });
+      } else {
+        console.error('Usage: conductor network <logs|request> [args]');
+        exitCode = 1;
+      }
+      break;
+    }
+
+    case 'debug': {
+      const sub = (rest[0] ?? '').toLowerCase();
+      const debugOpts = {
+        port: argv['port'] !== undefined ? Number(argv['port']) : undefined,
+        targetIndex: argv['target'] !== undefined ? Number(argv['target']) : undefined,
+      };
+      if (sub === 'status') {
+        exitCode = await debugStatus(opts, sessionName, debugOpts);
+      } else if (sub === 'evaluate' || sub === 'eval') {
+        const expr = rest.slice(1).join(' ');
+        exitCode = await debugEvaluate(expr, opts, sessionName, debugOpts);
+      } else if (sub === 'component-tree') {
+        exitCode = await debugComponentTree(opts, sessionName, debugOpts);
+      } else if (sub === 'inspect-element') {
+        const at = rest[1] ?? (argv['at'] as string | undefined) ?? '';
+        exitCode = await debugInspectElement(at, opts, sessionName, debugOpts);
+      } else if (sub === 'log-registry') {
+        exitCode = await debugLogRegistry(opts, sessionName);
+      } else if (sub === 'reload') {
+        exitCode = await debugReload(opts, sessionName, debugOpts);
+      } else {
+        console.error(
+          'Usage: conductor debug <status|evaluate|component-tree|inspect-element|log-registry|reload>'
+        );
+        exitCode = 1;
+      }
+      break;
+    }
+
+    case 'workspace': {
+      const sub = (rest[0] ?? 'info').toLowerCase();
+      exitCode = await workspaceCmd(sub, opts);
+      break;
+    }
+
+    case 'pinch':
+      exitCode = await pinch(opts, sessionName, {
+        scale: argv['scale'] !== undefined ? Number(argv['scale']) : undefined,
+        center: argv['center'] as string | undefined,
+        duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
+        angle: argv['angle'] !== undefined ? Number(argv['angle']) : undefined,
+      });
+      break;
+
+    case 'rotate-gesture':
+      exitCode = await rotateGesture(opts, sessionName, {
+        degrees: argv['degrees'] !== undefined ? Number(argv['degrees']) : undefined,
+        center: argv['center'] as string | undefined,
+        duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
+      });
+      break;
+
+    case 'gesture': {
+      const file = argv['file'] as string | undefined;
+      const rawJson = !file ? rest.join(' ') : undefined;
+      exitCode = await gesture(rawJson, file, opts, sessionName);
+      break;
+    }
+
+    case 'clipboard': {
+      const sub = (rest[0] ?? '').toLowerCase();
+      if (sub === 'read') {
+        exitCode = await clipboardRead(opts, sessionName);
+      } else if (sub === 'write') {
+        const text = rest.slice(1).join(' ');
+        exitCode = await clipboardWrite(text, opts, sessionName);
+      } else {
+        console.error('Usage: conductor clipboard <read|write> [text]');
+        exitCode = 1;
+      }
+      break;
+    }
+
+    case 'paste':
+      exitCode = await paste(opts, sessionName);
+      break;
+
+    case 'metro': {
+      const sub = (rest[0] ?? '').toLowerCase();
+      const port = argv['port'] !== undefined ? Number(argv['port']) : undefined;
+      const targetIndex = argv['target'] !== undefined ? Number(argv['target']) : undefined;
+      const metroSession = (argv['device'] as string | undefined) ?? 'default';
+      if (sub === 'stop') {
+        exitCode = await metroStop(opts, { port });
+      } else if (sub === 'reload') {
+        exitCode = await metroReload(opts, metroSession, { port, targetIndex });
+      } else {
+        console.error('Usage: conductor metro <stop|reload> [--port N] [--target N]');
+        exitCode = 1;
+      }
       break;
     }
 
@@ -630,6 +902,19 @@ async function main(): Promise<void> {
       console.error(`Unknown command: ${command}`);
       console.error('Run `conductor --help` for usage.');
       exitCode = 1;
+  }
+
+  // Flow recording — append a YAML step for action commands that succeeded.
+  if (exitCode === 0 && !NO_DEVICE_COMMANDS.has(command) && command !== 'flow') {
+    try {
+      const active = await getActiveRecording(sessionName);
+      if (active) {
+        const step = commandToYamlStep(command, rest.map(String), argv as Record<string, unknown>);
+        if (step) appendStep(active, step);
+      }
+    } catch {
+      // Recording is best-effort — never fail the command for a bookkeeping issue.
+    }
   }
 
   process.exit(exitCode);
