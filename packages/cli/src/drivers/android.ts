@@ -97,6 +97,19 @@ export class AndroidDriver {
     await this.call('tap', { x: Math.round(x), y: Math.round(y) });
   }
 
+  /**
+   * Multi-finger gesture playback. Driver injects multi-pointer MotionEvents
+   * via UiAutomation.injectInputEvent — one pointer per path, resampled to a
+   * shared 16ms grid so all fingers move on the same clock. `dt_ms` is the
+   * delay since this finger's previous step (or initial offset for the first).
+   */
+  async gesturePath(
+    paths: Array<{ steps: Array<{ x: number; y: number; dt_ms: number }> }>,
+    timeoutMs = 35000
+  ): Promise<void> {
+    await this.call('gesturePath', { paths }, timeoutMs);
+  }
+
   async inputText(text: string): Promise<void> {
     await this.call('inputText', { text });
   }
