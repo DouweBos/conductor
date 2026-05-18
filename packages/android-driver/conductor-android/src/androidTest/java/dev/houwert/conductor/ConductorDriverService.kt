@@ -265,6 +265,189 @@ class Service(
         }
     }
 
+    /**
+     * Multi-finger gesture playback via UiAutomation.injectInputEvent with
+     * multi-pointer MotionEvent. Each path is one finger. The driver builds a
+     * shared event timeline: at each frame it emits an ACTION_MOVE (or
+     * pointer-down/up at edges) carrying every active finger's current
+     * coordinates.
+     *
+     * dt_ms is the delay since that finger's previous step (the first step's
+     * dt_ms is the initial offset before this finger goes down). We resample
+     * to a global 16ms grid so all fingers share a clock.
+     */
+    override fun gesturePath(
+        request: ConductorAndroid.GesturePathRequest,
+        responseObserver: StreamObserver<ConductorAndroid.GesturePathResponse>
+    ) {
+        try {
+            if (request.pathsCount == 0) {
+                throw IllegalArgumentException("gesturePath requires at least one finger path")
+            }
+            val fingers = (0 until request.pathsCount).map { request.getPaths(it) }
+            for ((i, finger) in fingers.withIndex()) {
+                if (finger.stepsCount == 0) {
+                    throw IllegalArgumentException("gesturePath finger $i has no steps")
+                }
+            }
+
+            // Compute each finger's per-step absolute time offset (ms from gesture start).
+            // First step's dt_ms is the initial offset; subsequent dt_ms are deltas.
+            val fingerTimes: List<LongArray> = fingers.map { f ->
+                val arr = LongArray(f.stepsCount)
+                var cum = 0L
+                for (j in 0 until f.stepsCount) {
+                    cum += f.getSteps(j).dtMs.toLong()
+                    arr[j] = cum
+                }
+                arr
+            }
+
+            // Total gesture duration = max of any finger's last timestamp.
+            val totalMs = fingerTimes.maxOf { it.lastOrNull() ?: 0L }
+            val frameMs = 16L
+            val frames = maxOf(1, ((totalMs + frameMs - 1) / frameMs).toInt())
+
+            // For each frame at globalT = i * frameMs, sample each finger's
+            // position via linear interpolation between its two surrounding steps.
+            fun sample(fingerIdx: Int, t: Long): Pair<Float, Float>? {
+                val f = fingers[fingerIdx]
+                val times = fingerTimes[fingerIdx]
+                if (t < times[0]) return null
+                if (t >= times.last()) {
+                    val last = f.getSteps(f.stepsCount - 1)
+                    return last.x.toFloat() to last.y.toFloat()
+                }
+                // Find segment [k, k+1] containing t.
+                var k = 0
+                while (k + 1 < times.size && times[k + 1] < t) k++
+                val a = f.getSteps(k)
+                val b = f.getSteps(k + 1)
+                val span = (times[k + 1] - times[k]).coerceAtLeast(1L)
+                val frac = (t - times[k]).toDouble() / span.toDouble()
+                val x = a.x + (b.x - a.x) * frac
+                val y = a.y + (b.y - a.y) * frac
+                return x.toFloat() to y.toFloat()
+            }
+
+            // PointerProperties — id == index in our `fingers` list.
+            val pointerProps = Array(fingers.size) { idx ->
+                android.view.MotionEvent.PointerProperties().also {
+                    it.id = idx
+                    it.toolType = android.view.MotionEvent.TOOL_TYPE_FINGER
+                }
+            }
+
+            val downtime = SystemClock.uptimeMillis()
+            // Track which fingers are currently "down" so we know when to emit
+            // ACTION_POINTER_DOWN / ACTION_POINTER_UP transitions.
+            val active = BooleanArray(fingers.size) { false }
+
+            fun makeCoords(t: Long): Array<android.view.MotionEvent.PointerCoords> {
+                return Array(fingers.size) { idx ->
+                    val c = android.view.MotionEvent.PointerCoords()
+                    val pt = sample(idx, t) ?: (fingers[idx].getSteps(0).x.toFloat() to fingers[idx].getSteps(0).y.toFloat())
+                    c.x = pt.first
+                    c.y = pt.second
+                    c.pressure = if (active[idx]) 1f else 0f
+                    c.size = 1f
+                    c
+                }
+            }
+
+            fun activePointerCount(): Int = active.count { v -> v }
+
+            fun inject(action: Int, pointerIndex: Int, t: Long) {
+                val activeCount = activePointerCount()
+                if (activeCount == 0) return
+                // Build coord/prop arrays restricted to active pointers, with the
+                // changed pointer placed at the supplied index so the high bits
+                // of `action` encode the right pointer slot.
+                val activeIndices: List<Int> = active.toList()
+                    .mapIndexedNotNull { i, on -> if (on) i else null }
+                val props = activeIndices.map { pointerProps[it] }.toTypedArray()
+                val allCoords = makeCoords(t)
+                val coords = activeIndices.map { allCoords[it] }.toTypedArray()
+
+                val actionMasked = when (action) {
+                    android.view.MotionEvent.ACTION_POINTER_DOWN,
+                    android.view.MotionEvent.ACTION_POINTER_UP -> {
+                        val slot = activeIndices.indexOf(pointerIndex).coerceAtLeast(0)
+                        action or (slot shl android.view.MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+                    }
+                    else -> action
+                }
+
+                val event = android.view.MotionEvent.obtain(
+                    downtime,
+                    downtime + t,
+                    actionMasked,
+                    props.size,
+                    props,
+                    coords,
+                    0,
+                    0,
+                    1f,
+                    1f,
+                    0,
+                    0,
+                    android.view.InputDevice.SOURCE_TOUCHSCREEN,
+                    0
+                )
+                try {
+                    uiAutomation.injectInputEvent(event, true)
+                } finally {
+                    event.recycle()
+                }
+            }
+
+            // Walk the global timeline.
+            for (i in 0..frames) {
+                val t = (i.toLong() * frameMs).coerceAtMost(totalMs)
+                // 1) Promote any fingers whose first step has elapsed but aren't active.
+                for (idx in fingers.indices) {
+                    if (!active[idx] && t >= fingerTimes[idx][0]) {
+                        active[idx] = true
+                        val action = if (activePointerCount() == 1)
+                            android.view.MotionEvent.ACTION_DOWN
+                        else
+                            android.view.MotionEvent.ACTION_POINTER_DOWN
+                        inject(action, idx, t)
+                    }
+                }
+                // 2) Move all active pointers to their current positions.
+                if (activePointerCount() > 0 && i > 0) {
+                    inject(android.view.MotionEvent.ACTION_MOVE, -1, t)
+                }
+                // 3) Demote any fingers whose last step has passed.
+                if (t >= totalMs) break
+            }
+
+            // Lift each active pointer in reverse order so the final ACTION_UP
+            // is on the last remaining pointer.
+            val liftOrder: List<Int> = active.toList()
+                .mapIndexedNotNull { i, on -> if (on) i else null }
+                .reversed()
+            for (k in liftOrder.indices) {
+                val idx = liftOrder[k]
+                val isLast = k == liftOrder.size - 1
+                val action = if (isLast)
+                    android.view.MotionEvent.ACTION_UP
+                else
+                    android.view.MotionEvent.ACTION_POINTER_UP
+                inject(action, idx, totalMs)
+                active[idx] = false
+            }
+
+            responseObserver.onNext(
+                ConductorAndroid.GesturePathResponse.newBuilder().build()
+            )
+            responseObserver.onCompleted()
+        } catch (t: Throwable) {
+            responseObserver.onError(t.internalError())
+        }
+    }
+
     override fun addMedia(responseObserver: StreamObserver<ConductorAndroid.AddMediaResponse>): StreamObserver<ConductorAndroid.AddMediaRequest> {
         return object : StreamObserver<ConductorAndroid.AddMediaRequest> {
 
