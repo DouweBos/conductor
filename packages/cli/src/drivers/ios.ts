@@ -183,6 +183,19 @@ export class IOSDriver {
     });
   }
 
+  /**
+   * Multi-finger gesture playback. `paths` is one entry per finger; each entry's
+   * `steps` are the (x, y, dt) frames making up that finger's path. The driver
+   * synthesizes a multi-finger XCSynthesizedEventRecord when paths.length > 1.
+   * `dt` is the delay in seconds since the previous step (or the initial offset
+   * for the first step).
+   */
+  async gesturePath(
+    paths: Array<{ steps: Array<{ x: number; y: number; dt: number }> }>
+  ): Promise<void> {
+    await this.post('gesturePath', { paths });
+  }
+
   async inputText(text: string, appIds: string[] = []): Promise<void> {
     await this.post('inputText', { text, appIds });
   }
