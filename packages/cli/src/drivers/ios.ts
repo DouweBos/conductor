@@ -265,6 +265,31 @@ export class IOSDriver {
     await this.simctl(['openurl', deviceId, url]);
   }
 
+  /** Read the simulator's clipboard. Uses `xcrun simctl pbpaste <udid>`. */
+  async clipboardRead(): Promise<string> {
+    const deviceId = this.requireDeviceId();
+    return this.simctlCapture(['pbpaste', deviceId]);
+  }
+
+  /** Write to the simulator's clipboard. Uses `xcrun simctl pbcopy <udid>` over stdin. */
+  async clipboardWrite(text: string): Promise<void> {
+    const deviceId = this.requireDeviceId();
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn('xcrun', ['simctl', 'pbcopy', deviceId], {
+        stdio: ['pipe', 'ignore', 'pipe'],
+      });
+      let stderr = '';
+      proc.stderr?.on('data', (c: Buffer) => {
+        stderr += c.toString();
+      });
+      proc.on('close', (code) =>
+        code === 0 ? resolve() : reject(new Error(`xcrun simctl pbcopy failed: ${stderr.trim()}`))
+      );
+      proc.on('error', reject);
+      proc.stdin?.end(text);
+    });
+  }
+
   async setLocation(latitude: number, longitude: number): Promise<void> {
     const deviceId = this.requireDeviceId();
     await this.simctl(['location', deviceId, 'set', `${latitude},${longitude}`]);
