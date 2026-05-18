@@ -40,6 +40,12 @@
           "file": "web.md",
           "title": "Web testing",
           "summary": "The same commands you use on iOS and Android, driving Playwright-managed Chromium, Firefox, or WebKit instead."
+        },
+        {
+          "slug": "experimental",
+          "file": "experimental.md",
+          "title": "Experimental",
+          "summary": "RN debugger, network inspection, and profiling. Powerful but depend on React Native runtime internals — expect occasional drift between RN versions."
         }
       ]
     },
