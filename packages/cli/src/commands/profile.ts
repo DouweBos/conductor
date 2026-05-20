@@ -6,7 +6,6 @@ export const HELP = `  profile cpu --duration <s> [--out <path>]
   profile react stop [--top N]         Stop and summarise captured React commits`;
 
 import { spawn } from 'child_process';
-import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { printError, printData, printSuccess, OutputOptions } from '../output.js';
@@ -282,7 +281,10 @@ interface ReactProfilerReadResult {
   installed: boolean;
   totalCommits?: number;
   top?: Array<{ name: string; totalMs: number; renders: number }>;
-  commits?: Array<{ at: number; components: Array<{ name: string; depth: number; actualDuration: number }> }>;
+  commits?: Array<{
+    at: number;
+    components: Array<{ name: string; depth: number; actualDuration: number }>;
+  }>;
 }
 
 export async function profileReactStart(
@@ -306,7 +308,11 @@ export async function profileReactStart(
       return 1;
     }
     if (opts.json) printData(result, opts);
-    else printSuccess(`profile react start — ${result.already ? 'already installed' : 'installed'}`, opts);
+    else
+      printSuccess(
+        `profile react start — ${result.already ? 'already installed' : 'installed'}`,
+        opts
+      );
     return 0;
   } catch (err) {
     printError(`profile react start — ${err instanceof Error ? err.message : String(err)}`, opts);
