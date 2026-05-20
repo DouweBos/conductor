@@ -144,7 +144,23 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
       await startDaemon(deviceId);
       await waitForPort(port);
     }
-    const iosDriver = new IOSDriver(port, '127.0.0.1', deviceId, 'ios');
+    // Ask the daemon whether the experimental dylib driver is enabled for
+    // this session. When it is, the IOSDriver routes the five interaction
+    // routes through the dylib port and falls back to XCUITest on miss.
+    const status = await daemonStatus(deviceId);
+    const dylibPort =
+      status.iosDriverImpl === 'dylib' && status.iosDylibPort ? status.iosDylibPort : undefined;
+    // Host-side sim-driver is unconditional on iOS — when the daemon reports
+    // a port, route the five HID methods through it (with XCUITest fallback).
+    const simDriverPort = status.iosSimDriverPort ?? undefined;
+    const iosDriver = new IOSDriver(
+      port,
+      '127.0.0.1',
+      deviceId,
+      'ios',
+      dylibPort,
+      simDriverPort
+    );
     if (!(await iosDriver.isAlive())) {
       throw new Error(
         `iOS XCTest driver on port ${port} is not responding.\n` +

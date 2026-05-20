@@ -49,23 +49,62 @@ export interface IOSDeviceInfo {
 export class IOSDriver {
   private _recordingProcess: ChildProcess | null = null;
 
+  /**
+   * Optional secondary HTTP listener for the experimental in-process dylib
+   * driver. When set, the five interaction routes (tap, swipe, gesturePath,
+   * pressKey, inputText) prefer the dylib URL and fall back to XCUITest on
+   * connection failure, 404 (no dylib registered for the foreground app), or
+   * a 5xx response. Every other route always uses the XCUITest port.
+   *
+   * Set by the daemon/runner when `--ios-driver dylib` is active.
+   */
+  private dylibPort?: number;
+
+  /**
+   * Optional host-side sim-driver HTTP listener. When set, the HID-class
+   * routes (tap, swipe, gesturePath, pressKey, pressButton) prefer the
+   * sim-driver URL and fall back to XCUITest on connection error / non-2xx.
+   *
+   * The sim-driver lives outside the app process and synthesizes real HID
+   * digitizer events via CoreSimulator + IOKit — unlike the dylib, it works
+   * for React Native, SwiftUI, and any view that handles raw touches.
+   * Unconditional for iOS sessions (not gated by --ios-driver dylib).
+   */
+  private simDriverPort?: number;
+
   constructor(
     private readonly port = 1075,
     private readonly host = '127.0.0.1',
     readonly deviceId?: string,
-    readonly platform: 'ios' | 'tvos' = 'ios'
-  ) {}
+    readonly platform: 'ios' | 'tvos' = 'ios',
+    dylibPort?: number,
+    simDriverPort?: number
+  ) {
+    this.dylibPort = dylibPort;
+    this.simDriverPort = simDriverPort;
+  }
+
+  /** Update the dylib port at runtime (used by daemon-status hot reload). */
+  setDylibPort(port: number | undefined): void {
+    this.dylibPort = port;
+  }
+
+  /** Update the sim-driver port at runtime (used by daemon-status hot reload). */
+  setSimDriverPort(port: number | undefined): void {
+    this.simDriverPort = port;
+  }
 
   private request(
     method: 'GET' | 'POST',
     path: string,
-    body?: unknown
+    body?: unknown,
+    portOverride?: number
   ): Promise<{ status: number; data: Buffer }> {
     return new Promise((resolve, reject) => {
       const bodyBuf = body !== undefined ? Buffer.from(JSON.stringify(body), 'utf-8') : undefined;
       const options: http.RequestOptions = {
         hostname: this.host,
-        port: this.port,
+        port: portOverride ?? this.port,
         path,
         method,
         headers: {
@@ -99,6 +138,56 @@ export class IOSDriver {
         `iOS driver ${path} failed (HTTP ${status}): ${data.toString('utf-8').slice(0, 200)}`
       );
     }
+  }
+
+  /**
+   * Try the dylib URL first; fall back to XCUITest if the dylib isn't running
+   * or returns a "no handler" response. Connection errors and 404s are
+   * treated as "no dylib loaded for the foreground app — fall back".
+   *
+   * Note: this method swallows the dylib's error and silently uses the
+   * XCUITest path. The fallback is intentionally invisible to the caller —
+   * the wire contract is identical between the two implementations.
+   */
+  /**
+   * Try the host-side sim-driver port first; fall back to XCUITest on any
+   * connection error or non-2xx response. Mirrors postWithDylibFallback but
+   * targets the sim-driver port instead. Used for the five HID-class routes
+   * — tap, swipe, gesturePath, pressKey, pressButton.
+   *
+   * Unlike the dylib, the sim-driver works for every kind of view (RN,
+   * SwiftUI, raw-touch handlers) because the events are dispatched at the
+   * HID layer via CoreSimulator. We deliberately do NOT chain through the
+   * dylib here — HID routes drop the dylib entirely.
+   */
+  private async postWithSimDriverFallback(routePath: string, body: unknown): Promise<void> {
+    if (this.simDriverPort !== undefined) {
+      try {
+        const { status } = await this.request('POST', `/${routePath}`, body, this.simDriverPort);
+        if (status >= 200 && status < 300) return;
+        // Non-2xx (404, 5xx, etc) — fall back to XCUITest. The sim-driver
+        // surfaces its own errors on /status; we don't need to bubble them
+        // through every interaction.
+      } catch {
+        // Connection refused / timeout — sim-driver not running.
+      }
+    }
+    await this.post(routePath, body);
+  }
+
+  private async postWithDylibFallback(routePath: string, body: unknown): Promise<void> {
+    if (this.dylibPort !== undefined) {
+      try {
+        const { status } = await this.request('POST', `/${routePath}`, body, this.dylibPort);
+        if (status >= 200 && status < 300) return;
+        // 404 = no route registered (e.g. dylib not loaded into the foreground
+        // app). 5xx = dylib hit an error — fall back rather than fail loudly.
+        // Any other unexpected status: also fall back.
+      } catch {
+        // Connection refused / timeout — dylib not loaded for this app.
+      }
+    }
+    await this.post(routePath, body);
   }
 
   private async get<T>(path: string): Promise<T> {
@@ -162,7 +251,11 @@ export class IOSDriver {
   }
 
   async tap(x: number, y: number, duration?: number): Promise<void> {
-    await this.post('touch', { x, y, ...(duration !== undefined ? { duration } : {}) });
+    await this.postWithSimDriverFallback('touch', {
+      x,
+      y,
+      ...(duration !== undefined ? { duration } : {}),
+    });
   }
 
   async swipe(
@@ -173,7 +266,7 @@ export class IOSDriver {
     duration: number,
     appIds?: string[]
   ): Promise<void> {
-    await this.post('swipeV2', {
+    await this.postWithSimDriverFallback('swipeV2', {
       startX,
       startY,
       endX,
@@ -193,21 +286,25 @@ export class IOSDriver {
   async gesturePath(
     paths: Array<{ steps: Array<{ x: number; y: number; dt: number }> }>
   ): Promise<void> {
-    await this.post('gesturePath', { paths });
+    await this.postWithSimDriverFallback('gesturePath', { paths });
   }
 
   async inputText(text: string, appIds: string[] = []): Promise<void> {
-    await this.post('inputText', { text, appIds });
+    // inputText stays on the dylib (when present) — it inserts via the
+    // first responder's text protocol rather than synthesizing keystrokes,
+    // which sidesteps autocorrect / predictive bar entirely. The sim-driver
+    // has no text-insert path because HID is below the responder chain.
+    await this.postWithDylibFallback('inputText', { text, appIds });
   }
 
   async pressKey(key: 'delete' | 'return' | 'enter' | 'tab' | 'space'): Promise<void> {
-    await this.post('pressKey', { key });
+    await this.postWithSimDriverFallback('pressKey', { key });
   }
 
   async pressButton(
     button: 'home' | 'lock' | 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause'
   ): Promise<void> {
-    await this.post('pressButton', { button });
+    await this.postWithSimDriverFallback('pressButton', { button });
   }
 
   async launchApp(bundleId: string, args?: Record<string, string>): Promise<void> {

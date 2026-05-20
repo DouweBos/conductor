@@ -252,6 +252,7 @@ async function main(): Promise<void> {
       'interval',
       'app',
       'since',
+      'ios-driver',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version' },
   });
@@ -669,9 +670,22 @@ async function main(): Promise<void> {
       exitCode = await installWebCli(opts, argv['check'] as boolean, rest[0]);
       break;
 
-    case 'daemon-start':
-      exitCode = await daemonStart(opts, sessionName);
+    case 'daemon-start': {
+      // --ios-driver xctest|dylib (default: xctest). Also honors
+      // CONDUCTOR_IOS_DRIVER. Switching impls within an existing daemon
+      // errors out — stop and restart.
+      const rawImpl =
+        (argv['ios-driver'] as string | undefined) ?? process.env.CONDUCTOR_IOS_DRIVER;
+      let iosDriverImpl: 'xctest' | 'dylib' | undefined;
+      if (rawImpl === 'xctest' || rawImpl === 'dylib') {
+        iosDriverImpl = rawImpl;
+      } else if (rawImpl !== undefined) {
+        console.error(`Invalid --ios-driver value: "${rawImpl}". Use xctest or dylib.`);
+        process.exit(1);
+      }
+      exitCode = await daemonStart(opts, sessionName, { iosDriverImpl });
       break;
+    }
 
     case 'daemon-stop':
       exitCode = await daemonStop(opts, sessionName, argv['all'] as boolean);

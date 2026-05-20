@@ -65,6 +65,15 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
 // ── Port management ───────────────────────────────────────────────────────────
 
 const IOS_BASE_PORT = 1075;
+// Dylib base is well clear of the XCUITest range so multi-device sessions
+// can't have device N's XCUITest port (1075 + N) collide with device 0's
+// dylib port. iOS sessions allocate from 1075 upward; dylib from 1200 upward.
+const IOS_DYLIB_BASE_PORT = 1200;
+// Host-side sim-driver base. Allocated per UDID alongside XCUITest and the
+// in-process dylib; the sim-driver runs out-of-process on the macOS host
+// (not inside the simulator) and drives HID events via CoreSimulator +
+// IOKit. Range chosen well away from XCUITest (1075+) and dylib (1200+).
+const IOS_SIM_DRIVER_BASE_PORT = 1500;
 const TVOS_BASE_PORT = 2075;
 const ANDROID_BASE_PORT = 3763;
 const WEB_BASE_PORT = 4075;
@@ -75,7 +84,13 @@ const PORT_LOCK_TIMEOUT_MS = 5000;
 
 interface PortState {
   assignments: Record<string, number>;
+  /** Per-device port for the experimental iOS dylib driver. */
+  dylibAssignments?: Record<string, number>;
+  /** Per-device port for the host-side iOS sim-driver. */
+  simDriverAssignments?: Record<string, number>;
   nextIosPort: number;
+  nextIosDylibPort?: number;
+  nextIosSimDriverPort?: number;
   nextTvosPort: number;
   nextAndroidPort: number;
   nextWebPort: number;
@@ -87,7 +102,11 @@ function readPortState(): PortState {
   } catch {
     return {
       assignments: {},
+      dylibAssignments: {},
+      simDriverAssignments: {},
       nextIosPort: IOS_BASE_PORT,
+      nextIosDylibPort: IOS_DYLIB_BASE_PORT,
+      nextIosSimDriverPort: IOS_SIM_DRIVER_BASE_PORT,
       nextTvosPort: TVOS_BASE_PORT,
       nextAndroidPort: ANDROID_BASE_PORT,
       nextWebPort: WEB_BASE_PORT,
@@ -531,6 +550,301 @@ export async function startIOSDriver(deviceId: string, port = IOS_BASE_PORT): Pr
  */
 export async function stopIOSDriver(deviceId: string): Promise<void> {
   await spawnAndWait('xcrun', ['simctl', 'terminate', deviceId, IOS_RUNNER_BUNDLE_ID]);
+}
+
+// ── iOS dylib (experimental) ──────────────────────────────────────────────────
+
+/**
+ * Assign a per-device port for the experimental iOS dylib driver. Stored in
+ * the same `~/.conductor/ports.json` file as the XCUITest port, under a
+ * separate `dylibAssignments` map so the two coexist on the same device.
+ *
+ * Base port: 1200. Kept well away from the XCUITest range (1075+) so
+ * device N's XCUITest port (1075 + N) can never collide with device 0's
+ * dylib port.
+ */
+export async function getIOSDylibPort(deviceId: string): Promise<number> {
+  return withPortLock(() => {
+    const state = readPortState();
+    if (!state.dylibAssignments) state.dylibAssignments = {};
+    // Bump to the current base if missing or stale (an earlier build allocated
+    // from 1076 which collides with the XCUITest range; rewrite forward).
+    if (
+      state.nextIosDylibPort === undefined ||
+      state.nextIosDylibPort < IOS_DYLIB_BASE_PORT
+    ) {
+      state.nextIosDylibPort = IOS_DYLIB_BASE_PORT;
+    }
+    if (state.dylibAssignments[deviceId] !== undefined) {
+      return state.dylibAssignments[deviceId];
+    }
+    const port = state.nextIosDylibPort++;
+    state.dylibAssignments[deviceId] = port;
+    writePortState(state);
+    return port;
+  });
+}
+
+// Persistent cache for the bundled dylib (~/.conductor/ios-dylib/).
+// Mirrors the XCUITest cache pattern: re-copies when the bundled file's
+// mtime changes.
+const IOS_DYLIB_CACHE = path.join(os.homedir(), '.conductor', 'ios-dylib');
+
+/**
+ * Ensure the bundled libConductorInject.dylib is materialized in the cache
+ * dir and return the absolute path. Re-copies on mtime change.
+ */
+async function setupIOSDylibCache(): Promise<string> {
+  const driversDir = await getDriversDir();
+  const bundled = path.join(driversDir, 'ios-dylib', 'libConductorInject.dylib');
+  if (!fs.existsSync(bundled)) {
+    throw new Error(
+      `Conductor iOS dylib not found at ${bundled}.\n` +
+        `Run 'make package-cli' from the repo root to build and bundle the dylib.`
+    );
+  }
+
+  const versionFile = path.join(IOS_DYLIB_CACHE, '.version');
+  const bundledMtime = String(fs.statSync(bundled).mtimeMs);
+  const cached = path.join(IOS_DYLIB_CACHE, 'libConductorInject.dylib');
+
+  let cachedMtime = '';
+  try {
+    cachedMtime = fs.readFileSync(versionFile, 'utf-8').trim();
+  } catch {
+    /* first run */
+  }
+
+  if (cachedMtime === bundledMtime && fs.existsSync(cached)) return cached;
+
+  log('Copying iOS dylib to cache...');
+  fs.mkdirSync(IOS_DYLIB_CACHE, { recursive: true });
+  fs.copyFileSync(bundled, cached);
+  fs.chmodSync(cached, 0o755);
+  fs.writeFileSync(versionFile, bundledMtime);
+  log(`iOS dylib cache ready at ${cached}`);
+  return cached;
+}
+
+/**
+ * Start the experimental iOS dylib driver for the given simulator.
+ *
+ * Sets two environment variables on the simulator's launchd so that every
+ * app launched *after* this call gets the dylib injected:
+ *
+ *   DYLD_INSERT_LIBRARIES = <absolute path to libConductorInject.dylib>
+ *   CONDUCTOR_DYLIB_PORT  = <port>
+ *
+ * Apps already running when this fires don't get the dylib loaded — the CLI's
+ * IOSDriver falls back to XCUITest for those bundleIds (see ios.ts).
+ *
+ * This does **not** start the XCUITest driver. Both drivers are expected to
+ * run side-by-side; the caller in daemon/server.ts starts XCUITest separately.
+ */
+export async function startIOSDylibDriver(deviceId: string, port: number): Promise<void> {
+  const dylibPath = await setupIOSDylibCache();
+
+  log(`Setting DYLD_INSERT_LIBRARIES on ${deviceId} (dylib=${dylibPath}, port=${port})`);
+
+  await spawnAndWait('xcrun', [
+    'simctl',
+    'spawn',
+    deviceId,
+    'launchctl',
+    'setenv',
+    'DYLD_INSERT_LIBRARIES',
+    dylibPath,
+  ]);
+  await spawnAndWait('xcrun', [
+    'simctl',
+    'spawn',
+    deviceId,
+    'launchctl',
+    'setenv',
+    'CONDUCTOR_DYLIB_PORT',
+    String(port),
+  ]);
+
+  log(`iOS dylib injection configured for ${deviceId} on port ${port}`);
+}
+
+/**
+ * Stop the experimental iOS dylib driver for the given simulator.
+ *
+ * Unsets the launchd env vars so new app launches stop injecting the dylib.
+ * Already-running apps with the dylib loaded keep serving until they exit —
+ * there's no way to unload a dylib from a live process without restarting it.
+ */
+export async function stopIOSDylibDriver(deviceId: string): Promise<void> {
+  await spawnAndWait('xcrun', [
+    'simctl',
+    'spawn',
+    deviceId,
+    'launchctl',
+    'unsetenv',
+    'DYLD_INSERT_LIBRARIES',
+  ]).catch(() => {});
+  await spawnAndWait('xcrun', [
+    'simctl',
+    'spawn',
+    deviceId,
+    'launchctl',
+    'unsetenv',
+    'CONDUCTOR_DYLIB_PORT',
+  ]).catch(() => {});
+}
+
+// ── iOS sim-driver (host-side HID server) ─────────────────────────────────────
+
+/**
+ * Assign a per-device port for the host-side iOS sim-driver. Mirrors
+ * getIOSDylibPort but writes to a separate map so the two coexist.
+ *
+ * Base port: 1500. The sim-driver runs out-of-process on the macOS host,
+ * binds 127.0.0.1:<port>, and drives HID events into the named SimDevice
+ * via CoreSimulator + IOKit. One process per UDID.
+ */
+export async function getIOSSimDriverPort(deviceId: string): Promise<number> {
+  return withPortLock(() => {
+    const state = readPortState();
+    if (!state.simDriverAssignments) state.simDriverAssignments = {};
+    if (
+      state.nextIosSimDriverPort === undefined ||
+      state.nextIosSimDriverPort < IOS_SIM_DRIVER_BASE_PORT
+    ) {
+      state.nextIosSimDriverPort = IOS_SIM_DRIVER_BASE_PORT;
+    }
+    if (state.simDriverAssignments[deviceId] !== undefined) {
+      return state.simDriverAssignments[deviceId];
+    }
+    const port = state.nextIosSimDriverPort++;
+    state.simDriverAssignments[deviceId] = port;
+    writePortState(state);
+    return port;
+  });
+}
+
+// Persistent cache for the bundled sim-driver binary (~/.conductor/ios-sim-driver/).
+// Mirrors the dylib cache: re-copies when the bundled artefact's mtime changes.
+const IOS_SIM_DRIVER_CACHE = path.join(os.homedir(), '.conductor', 'ios-sim-driver');
+const IOS_SIM_DRIVER_STARTUP_TIMEOUT_MS = 120000;
+const IOS_SIM_DRIVER_STARTUP_POLL_MS = 500;
+
+/**
+ * Ensure the bundled conductor-sim-driver binary is materialized in the cache
+ * dir and return the absolute path. Re-copies on mtime change.
+ */
+async function setupIOSSimDriverCache(): Promise<string> {
+  const driversDir = await getDriversDir();
+  const bundled = path.join(driversDir, 'ios-sim-driver', 'conductor-sim-driver');
+  if (!fs.existsSync(bundled)) {
+    throw new Error(
+      `Conductor iOS sim-driver not found at ${bundled}.\n` +
+        `Run 'make package-cli' from the repo root to build and bundle the sim-driver.`
+    );
+  }
+
+  const versionFile = path.join(IOS_SIM_DRIVER_CACHE, '.version');
+  const bundledMtime = String(fs.statSync(bundled).mtimeMs);
+  const cached = path.join(IOS_SIM_DRIVER_CACHE, 'conductor-sim-driver');
+
+  let cachedMtime = '';
+  try {
+    cachedMtime = fs.readFileSync(versionFile, 'utf-8').trim();
+  } catch {
+    /* first run */
+  }
+
+  if (cachedMtime === bundledMtime && fs.existsSync(cached)) return cached;
+
+  log('Copying iOS sim-driver binary to cache...');
+  fs.mkdirSync(IOS_SIM_DRIVER_CACHE, { recursive: true });
+  fs.copyFileSync(bundled, cached);
+  fs.chmodSync(cached, 0o755);
+  fs.writeFileSync(versionFile, bundledMtime);
+  log(`iOS sim-driver cache ready at ${cached}`);
+  return cached;
+}
+
+/** Track the spawned pid per device under the daemon's directory. */
+function simDriverPidFile(deviceId: string): string {
+  return path.join(os.homedir(), '.conductor', 'daemons', deviceId, 'sim-driver.pid');
+}
+
+/**
+ * Start the host-side iOS sim-driver for the given simulator. Spawns the
+ * binary detached with `--udid <deviceId> --port <port>` and polls the port
+ * until it accepts connections (timeout: 120s).
+ *
+ * Failure is the caller's problem to surface — daemon/server.ts treats it as
+ * non-fatal and continues with XCUITest-only HID.
+ */
+export async function startIOSSimDriver(deviceId: string, port: number): Promise<void> {
+  if (await isPortOpen(port)) {
+    log(`iOS sim-driver already running on port ${port}`);
+    return;
+  }
+
+  const binary = await setupIOSSimDriverCache();
+  log(`Starting iOS sim-driver for ${deviceId} on port ${port}`);
+
+  const proc = spawn(binary, ['--udid', deviceId, '--port', String(port)], {
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+  });
+  proc.unref();
+
+  // Record the PID so stopIOSSimDriver can kill us cleanly. The daemon dir
+  // is created earlier in the daemon's main(); we mkdir defensively anyway.
+  try {
+    const pidPath = simDriverPidFile(deviceId);
+    fs.mkdirSync(path.dirname(pidPath), { recursive: true });
+    fs.writeFileSync(pidPath, String(proc.pid ?? ''));
+  } catch {
+    /* ok — daemon will leak the process at most until simulator shutdown */
+  }
+
+  const deadline = Date.now() + IOS_SIM_DRIVER_STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(IOS_SIM_DRIVER_STARTUP_POLL_MS);
+    if (await isPortOpen(port)) {
+      log(`iOS sim-driver ready on port ${port}`);
+      return;
+    }
+  }
+
+  throw new Error(
+    `iOS sim-driver did not start within ${IOS_SIM_DRIVER_STARTUP_TIMEOUT_MS / 1000}s on port ${port}.`
+  );
+}
+
+/**
+ * Stop the host-side iOS sim-driver by killing the PID written at start.
+ * Best-effort — if the pidfile is missing or the process is already gone,
+ * we just clean up.
+ */
+export async function stopIOSSimDriver(deviceId: string): Promise<void> {
+  const pidPath = simDriverPidFile(deviceId);
+  let pid: number | undefined;
+  try {
+    const raw = fs.readFileSync(pidPath, 'utf-8').trim();
+    const n = parseInt(raw, 10);
+    if (!isNaN(n)) pid = n;
+  } catch {
+    return;
+  }
+  if (pid !== undefined) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      /* already gone */
+    }
+  }
+  try {
+    fs.unlinkSync(pidPath);
+  } catch {
+    /* ok */
+  }
 }
 
 // ── tvOS bootstrap ────────────────────────────────────────────────────────────

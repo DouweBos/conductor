@@ -28,23 +28,56 @@ All commands accept `--session <name>` to scope to a named session and
 
 ## Interaction
 
-| Command                | What it does                                                             |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `tap-on`               | Tap the matched element (positional or `--id` / `--text` / coordinates). |
-| `input-text`           | Type into the focused field.                                             |
-| `erase-text`           | Backspace `n` characters (default 50).                                   |
-| `back`                 | Press the back / Esc key.                                                |
-| `hide-keyboard`        | Dismiss the on-screen keyboard.                                          |
-| `press-key`            | Press a hardware or system key (`home`, `enter`, `volume_up`, …).        |
-| `scroll`               | Scroll a direction or onto an element.                                   |
-| `scroll-until-visible` | Repeatedly scroll until the target element appears.                      |
-| `swipe`                | Swipe between two points (or in a cardinal direction).                   |
-| `pinch`                | Two-finger pinch. `--scale <n>` (zoom out <1, zoom in >1), `--center x,y`, `--angle <deg>`, `--duration <ms>`. |
-| `rotate-gesture`       | Two-finger rotate. `--degrees <n>`, `--center x,y`, `--duration <ms>`.   |
-| `gesture <json>`       | Play an arbitrary multi-touch path. JSON shape: `[{"steps":[{"x":,"y":,"dt":}]}, ...]`. One path per finger; `dt` is delay since previous step (seconds). Pass `--file path.json` instead of inline JSON. |
-| `clipboard read`       | Print the iOS simulator clipboard. iOS only — Android has no portable userspace clipboard API. |
-| `clipboard write <t>`  | Set the iOS simulator clipboard.                                         |
-| `paste`                | Type the clipboard contents into the focused field (iOS only).           |
+| Command                | What it does                                                             | Native |
+| ---------------------- | ------------------------------------------------------------------------ | :----: |
+| `tap-on`               | Tap the matched element (positional or `--id` / `--text` / coordinates). |   ✅   |
+| `input-text`           | Type into the focused field.                                             |   ✅   |
+| `erase-text`           | Backspace `n` characters (default 50).                                   |   ✅   |
+| `back`                 | Press the back / Esc key.                                                |   ✅   |
+| `hide-keyboard`        | Dismiss the on-screen keyboard.                                          |   —   |
+| `press-key`            | Press a hardware or system key (`home`, `enter`, `volume_up`, …).        |   ✅   |
+| `scroll`               | Scroll a direction or onto an element.                                   |   ◐   |
+| `scroll-until-visible` | Repeatedly scroll until the target element appears.                      |   ◐   |
+| `swipe`                | Swipe between two points (or in a cardinal direction).                   |   ✅   |
+| `pinch`                | Two-finger pinch. `--scale <n>` (zoom out <1, zoom in >1), `--center x,y`, `--angle <deg>`, `--duration <ms>`. |   ✅   |
+| `rotate-gesture`       | Two-finger rotate. `--degrees <n>`, `--center x,y`, `--duration <ms>`.   |   ✅   |
+| `gesture <json>`       | Play an arbitrary multi-touch path. JSON shape: `[{"steps":[{"x":,"y":,"dt":}]}, ...]`. One path per finger; `dt` is delay since previous step (seconds). Pass `--file path.json` instead of inline JSON. |   ✅   |
+| `clipboard read`       | Print the iOS simulator clipboard. iOS only — Android has no portable userspace clipboard API. |   —   |
+| `clipboard write <t>`  | Set the iOS simulator clipboard.                                         |   —   |
+| `paste`                | Type the clipboard contents into the focused field (iOS only).           |   ◐   |
+
+**Native driver legend.** The **Native** column flags routes that have a
+fast path outside the XCUITest driver on **iOS simulator** sessions.
+Two pieces cooperate:
+
+- **Sim-driver** — a host-side macOS binary that synthesizes HID
+  digitizer / keyboard events via `CoreSimulator.framework` + IOKit.
+  Owns the five HID-class routes (`tap`, `swipe`, `gesturePath`,
+  `pressKey`, `pressButton`). Started automatically alongside the
+  XCUITest driver on every iOS session — no flag required. Works for
+  React Native, SwiftUI, and any view that handles raw touches.
+- **Dylib** (opt-in via `--ios-driver dylib`) — an in-process driver
+  injected via `DYLD_INSERT_LIBRARIES`. Owns `input-text` (uses
+  `[firstResponder insertText:]` to skip autocorrect / smart-quote
+  substitution / predictive-bar artifacts).
+
+Both fall back to XCUITest transparently on connection error or non-2xx
+response, so the wire contract for each command is unchanged.
+
+- ✅ — has a native fast path.
+- ◐ — composes a native interaction step with an XCUITest step (e.g.
+  `scroll` reads the view hierarchy through XCUITest, then swipes
+  through the sim-driver; `paste` reads the clipboard through `simctl`
+  and then types through the dylib).
+- — — XCUITest-only.
+
+The native drivers are **iOS simulators only**: tvOS sessions ignore
+them, and physical iOS devices are not supported (the sim-driver needs
+`CoreSimulator`, the dylib is blocked by code signing). Apps that were
+already running when the dylib started up have no dylib loaded —
+relaunch them to enable the input-text fast path. The sim-driver doesn't
+need a relaunch because the events are dispatched into the simulator,
+not the app. `daemon-status` surfaces both ports for triage.
 
 ---
 

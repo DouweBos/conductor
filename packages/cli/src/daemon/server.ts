@@ -18,11 +18,17 @@ import { ensureAndroidEnv } from '../android/sdk.js';
 import {
   detectPlatform,
   getDriverPort,
+  getIOSDylibPort,
+  getIOSSimDriverPort,
   installDriver,
   startIOSDriver,
+  startIOSDylibDriver,
+  startIOSSimDriver,
   startAndroidDriver,
   startTvOSDriver,
   stopIOSDriver,
+  stopIOSDylibDriver,
+  stopIOSSimDriver,
   stopAndroidDriver,
   uninstallDriver,
   isPortOpen,
@@ -94,6 +100,30 @@ function dlog(msg: string): void {
 let driverPort = 1075;
 let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' = 'ios';
 let logCollector: LogCollector | null = null;
+
+/**
+ * iOS driver impl selected at daemon-start. `xctest` (default) uses only the
+ * bundled XCUITest driver. `dylib` adds the experimental in-process driver
+ * alongside XCUITest and routes five interaction routes through it. Switching
+ * impls requires daemon-stop first — we don't swap mid-flight.
+ */
+const iosDriverImpl: 'xctest' | 'dylib' =
+  process.env.CONDUCTOR_IOS_DRIVER === 'dylib' ? 'dylib' : 'xctest';
+
+/**
+ * When `iosDriverImpl === 'dylib'`, the per-device port the in-process dylib
+ * listens on. Allocated from `~/.conductor/ports.json` base 1076. Surfaced in
+ * `/status` so `daemon-status` can show it.
+ */
+let iosDylibPort: number | null = null;
+
+/**
+ * Port the host-side sim-driver listens on. Always allocated on iOS sessions
+ * (sim-driver is unconditional — not gated by --ios-driver dylib). Failure
+ * to start the sim-driver is non-fatal: surfaced on /status and the CLI's
+ * IOSDriver falls back to XCUITest for HID routes.
+ */
+let iosSimDriverPort: number | null = null;
 
 const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
 
@@ -225,6 +255,21 @@ async function main(): Promise<void> {
         try {
           if (driverPlatform === 'ios') {
             await stopIOSDriver(sessionName);
+            // Stop the host-side sim-driver process (unconditional on iOS).
+            try {
+              await stopIOSSimDriver(sessionName);
+            } catch (err) {
+              dlog(`Stop iOS sim-driver error: ${err instanceof Error ? err.message : String(err)}`);
+            }
+            if (iosDriverImpl === 'dylib') {
+              try {
+                await stopIOSDylibDriver(sessionName);
+              } catch (err) {
+                dlog(
+                  `Stop iOS dylib error: ${err instanceof Error ? err.message : String(err)}`
+                );
+              }
+            }
           } else {
             await stopAndroidDriver(sessionName, driverPort);
           }
@@ -303,6 +348,13 @@ async function main(): Promise<void> {
         ok: true,
         platform: driverPlatform,
         driverPort,
+        // Active iOS driver impl. Always populated on iOS sessions; null elsewhere.
+        iosDriverImpl: driverPlatform === 'ios' ? iosDriverImpl : null,
+        // Port of the in-process dylib listener, when iosDriverImpl === 'dylib'.
+        iosDylibPort,
+        // Port of the host-side sim-driver HID listener (CoreSimulator-backed).
+        // Always populated on iOS sessions when the sim-driver started OK.
+        iosSimDriverPort,
         cdpUrl: cdpUrl ?? null,
         cdpTargetId: cdpTargetId ?? null,
         chromiumCdpPort: driverPlatform === 'web' ? getCdpPort() : null,
@@ -358,6 +410,24 @@ async function main(): Promise<void> {
           if (driverAlive) {
             _driverStarted = true;
             dlog(`Driver already running on port ${driverPort}`);
+            // Even if the XCUITest driver is already up, the sim-driver may
+            // not be — try to allocate and start it so HID routes get the
+            // fast path on subsequent commands.
+            if (platform === 'ios') {
+              try {
+                iosSimDriverPort = await getIOSSimDriverPort(sessionName);
+                if (!(await isPortOpen(iosSimDriverPort))) {
+                  dlog(`Starting iOS sim-driver on port ${iosSimDriverPort}`);
+                  await startIOSSimDriver(sessionName, iosSimDriverPort);
+                } else {
+                  dlog(`iOS sim-driver already running on port ${iosSimDriverPort}`);
+                }
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                dlog(`iOS sim-driver startup failed (continuing with XCUITest-only HID): ${msg}`);
+                iosSimDriverPort = null;
+              }
+            }
           } else {
             // Android: install APKs before starting the driver.
             // iOS/tvOS: xcodebuild installs silently via DependentProductPaths.
@@ -377,7 +447,52 @@ async function main(): Promise<void> {
             try {
               if (platform === 'ios') {
                 await startIOSDriver(sessionName, driverPort);
+                // Sim-driver: unconditional for iOS sessions. Failure is
+                // non-fatal — log and continue with XCUITest-only HID. The
+                // CLI's IOSDriver falls back transparently when the port
+                // isn't reachable.
+                try {
+                  iosSimDriverPort = await getIOSSimDriverPort(sessionName);
+                  dlog(`Starting iOS sim-driver on port ${iosSimDriverPort}`);
+                  await startIOSSimDriver(sessionName, iosSimDriverPort);
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  dlog(`iOS sim-driver startup failed (continuing with XCUITest-only HID): ${msg}`);
+                  iosSimDriverPort = null;
+                  // Don't overwrite a more important driver error.
+                  if (!_driverStartError) {
+                    _driverStartError = `iOS sim-driver: ${msg}`;
+                  }
+                }
+                if (iosDriverImpl === 'dylib') {
+                  iosDylibPort = await getIOSDylibPort(sessionName);
+                  dlog(
+                    `iOS dylib opt-in: allocating port ${iosDylibPort} and injecting DYLD_INSERT_LIBRARIES`
+                  );
+                  try {
+                    await startIOSDylibDriver(sessionName, iosDylibPort);
+                  } catch (err) {
+                    // Dylib startup failure is non-fatal — the XCUITest driver
+                    // is already up and will serve all routes. Surface it on
+                    // /status via driverStartError so daemon-status flags it.
+                    const msg = err instanceof Error ? err.message : String(err);
+                    dlog(`iOS dylib injection failed (continuing with XCUITest only): ${msg}`);
+                    _driverStartError = `iOS dylib injection failed: ${msg}`;
+                  }
+                }
               } else if (platform === 'tvos') {
+                if (iosDriverImpl === 'dylib') {
+                  // tvOS doesn't support DYLD_INSERT_LIBRARIES on the
+                  // appletvsimulator the same way iphonesimulator does, and
+                  // we don't ship a tvOS-targeted dylib. Surface the downgrade
+                  // on /status so daemon-status can warn the user — silently
+                  // falling back without telling anyone makes the flag look
+                  // broken when it's actually a platform mismatch.
+                  const msg =
+                    '--ios-driver dylib was requested but tvOS is not supported — falling back to xctest';
+                  dlog(msg);
+                  _driverStartError = msg;
+                }
                 // First install — dismiss the runner app to return to homescreen
                 await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ true);
               } else if (platform === 'web') {

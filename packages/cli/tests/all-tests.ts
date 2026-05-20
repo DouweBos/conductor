@@ -29,6 +29,8 @@ import { daemonIdle } from './daemon-idle.test.js';
 import { devicePoolSuite } from './device-pool.test.js';
 import { androidSdk } from './android-sdk.test.js';
 import { startDeviceAndroid } from './start-device-android.test.js';
+import { iosDylibRouting } from './ios-dylib-routing.test.js';
+import { iosSimDriverRouting } from './ios-sim-driver-routing.test.js';
 import { getDriver } from '../src/runner.js';
 import { IOSDriver } from '../src/drivers/ios.js';
 import { parseFlowFile, executeFlow } from '../src/drivers/flow-runner.js';
@@ -71,7 +73,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, iosDylibRouting, iosSimDriverRouting];
 
   if (device) {
     console.log(`\nDevice: ${device}`);

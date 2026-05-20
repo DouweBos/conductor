@@ -1,4 +1,4 @@
-.PHONY: build build-cli build-ios-driver build-tvos-driver build-android-driver package-cli package-drivers-tarball
+.PHONY: build build-cli build-ios-driver build-ios-dylib build-ios-sim-driver build-tvos-driver build-android-driver package-cli package-drivers-tarball
 
 DRIVERS_TARBALL_DIR = dist-drivers
 
@@ -8,8 +8,10 @@ IOS_DERIVED    = packages/ios-driver/derived-data
 IOS_BUILD_PRODUCTS = $(IOS_DERIVED)/Build/Products/Debug-iphonesimulator
 TVOS_DERIVED   = packages/ios-driver/derived-data-tvos
 TVOS_BUILD_PRODUCTS = $(TVOS_DERIVED)/Build/Products/Debug-appletvsimulator
+IOS_DYLIB_DIR  = packages/cli/drivers/ios-dylib
+IOS_SIM_DRIVER_DIR = packages/cli/drivers/ios-sim-driver
 
-build: build-ios-driver build-tvos-driver build-android-driver package-cli build-cli
+build: build-ios-driver build-ios-dylib build-ios-sim-driver build-tvos-driver build-android-driver package-cli build-cli
 
 build-cli:
 	cd packages/cli && pnpm build
@@ -21,6 +23,12 @@ build-ios-driver:
 		-destination "generic/platform=iOS Simulator" \
 		-derivedDataPath $(CURDIR)/$(IOS_DERIVED)
 
+build-ios-dylib:
+	./packages/ios-dylib/scripts/build-conductor-inject.sh
+
+build-ios-sim-driver:
+	./packages/ios-sim-driver/scripts/build.sh
+
 build-tvos-driver:
 	xcodebuild build-for-testing \
 		-project packages/ios-driver/conductor-driver-ios.xcodeproj \
@@ -31,8 +39,11 @@ build-tvos-driver:
 build-android-driver:
 	cd packages/android-driver && ./gradlew :conductor-android:assembleDebug :conductor-android:assembleAndroidTest
 
-package-cli: build-ios-driver build-tvos-driver build-android-driver
-	mkdir -p $(CLI_DRIVERS)/android $(CLI_DRIVERS)/ios $(CLI_DRIVERS)/tvos
+package-cli: build-ios-driver build-ios-dylib build-ios-sim-driver build-tvos-driver build-android-driver
+	mkdir -p $(CLI_DRIVERS)/android $(CLI_DRIVERS)/ios $(CLI_DRIVERS)/tvos $(IOS_DYLIB_DIR) $(IOS_SIM_DRIVER_DIR)
+	# The dylib build script writes directly to $(IOS_DYLIB_DIR)/libConductorInject.dylib
+	# — nothing to copy here, just make sure the directory exists.
+	# Same for the sim-driver: build.sh writes to $(IOS_SIM_DRIVER_DIR)/conductor-sim-driver.
 	cp $(ANDROID_OUT)/debug/conductor-android-debug.apk \
 		$(CLI_DRIVERS)/android/conductor-app.apk
 	cp $(ANDROID_OUT)/androidTest/debug/conductor-android-debug-androidTest.apk \
@@ -48,4 +59,4 @@ package-cli: build-ios-driver build-tvos-driver build-android-driver
 
 package-drivers-tarball:
 	mkdir -p $(DRIVERS_TARBALL_DIR)
-	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios tvos
+	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-dylib ios-sim-driver tvos

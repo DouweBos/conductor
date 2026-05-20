@@ -15,6 +15,23 @@ interface DaemonStatus {
   ok?: boolean;
   platform?: string;
   driverPort?: number;
+  /** iOS driver impl reported by the daemon (only meaningful when platform === 'ios'). */
+  iosDriverImpl?: 'xctest' | 'dylib' | null;
+  /** Port the in-process dylib listens on, when iosDriverImpl === 'dylib'. */
+  iosDylibPort?: number | null;
+  /**
+   * Port the host-side sim-driver listens on. Always populated on iOS
+   * sessions when the sim-driver started OK (it is unconditional, not
+   * gated by --ios-driver). Null when start-up failed — the CLI's
+   * IOSDriver then routes HID through XCUITest only.
+   */
+  iosSimDriverPort?: number | null;
+  /**
+   * Last driver-startup error reported by the daemon. Used for non-fatal
+   * degradations like "iOS dylib injection failed — running with XCUITest only"
+   * or "--ios-driver dylib requested on tvOS — falling back".
+   */
+  driverStartError?: string | null;
   cdpUrl?: string | null;
   cdpTargetId?: string | null;
 }
@@ -90,9 +107,27 @@ function daemonMatchesCdpEnv(status: DaemonStatus): boolean {
   return actualCdpUrl === expectedCdpUrl && actualCdpTargetId === expectedCdpTargetId;
 }
 
-export async function startDaemon(sessionName = 'default'): Promise<boolean> {
+export async function startDaemon(
+  sessionName = 'default',
+  opts: { iosDriverImpl?: 'xctest' | 'dylib' } = {}
+): Promise<boolean> {
   const existing = await fetchStatus(sessionName);
   if (existing) {
+    // Refuse to swap iOS driver impl mid-flight — the daemon's lifecycle
+    // (launchctl setenv DYLD_INSERT_LIBRARIES, port allocation) is set up
+    // at start and can't be changed without a full restart. Tell the user
+    // to daemon-stop first.
+    if (
+      opts.iosDriverImpl &&
+      existing.iosDriverImpl &&
+      existing.iosDriverImpl !== opts.iosDriverImpl
+    ) {
+      throw new Error(
+        `daemon [${sessionName}] is running with --ios-driver ${existing.iosDriverImpl} ` +
+          `but --ios-driver ${opts.iosDriverImpl} was requested. ` +
+          `Stop the daemon first: conductor daemon-stop --device ${sessionName}`
+      );
+    }
     if (daemonMatchesCdpEnv(existing)) return true;
 
     log(
@@ -119,9 +154,17 @@ export async function startDaemon(sessionName = 'default'): Promise<boolean> {
 
   const serverScript = path.join(__dirname, 'server.js');
   log(`daemon [${sessionName}] not running — spawning ${serverScript}`);
+  // Forward CONDUCTOR_IOS_DRIVER (explicit opt-in) into the spawned daemon's
+  // env. The daemon reads it on startup; subsequent commands hit the running
+  // daemon and inherit its choice.
+  const daemonEnv: NodeJS.ProcessEnv = { ...process.env };
+  if (opts.iosDriverImpl) {
+    daemonEnv.CONDUCTOR_IOS_DRIVER = opts.iosDriverImpl;
+  }
   const child = spawn(process.execPath, [serverScript, sessionName], {
     detached: true,
     stdio: 'ignore',
+    env: daemonEnv,
   });
   child.unref();
 
@@ -181,17 +224,32 @@ export function listDaemonSessions(): string[] {
   }
 }
 
-export async function daemonStatus(
-  sessionName = 'default'
-): Promise<{ running: boolean; pid?: number }> {
-  const running = await socketExists(sessionName);
+export async function daemonStatus(sessionName = 'default'): Promise<{
+  running: boolean;
+  pid?: number;
+  iosDriverImpl?: 'xctest' | 'dylib' | null;
+  iosDylibPort?: number | null;
+  iosSimDriverPort?: number | null;
+  driverStartError?: string | null;
+}> {
+  const status = await fetchStatus(sessionName);
+  const running = status !== null;
   if (!running) return { running: false };
+  let pid: number | undefined;
   try {
-    const pid = parseInt(fs.readFileSync(pidFile(sessionName), 'utf-8').trim(), 10);
-    return { running: true, pid: isNaN(pid) ? undefined : pid };
+    const n = parseInt(fs.readFileSync(pidFile(sessionName), 'utf-8').trim(), 10);
+    if (!isNaN(n)) pid = n;
   } catch {
-    return { running: true };
+    /* ok */
   }
+  return {
+    running: true,
+    pid,
+    iosDriverImpl: status?.iosDriverImpl ?? null,
+    iosDylibPort: status?.iosDylibPort ?? null,
+    iosSimDriverPort: status?.iosSimDriverPort ?? null,
+    driverStartError: status?.driverStartError ?? null,
+  };
 }
 
 /**

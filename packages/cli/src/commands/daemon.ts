@@ -1,4 +1,6 @@
-export const HELP_DAEMON_START = `  daemon-start                        Start background daemon (manages driver process)`;
+export const HELP_DAEMON_START = `  daemon-start [--ios-driver xctest|dylib]  Start background daemon (manages driver process).
+                                          --ios-driver dylib is experimental, iOS simulators only;
+                                          apps must be relaunched after start to load the dylib.`;
 export const HELP_DAEMON_STOP = `  daemon-stop [--all]                 Stop background daemon (--all stops every session's daemon)`;
 export const HELP_DAEMON_STATUS = `  daemon-status                       Show daemon status`;
 
@@ -7,14 +9,25 @@ import { printSuccess, printError, printData, OutputOptions } from '../output.js
 
 export async function daemonStart(
   opts: OutputOptions = {},
-  sessionName = 'default'
+  sessionName = 'default',
+  startOpts: { iosDriverImpl?: 'xctest' | 'dylib' } = {}
 ): Promise<number> {
-  const ready = await startDaemon(sessionName);
-  if (ready) {
-    printSuccess(`daemon [${sessionName}] started — driver process is running`, opts);
-    return 0;
-  } else {
-    printError(`daemon [${sessionName}] failed to start within timeout`, opts);
+  try {
+    const ready = await startDaemon(sessionName, startOpts);
+    if (ready) {
+      const suffix =
+        startOpts.iosDriverImpl === 'dylib' ? ' (--ios-driver dylib, experimental)' : '';
+      printSuccess(
+        `daemon [${sessionName}] started — driver process is running${suffix}`,
+        opts
+      );
+      return 0;
+    } else {
+      printError(`daemon [${sessionName}] failed to start within timeout`, opts);
+      return 1;
+    }
+  } catch (err) {
+    printError(err instanceof Error ? err.message : String(err), opts);
     return 1;
   }
 }
@@ -62,6 +75,23 @@ export async function daemonStatusCmd(
     printData({ ...status, sessionName }, opts);
   } else if (status.running) {
     console.log(`daemon [${sessionName}]: running (pid ${status.pid ?? 'unknown'})`);
+    if (status.iosDriverImpl === 'dylib') {
+      console.log(`  ios-driver: dylib (experimental; port ${status.iosDylibPort ?? 'unknown'})`);
+      console.log(
+        `  note: apps launched before the daemon started have no dylib loaded — ` +
+          `their interaction routes fall back to xctest. Restart the app to enable the fast path.`
+      );
+    } else if (status.iosDriverImpl === 'xctest') {
+      console.log(`  ios-driver: xctest`);
+    }
+    if (status.iosSimDriverPort) {
+      // Host-side sim-driver is unconditional on iOS sessions — surface its
+      // port so a human can curl /status against it for triage.
+      console.log(`  ios-sim-driver: running (port ${status.iosSimDriverPort})`);
+    }
+    if (status.driverStartError) {
+      console.log(`  warning: ${status.driverStartError}`);
+    }
   } else {
     console.log(`daemon [${sessionName}]: not running`);
   }
