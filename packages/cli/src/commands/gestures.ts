@@ -125,10 +125,7 @@ function buildRotatePaths(
   return [{ steps: finger1 }, { steps: finger2 }];
 }
 
-async function playPaths(
-  driver: IOSDriver | AndroidDriver,
-  paths: FingerPath[]
-): Promise<void> {
+async function playPaths(driver: IOSDriver | AndroidDriver, paths: FingerPath[]): Promise<void> {
   if (driver instanceof IOSDriver) {
     await driver.gesturePath(paths);
   } else {

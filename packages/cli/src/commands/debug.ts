@@ -198,7 +198,9 @@ export async function debugComponentTree(
         if (c.text) parts.push(`text=${JSON.stringify(c.text.slice(0, 40))}`);
         if (c.rect) {
           const r = c.rect;
-          parts.push(`[${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.w)}x${Math.round(r.h)}]`);
+          parts.push(
+            `[${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.w)}x${Math.round(r.h)}]`
+          );
         }
         console.log(parts.join(' '));
       }

@@ -64,12 +64,7 @@ function listIosReports(opts: { app?: string; sinceMs: number }): CrashReport[] 
   return out.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
-function parseIpsReport(
-  id: string,
-  full: string,
-  text: string,
-  mtimeMs: number
-): CrashReport {
+function parseIpsReport(id: string, full: string, text: string, mtimeMs: number): CrashReport {
   // Newer .ips files are JSON-LD style: first line is summary JSON, then body JSON.
   // Older .crash files are plain text. Be defensive.
   let app: string | null = null;
@@ -129,7 +124,8 @@ async function listAndroidReports(
 ): Promise<CrashReport[]> {
   const adb = resolveAndroidTool('adb');
   const env = androidSpawnEnv();
-  const sinceArg = opts.sinceMs > 0 ? ['-T', String(Math.floor((Date.now() - opts.sinceMs) / 1000))] : [];
+  const sinceArg =
+    opts.sinceMs > 0 ? ['-T', String(Math.floor((Date.now() - opts.sinceMs) / 1000))] : [];
   const output: string = await new Promise((resolve) => {
     const proc = spawn(adb, ['-s', deviceId, 'logcat', '-d', '-b', 'crash', ...sinceArg], {
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -162,7 +158,9 @@ async function listAndroidReports(
     }
     reports.push({
       id: `android-${i}-${tsMatch?.[1] ?? Date.now()}`,
-      timestamp: tsMatch ? new Date().getFullYear() + '-' + tsMatch[1].replace(' ', 'T') : new Date().toISOString(),
+      timestamp: tsMatch
+        ? new Date().getFullYear() + '-' + tsMatch[1].replace(' ', 'T')
+        : new Date().toISOString(),
       app,
       type: 'logcat',
       signal: sigMatch ? sigMatch[1] : null,
@@ -186,7 +184,8 @@ export async function crashesList(
   listOpts: CrashesListOptions
 ): Promise<number> {
   const sinceMs = parseSince(listOpts.since);
-  const platform = sessionName !== 'default' ? await detectPlatform(sessionName).catch(() => null) : null;
+  const platform =
+    sessionName !== 'default' ? await detectPlatform(sessionName).catch(() => null) : null;
 
   const reports: CrashReport[] = [];
   // Always include iOS host-side reports — they aren't device-scoped.
@@ -208,10 +207,7 @@ export async function crashesList(
   return 0;
 }
 
-export async function crashesShow(
-  id: string,
-  opts: OutputOptions
-): Promise<number> {
+export async function crashesShow(id: string, opts: OutputOptions): Promise<number> {
   if (!id) {
     printError('crashes show requires an <id>', opts);
     return 1;
