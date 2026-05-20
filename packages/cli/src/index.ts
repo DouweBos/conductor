@@ -57,12 +57,7 @@ import {
   profileReactStop,
   HELP as profileHelp,
 } from './commands/profile.js';
-import {
-  crashesList,
-  crashesShow,
-  crashesTail,
-  HELP as crashesHelp,
-} from './commands/crashes.js';
+import { crashesList, crashesShow, crashesTail, HELP as crashesHelp } from './commands/crashes.js';
 import { getActiveRecording, appendStep, commandToYamlStep } from './drivers/flow-recorder.js';
 import { foregroundApp, HELP as foregroundAppHelp } from './commands/foreground-app.js';
 import { listApps, HELP as listAppsHelp } from './commands/list-apps.js';
