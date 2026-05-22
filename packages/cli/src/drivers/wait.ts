@@ -20,20 +20,37 @@ const DEFAULT_INTERVAL_MS = 500;
 export const OPTIONAL_TIMEOUT_MS = 7000;
 
 export async function waitForIOSElement(
-  getHierarchy: () => Promise<AXElement>,
+  getHierarchy: (opts?: { cached?: boolean }) => Promise<AXElement>,
   selector: ElementSelector,
   timeoutMs = DEFAULT_TIMEOUT_MS,
-  intervalMs = DEFAULT_INTERVAL_MS
+  intervalMs = DEFAULT_INTERVAL_MS,
+  directResolve?: () => Promise<ResolvedElement | null>
 ): Promise<ResolvedElement> {
   const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
   while (Date.now() < deadline) {
+    // Fast path: resolve a simple selector via a direct runner query,
+    // skipping the full-tree snapshot entirely. A `null` result means the
+    // element is absent or ambiguous — fall through to the snapshot matcher.
+    if (directResolve) {
+      try {
+        const fast = await directResolve();
+        if (fast) return fast;
+      } catch {
+        // Direct query failed (transport error / endpoint unavailable) —
+        // fall through to the snapshot path.
+      }
+    }
     try {
-      const root = await getHierarchy();
+      // Reuse a recently-captured hierarchy only on the first probe; later
+      // retries must observe fresh UI so the loop can see the element appear.
+      const root = await getHierarchy({ cached: attempt === 0 });
       const el = findIOSElement(root, selector);
       if (el) return el;
     } catch {
       // Hierarchy fetch failed; keep retrying
     }
+    attempt++;
     await sleep(intervalMs);
   }
 

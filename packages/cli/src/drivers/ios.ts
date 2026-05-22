@@ -46,8 +46,31 @@ export interface IOSDeviceInfo {
   heightPixels: number;
 }
 
+/** Result of a direct single-element query against the XCTest runner. */
+export interface IOSQueryElementResult {
+  found: boolean;
+  /** 0 = none, 1 = exactly one, 2 = two-or-more (ambiguous). */
+  matchCount: number;
+  node?: AXElement;
+}
+
+/**
+ * How long a captured view hierarchy may be reused. Bounds the staleness of a
+ * cached snapshot when the screen changes without a driver-issued command
+ * (timer-driven UI, async animation). Mirrors the equivalent cache TTL in the
+ * agent-device runner.
+ */
+const HIERARCHY_CACHE_TTL_MS = 750;
+
 export class IOSDriver {
   private _recordingProcess: ChildProcess | null = null;
+  /**
+   * Short-lived cache of the most recent view hierarchy, keyed by request
+   * params. Only served when the caller explicitly opts in (e.g. the first
+   * probe of a wait loop) and dropped by any UI-mutating command, so polling
+   * loops and post-action reads always see a fresh tree.
+   */
+  private hierarchyCache: { key: string; value: IOSViewHierarchy; at: number } | null = null;
 
   constructor(
     private readonly port = 1075,
@@ -116,6 +139,11 @@ export class IOSDriver {
     return this.deviceId;
   }
 
+  /** Drop the cached view hierarchy — call after any command that mutates the UI. */
+  private invalidateHierarchyCache(): void {
+    this.hierarchyCache = null;
+  }
+
   private simctl(args: string[]): Promise<void> {
     const _id = this.requireDeviceId();
     return new Promise((resolve, reject) => {
@@ -163,6 +191,7 @@ export class IOSDriver {
 
   async tap(x: number, y: number, duration?: number): Promise<void> {
     await this.post('touch', { x, y, ...(duration !== undefined ? { duration } : {}) });
+    this.invalidateHierarchyCache();
   }
 
   async swipe(
@@ -173,7 +202,7 @@ export class IOSDriver {
     duration: number,
     appIds?: string[]
   ): Promise<void> {
-    await this.post('swipeV2', {
+    await this.post('swipe', {
       startX,
       startY,
       endX,
@@ -181,6 +210,7 @@ export class IOSDriver {
       duration,
       ...(appIds ? { appIds } : {}),
     });
+    this.invalidateHierarchyCache();
   }
 
   /**
@@ -198,16 +228,19 @@ export class IOSDriver {
 
   async inputText(text: string, appIds: string[] = []): Promise<void> {
     await this.post('inputText', { text, appIds });
+    this.invalidateHierarchyCache();
   }
 
   async pressKey(key: 'delete' | 'return' | 'enter' | 'tab' | 'space'): Promise<void> {
     await this.post('pressKey', { key });
+    this.invalidateHierarchyCache();
   }
 
   async pressButton(
     button: 'home' | 'lock' | 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause'
   ): Promise<void> {
     await this.post('pressButton', { button });
+    this.invalidateHierarchyCache();
   }
 
   async launchApp(bundleId: string, args?: Record<string, string>): Promise<void> {
@@ -223,10 +256,12 @@ export class IOSDriver {
     } else {
       await this.post('launchApp', { bundleId });
     }
+    this.invalidateHierarchyCache();
   }
 
   async terminateApp(appId: string): Promise<void> {
     await this.post('terminateApp', { appId });
+    this.invalidateHierarchyCache();
   }
 
   async clearAppState(bundleId: string): Promise<void> {
@@ -247,12 +282,14 @@ export class IOSDriver {
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
+    this.invalidateHierarchyCache();
   }
 
   async uninstallApp(bundleId: string): Promise<void> {
     const deviceId = this.requireDeviceId();
     await this.simctl(['terminate', deviceId, bundleId]).catch(() => {});
     await this.simctl(['uninstall', deviceId, bundleId]);
+    this.invalidateHierarchyCache();
   }
 
   async clearKeychain(): Promise<void> {
@@ -263,6 +300,7 @@ export class IOSDriver {
   async openLink(url: string): Promise<void> {
     const deviceId = this.requireDeviceId();
     await this.simctl(['openurl', deviceId, url]);
+    this.invalidateHierarchyCache();
   }
 
   /** Read the simulator's clipboard. Uses `xcrun simctl pbpaste <udid>`. */
@@ -297,6 +335,7 @@ export class IOSDriver {
 
   async setOrientation(orientation: string): Promise<void> {
     await this.post('setOrientation', { orientation });
+    this.invalidateHierarchyCache();
   }
 
   async setPermissions(appId: string, permissions: Record<string, string>): Promise<void> {
@@ -423,8 +462,18 @@ export class IOSDriver {
 
   async viewHierarchy(
     excludeKeyboardElements = false,
-    appIds: string[] = []
+    appIds: string[] = [],
+    opts: { cache?: boolean } = {}
   ): Promise<IOSViewHierarchy> {
+    const key = `${excludeKeyboardElements}:${appIds.join(',')}`;
+    if (
+      opts.cache &&
+      this.hierarchyCache &&
+      this.hierarchyCache.key === key &&
+      Date.now() - this.hierarchyCache.at < HIERARCHY_CACHE_TTL_MS
+    ) {
+      return this.hierarchyCache.value;
+    }
     const { status, data } = await this.request('POST', '/viewHierarchy', {
       appIds,
       excludeKeyboardElements,
@@ -434,7 +483,32 @@ export class IOSDriver {
         `iOS driver viewHierarchy failed (HTTP ${status}): ${data.toString('utf-8').slice(0, 200)}`
       );
     }
-    return JSON.parse(data.toString('utf-8')) as IOSViewHierarchy;
+    const value = JSON.parse(data.toString('utf-8')) as IOSViewHierarchy;
+    this.hierarchyCache = { key, value, at: Date.now() };
+    return value;
+  }
+
+  /**
+   * Resolve a single element directly via the runner instead of dumping and
+   * matching the whole view hierarchy. Returns `matchCount` so callers can
+   * fall back to the snapshot path when the result is ambiguous (>1) or empty.
+   */
+  async queryElement(
+    selectorKey: 'text' | 'id' | 'query',
+    selectorValue: string,
+    appIds: string[] = []
+  ): Promise<IOSQueryElementResult> {
+    const { status, data } = await this.request('POST', '/queryElement', {
+      selectorKey,
+      selectorValue,
+      appIds,
+    });
+    if (status < 200 || status >= 300) {
+      throw new Error(
+        `iOS driver queryElement failed (HTTP ${status}): ${data.toString('utf-8').slice(0, 200)}`
+      );
+    }
+    return JSON.parse(data.toString('utf-8')) as IOSQueryElementResult;
   }
 
   async screenshot(_opts: { fullPage?: boolean } = {}): Promise<Buffer> {

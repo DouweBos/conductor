@@ -4,7 +4,6 @@ import Foundation
 enum Route: String, CaseIterable {
     case runningApp
     case swipe
-    case swipeV2
     case inputText
     case touch
     case gesturePath
@@ -17,6 +16,7 @@ enum Route: String, CaseIterable {
     case setOrientation
     case setPermissions
     case viewHierarchy
+    case queryElement
     case status
     case keyboard
     case launchApp

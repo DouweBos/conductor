@@ -24,6 +24,7 @@ import {
   waitForWebElement,
   OPTIONAL_TIMEOUT_MS,
 } from '../drivers/wait.js';
+import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 
 export async function assertVisible(
   element: string,
@@ -75,9 +76,11 @@ export async function assertVisible(
     const find = async () => {
       if (driver instanceof IOSDriver) {
         return waitForIOSElement(
-          () => driver.viewHierarchy().then((h) => h.axElement),
+          (o) => driver.viewHierarchy(false, [], { cache: o?.cached }).then((h) => h.axElement),
           sel,
-          timeoutMs
+          timeoutMs,
+          undefined,
+          makeIOSDirectResolver(driver, sel)
         );
       } else if (driver instanceof WebDriver) {
         return waitForWebElement(() => driver.viewHierarchy(), sel, timeoutMs);

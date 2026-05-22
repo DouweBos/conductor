@@ -15,6 +15,7 @@ import {
   findWebElement,
   ElementSelector,
 } from '../drivers/element-resolver.js';
+import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 import { Direction, swipeCoords } from '../utils.js';
 
 export async function scrollUntilVisible(
@@ -58,10 +59,26 @@ export async function scrollUntilVisible(
   try {
     const driver = await getDriver(sessionName);
     const deadline = Date.now() + timeoutMs;
+    // Resolve simple selectors with a direct runner query, skipping the
+    // full-tree snapshot on every scroll iteration.
+    const iosDirectResolve =
+      driver instanceof IOSDriver ? makeIOSDirectResolver(driver, sel) : undefined;
 
     while (Date.now() < deadline) {
       try {
         if (driver instanceof IOSDriver) {
+          if (iosDirectResolve) {
+            let fast = null;
+            try {
+              fast = await iosDirectResolve();
+            } catch {
+              // direct query failed — fall back to the snapshot check below
+            }
+            if (fast) {
+              printSuccess(`scroll-until-visible ${label} — found`, opts);
+              return 0;
+            }
+          }
           const root = await driver.viewHierarchy().then((h) => h.axElement);
           if (findIOSElement(root, sel)) {
             printSuccess(`scroll-until-visible ${label} — found`, opts);

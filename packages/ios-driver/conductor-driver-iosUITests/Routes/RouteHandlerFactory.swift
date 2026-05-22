@@ -8,8 +8,6 @@ class RouteHandlerFactory {
             return RunningAppRouteHandler()
         case .swipe:
             return SwipeRouteHandler()
-        case .swipeV2:
-            return SwipeRouteHandlerV2()
         case .inputText:
             return InputTextRouteHandler()
         case .touch:
@@ -34,6 +32,8 @@ class RouteHandlerFactory {
             return SetPermissionsHandler()
         case .viewHierarchy:
             return ViewHierarchyHandler()
+        case .queryElement:
+            return QueryElementHandler()
         case .status:
             return StatusHandler()
         case .keyboard:

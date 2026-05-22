@@ -11,7 +11,7 @@ export const HELP = `  start-device
 
 import fs from 'fs';
 import { spawn } from 'child_process';
-import { spawnCommand } from '../runner.js';
+import { spawnCommand, prewarmDriver } from '../runner.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { startDaemon, findRunningWebSession } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
@@ -198,6 +198,9 @@ async function startIOS(
             }
           }
           const displayName = name ?? sim.name;
+          // Prewarm the driver so the first interaction command is not the
+          // one that pays the XCTest runner startup cost.
+          await prewarmDriver(sim.udid);
           printSuccess(`Simulator already booted: ${displayName} (${sim.udid})`, opts);
           return 0;
         }
@@ -238,6 +241,9 @@ async function startIOS(
       spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
 
       const displayName = name ?? deviceType;
+      // Prewarm the driver so the first interaction command is not the
+      // one that pays the XCTest runner startup cost.
+      await prewarmDriver(udid);
       printSuccess(`Booted: ${displayName} (${udid})`, opts);
       return 0;
     }
@@ -281,6 +287,9 @@ async function startIOS(
   spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
 
   const displayName = name ?? device.name;
+  // Prewarm the driver so the first interaction command is not the
+  // one that pays the XCTest runner startup cost.
+  await prewarmDriver(device.udid);
   printSuccess(`Booted: ${displayName} (${device.udid})`, opts);
   return 0;
 }
@@ -380,6 +389,9 @@ async function startTvOS(
             }
           }
           const displayName = name ?? sim.name;
+          // Prewarm the driver so the first interaction command is not the
+          // one that pays the XCTest runner startup cost.
+          await prewarmDriver(sim.udid);
           printSuccess(`Simulator already booted: ${displayName} (${sim.udid})`, opts);
           return 0;
         }
@@ -420,6 +432,9 @@ async function startTvOS(
       spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
 
       const displayName = name ?? deviceType;
+      // Prewarm the driver so the first interaction command is not the
+      // one that pays the XCTest runner startup cost.
+      await prewarmDriver(udid);
       printSuccess(`Booted: ${displayName} (${udid})`, opts);
       return 0;
     }
@@ -463,6 +478,9 @@ async function startTvOS(
   spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
 
   const displayName = name ?? device.name;
+  // Prewarm the driver so the first interaction command is not the
+  // one that pays the XCTest runner startup cost.
+  await prewarmDriver(device.udid);
   printSuccess(`Booted: ${displayName} (${device.udid})`, opts);
   return 0;
 }

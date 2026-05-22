@@ -230,6 +230,23 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
 }
 
 /**
+ * Eagerly start the device daemon (and its XCTest driver) for `deviceId` so
+ * the runner is already warm by the time the first interaction command runs.
+ *
+ * `start-device` is the natural prewarm point: bringing the driver up there
+ * moves the one-off startup cost off the first `tap-on` / `assert-visible`.
+ * Best-effort — failures are swallowed since a real command will surface any
+ * genuine startup error with a proper message.
+ */
+export async function prewarmDriver(deviceId: string): Promise<void> {
+  try {
+    await startDaemon(deviceId);
+  } catch {
+    /* best-effort: a later command will report a real failure */
+  }
+}
+
+/**
  * Execute a function with the driver for the given session.
  * Returns a RunResult for consistent error handling across commands.
  */

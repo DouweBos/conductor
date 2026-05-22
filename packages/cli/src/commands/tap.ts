@@ -20,6 +20,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../drivers/wait.js';
+import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 import { sleep } from '../utils.js';
 
 export async function tap(
@@ -73,7 +74,13 @@ export async function tap(
 
     let el;
     if (driver instanceof IOSDriver) {
-      el = await waitForIOSElement(() => driver.viewHierarchy().then((h) => h.axElement), sel);
+      el = await waitForIOSElement(
+        (o) => driver.viewHierarchy(false, [], { cache: o?.cached }).then((h) => h.axElement),
+        sel,
+        undefined,
+        undefined,
+        makeIOSDirectResolver(driver, sel)
+      );
     } else if (driver instanceof WebDriver) {
       el = await waitForWebElement(() => driver.viewHierarchy(), sel);
     } else if (driver instanceof AndroidDriver) {

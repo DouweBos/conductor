@@ -19,6 +19,7 @@ import {
   waitForWebHierarchyToSettle,
   OPTIONAL_TIMEOUT_MS,
 } from './wait.js';
+import { makeIOSDirectResolver } from './direct-ios-selector.js';
 import { performance } from 'perf_hooks';
 import { executeScript } from './js-engine.js';
 import { sleep } from '../utils.js';
@@ -183,9 +184,11 @@ async function waitForElement(
   if (driver instanceof IOSDriver) {
     const iosShouldAllow = opts?.output[OUTPUT_IOS_SHOULD_ALLOW] as boolean | undefined;
     return waitForIOSElement(
-      () => iosGetHierarchy(driver, appIds ?? [], iosShouldAllow),
+      (o) => iosGetHierarchy(driver, appIds ?? [], iosShouldAllow, o?.cached),
       elSel,
-      timeoutMs
+      timeoutMs,
+      undefined,
+      makeIOSDirectResolver(driver, elSel, appIds ?? [])
     );
   } else if (driver instanceof WebDriver) {
     return waitForWebElement(() => driver.viewHierarchy(), elSel, timeoutMs);
@@ -268,11 +271,13 @@ async function tapPermissionDialog(
 async function iosGetHierarchy(
   driver: IOSDriver,
   appIds: string[],
-  shouldAllow?: boolean
+  shouldAllow?: boolean,
+  cached?: boolean
 ): Promise<AXElement> {
-  const root = (await driver.viewHierarchy(false, appIds)).axElement;
+  const root = (await driver.viewHierarchy(false, appIds, { cache: cached })).axElement;
   if (shouldAllow !== undefined) {
     const tapped = await tapPermissionDialog(driver, root, shouldAllow);
+    // Re-fetch fresh after dismissing a dialog — the tap invalidated the cache.
     if (tapped) return (await driver.viewHierarchy(false, appIds)).axElement;
   }
   return root;
