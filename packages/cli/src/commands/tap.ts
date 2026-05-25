@@ -1,4 +1,4 @@
-export const HELP = `  tap-on <element>                     Tap element by text or id
+export const HELP = `  tap-on <element>                     Tap element by text, id, or @eN snapshot ref
     --id <id>                         Match by accessibility id instead of text
     --text <text>                     Match by text only (not id)
     --index <n>                       Pick the nth match (0-based)
@@ -21,6 +21,7 @@ import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../drivers/wait.js';
 import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
+import { isRefQuery, loadSnapshot, resolveRef } from '../snapshot-store.js';
 import { sleep } from '../utils.js';
 
 export async function tap(
@@ -62,6 +63,9 @@ export async function tap(
     ...(flags.rightOf && { rightOf: { query: flags.rightOf } }),
   };
 
+  // A bare `@eN` query taps the cached coordinates from the last `capture-ui`
+  // snapshot, skipping fuzzy text/id resolution. Explicit --text/--id win.
+  const useRef = isRefQuery(query) && !flags.text && !flags.id;
   const label = flags.text ? `text="${flags.text}"` : flags.id ? `id="${flags.id}"` : `"${query}"`;
 
   const result = await runDirect(async (driver) => {
@@ -72,8 +76,18 @@ export async function tap(
       );
     }
 
-    let el;
-    if (driver instanceof IOSDriver) {
+    let el: { centerX: number; centerY: number };
+    if (useRef) {
+      const { entry, staleReason } = resolveRef(await loadSnapshot(sessionName), query, {
+        deviceId: sessionName,
+      });
+      if (staleReason) {
+        process.stderr.write(
+          `warning: ${query} — ${staleReason}; re-run capture-ui if the tap misses\n`
+        );
+      }
+      el = { centerX: entry.centerX, centerY: entry.centerY };
+    } else if (driver instanceof IOSDriver) {
       el = await waitForIOSElement(
         (o) => driver.viewHierarchy(false, [], { cache: o?.cached }).then((h) => h.axElement),
         sel,

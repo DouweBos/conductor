@@ -9,7 +9,7 @@
  * `metro-discovery.ts` — do not duplicate discovery logic here.
  */
 import WebSocket from 'ws';
-import { fetchTargets } from './log-sources/metro.js';
+import { fetchTargets, type MetroTarget } from './log-sources/metro.js';
 import { selectTargetForDevice, getDeviceDisplayName } from './log-sources/metro-discovery.js';
 
 export interface CdpCallOptions {
@@ -40,13 +40,19 @@ interface CdpRequest {
 }
 
 /**
- * Resolve a Metro target's `webSocketDebuggerUrl` honoring deviceId / targetIndex.
- * Throws with a clear message if Metro is unreachable or no target matches.
+ * Pick a debugger `webSocketDebuggerUrl` from an already-fetched target list.
+ * Pure — the async `fetchTargets` / `getDeviceDisplayName` calls happen in
+ * `resolveDebuggerUrl`. `displayName` is the device's resolved display name,
+ * used for device-scoped selection when present. Throws with a clear message
+ * when no target matches.
  */
-export async function resolveDebuggerUrl(opts: CdpCallOptions): Promise<string> {
+export function selectDebuggerUrl(
+  targets: MetroTarget[],
+  opts: Pick<CdpCallOptions, 'port' | 'host' | 'targetIndex'>,
+  displayName?: string
+): string {
   const port = opts.port ?? 8081;
   const host = opts.host ?? 'localhost';
-  const targets = await fetchTargets(port, host);
   const withWs = targets.filter((t) => t.webSocketDebuggerUrl);
 
   if (withWs.length === 0) {
@@ -62,17 +68,31 @@ export async function resolveDebuggerUrl(opts: CdpCallOptions): Promise<string> 
     return withWs[opts.targetIndex].webSocketDebuggerUrl!;
   }
 
-  if (opts.deviceId && opts.platform) {
-    const displayName = await getDeviceDisplayName(opts.platform, opts.deviceId);
-    if (displayName) {
-      const target = selectTargetForDevice(withWs, displayName);
-      if (target) return target.webSocketDebuggerUrl!;
-    }
+  if (displayName) {
+    const target = selectTargetForDevice(withWs, displayName);
+    if (target) return target.webSocketDebuggerUrl!;
   }
 
   // Prefer the Hermes/React target by title, otherwise first.
   const target = withWs.find((t) => t.title && /hermes|react/i.test(t.title)) ?? withWs[0];
   return target.webSocketDebuggerUrl!;
+}
+
+/**
+ * Resolve a Metro target's `webSocketDebuggerUrl` honoring deviceId / targetIndex.
+ * Throws with a clear message if Metro is unreachable or no target matches.
+ */
+export async function resolveDebuggerUrl(opts: CdpCallOptions): Promise<string> {
+  const port = opts.port ?? 8081;
+  const host = opts.host ?? 'localhost';
+  const targets = await fetchTargets(port, host);
+
+  let displayName: string | undefined;
+  if (opts.deviceId && opts.platform) {
+    displayName = (await getDeviceDisplayName(opts.platform, opts.deviceId)) ?? undefined;
+  }
+
+  return selectDebuggerUrl(targets, opts, displayName);
 }
 
 /**

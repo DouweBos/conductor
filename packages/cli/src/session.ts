@@ -5,6 +5,8 @@ import path from 'path';
 export interface Session {
   appId?: string;
   deviceId?: string;
+  /** Path of the active `flow record` recording, when one is in progress. */
+  recordingPath?: string;
 }
 
 const CONDUCTOR_DIR = path.join(os.homedir(), '.conductor');
