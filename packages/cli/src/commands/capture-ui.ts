@@ -13,6 +13,7 @@ import {
   buildWebA11y,
   A11ySnapshotEntry,
 } from '../drivers/a11y.js';
+import { buildStoredSnapshot, saveSnapshot } from '../snapshot-store.js';
 
 export interface CaptureBundle {
   version: 1;
@@ -113,6 +114,13 @@ export async function captureUI(
       a11ySnapshot,
       capabilities: { perViewPixels: false, depthData: false },
     };
+
+    // Persist `@eN` refs so `tap-on @e3` can act on this capture without a
+    // re-query. Keyed by session — see snapshot-store.ts.
+    await saveSnapshot(
+      sessionName,
+      buildStoredSnapshot(a11ySnapshot, { deviceId: sessionName, platform })
+    );
 
     const json = JSON.stringify(bundle);
 

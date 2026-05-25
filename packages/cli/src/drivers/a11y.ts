@@ -29,6 +29,9 @@ export interface A11yState {
 
 export interface A11ySnapshotEntry {
   nodeId: string;
+  /** Ephemeral, snapshot-scoped element ref (`@e1`, `@e2`, …). Sequential over
+   *  the snapshot array, 1-indexed. Only valid for the snapshot it was built in. */
+  ref: string;
   order: number;
   frame: A11yFrame;
   label: string;
@@ -136,6 +139,7 @@ export function buildIOSA11y(root: AXElement): A11yBuildResult<IOSA11yNode> {
       accessibilityOrder = order++;
       snapshot.push({
         nodeId: path,
+        ref: `@e${accessibilityOrder + 1}`,
         order: accessibilityOrder,
         frame: {
           x: node.frame.X,
@@ -403,6 +407,7 @@ export function buildAndroidA11y(xml: string): A11yBuildResult<AndroidA11yNode[]
       accessibilityOrder = order++;
       snapshot.push({
         nodeId: path,
+        ref: `@e${accessibilityOrder + 1}`,
         order: accessibilityOrder,
         frame: {
           x: n.bounds.x1,
@@ -521,6 +526,7 @@ export function buildWebA11y(hierarchy: WebViewHierarchy): A11yBuildResult<WebA1
         accessibilityOrder = order++;
         snapshot.push({
           nodeId: path,
+          ref: `@e${accessibilityOrder + 1}`,
           order: accessibilityOrder,
           frame: { x: n.bounds.x, y: n.bounds.y, w: n.bounds.width, h: n.bounds.height },
           label: n.name,

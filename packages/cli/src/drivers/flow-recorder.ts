@@ -10,11 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { updateSession, getSession, type Session } from '../session.js';
-
-interface SessionWithRecording extends Session {
-  recordingPath?: string;
-}
+import { updateSession, getSession } from '../session.js';
 
 const FLOWS_DIR = path.join(os.homedir(), '.conductor', 'recordings');
 
@@ -34,22 +30,22 @@ export async function startRecording(
     (appId ? `appId: ${appId}\n` : `# appId: <set me>\n`) +
     `---\n# Recording started ${new Date().toISOString()}\n`;
   fs.writeFileSync(target, header, 'utf-8');
-  await updateSession({ recordingPath: target } as Partial<Session>, sessionName);
+  await updateSession({ recordingPath: target }, sessionName);
   return target;
 }
 
 export async function finishRecording(sessionName: string): Promise<string | null> {
-  const session = (await getSession(sessionName)) as SessionWithRecording;
+  const session = await getSession(sessionName);
   if (!session.recordingPath) return null;
   const out = session.recordingPath;
   fs.appendFileSync(out, `# Recording finished ${new Date().toISOString()}\n`);
-  delete session.recordingPath;
-  await updateSession(session as Partial<Session>, sessionName);
+  // Setting to undefined clears the key on save — JSON.stringify drops it.
+  await updateSession({ recordingPath: undefined }, sessionName);
   return out;
 }
 
 export async function getActiveRecording(sessionName: string): Promise<string | null> {
-  const session = (await getSession(sessionName)) as SessionWithRecording;
+  const session = await getSession(sessionName);
   return session.recordingPath ?? null;
 }
 
