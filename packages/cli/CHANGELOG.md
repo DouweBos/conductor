@@ -1,5 +1,23 @@
 # @houwert/conductor
 
+## 0.17.0
+
+### Minor Changes
+
+- 8393269: Add `clipboard read` / `clipboard write` and `paste` commands for working with the device clipboard (iOS).
+- 82dd69e: Add `crashes` commands (`list`, `show`, `tail`) to capture and stream iOS and Android crash reports.
+- aae581e: Add experimental React Native tooling: `debug` (Hermes/Fusebox debugger — evaluate JS, component tree, element inspection), `network` (HTTP traffic logs and requests), and `profile` (CPU, memory, and React commit profiling).
+- 10629a9: Add `flow record` commands (`start`, `finish`, `echo`, `status`) to capture a YAML flow while interacting with a session.
+- f6a1cb7: Add `pinch`, `rotate-gesture`, and `gesture` commands for two-finger and arbitrary multi-touch gestures, backed by a new multi-finger gesture-path route in the iOS and Android drivers.
+- d5cd58f: Add an `--at <x,y>` flag to `inspect` to query the UI element at a specific screen point.
+- bfdbd8d: Add `metro stop` and `metro reload` commands for controlling the React Native Metro bundler.
+- 6376d17: Add a `run-sequence` command that runs a JSON-described sequence of Conductor commands serially against one session, stopping on the first failure.
+- 6376d17: Add a `workspace info` command that reports the detected project type, bundle IDs, devices, and Metro port.
+
+### Patch Changes
+
+- 72ac3ef: Speed up iOS replay. Simple selectors (a single plain text/id) now resolve through a direct runner query instead of dumping the whole view hierarchy, the hierarchy is briefly cached between commands, and `start-device` prewarms the driver so the first interaction no longer pays the XCTest startup cost. Vertical swipes are also lifted clear of the on-screen keyboard, and dropped text input is retyped automatically.
+
 ## 0.16.0
 
 ### Minor Changes
