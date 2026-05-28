@@ -19,14 +19,18 @@ import { spawn } from 'child_process';
 import { fetchTargets, MetroTarget } from './metro.js';
 import { resolveAndroidTool } from '../../android/sdk.js';
 
-/** Metro dev-server port ranges we consider. */
-const METRO_PORT_RANGES: [number, number][] = [
-  [8080, 8099], // Metro default range
-  [19000, 19002], // Expo
-];
-
+/**
+ * Heuristic to reject ports that obviously aren't a Metro dev server (system
+ * ports, well-known services). Candidates that pass are always verified via
+ * {@link fetchTargets} before being returned, so this filter only exists to
+ * keep the number of verification probes bounded.
+ */
 export function isMetroPort(port: number): boolean {
-  return METRO_PORT_RANGES.some(([lo, hi]) => port >= lo && port <= hi);
+  if (port < 1024 || port > 65535) return false;
+  // Skip a handful of common services that share the localhost loopback to
+  // avoid pointless /json probes against them.
+  const wellKnownNonMetro = new Set([3306, 5432, 6379, 27017, 9200, 11211]);
+  return !wellKnownNonMetro.has(port);
 }
 
 function spawnCapture(cmd: string, args: string[]): Promise<string> {
