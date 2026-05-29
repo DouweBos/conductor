@@ -232,6 +232,17 @@ export class WebDriver {
     await this.post('eraseText', { count });
   }
 
+  async setViewport(opts: {
+    width: number;
+    height: number;
+    deviceScaleFactor?: number;
+    isMobile?: boolean;
+    userAgent?: string;
+    colorScheme?: 'dark' | 'light';
+  }): Promise<void> {
+    await this.post('setViewport', opts);
+  }
+
   // ── Stub methods for mobile-only features ──────────────────────────────────
   // These throw clear errors rather than silently no-op so the user knows
   // the command isn't applicable to web.

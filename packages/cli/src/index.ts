@@ -74,6 +74,7 @@ import {
 } from './commands/scroll-until-visible.js';
 import { setLocation, HELP as setLocationHelp } from './commands/set-location.js';
 import { setOrientation, HELP as setOrientationHelp } from './commands/set-orientation.js';
+import { setViewport, HELP as setViewportHelp } from './commands/set-viewport.js';
 import { startDevice, HELP as startDeviceHelp } from './commands/start-device.js';
 import { stopDevice, HELP as stopDeviceHelp } from './commands/stop-device.js';
 import { deleteDevice, HELP as deleteDeviceHelp } from './commands/delete-device.js';
@@ -120,6 +121,7 @@ const COMMAND_HELP: Record<string, string> = {
   'open-link': openLinkHelp,
   'set-location': setLocationHelp,
   'set-orientation': setOrientationHelp,
+  'set-viewport': setViewportHelp,
   'take-screenshot': screenshotHelp,
   'capture-ui': captureUIHelp,
   inspect: inspectHelp,
@@ -247,6 +249,11 @@ async function main(): Promise<void> {
       'interval',
       'app',
       'since',
+      'preset',
+      'width',
+      'height',
+      'user-agent',
+      'color-scheme',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version' },
   });
@@ -574,6 +581,33 @@ async function main(): Promise<void> {
         ''
       ).toLowerCase();
       exitCode = await setOrientation(orientation, opts, sessionName);
+      break;
+    }
+
+    case 'set-viewport': {
+      exitCode = await setViewport(
+        {
+          preset: argv['preset'] as string | undefined,
+          width:
+            argv['width'] !== undefined
+              ? Number(argv['width'])
+              : rest[0] !== undefined
+                ? Number(rest[0])
+                : undefined,
+          height:
+            argv['height'] !== undefined
+              ? Number(argv['height'])
+              : rest[1] !== undefined
+                ? Number(rest[1])
+                : undefined,
+          scale: argv['scale'] !== undefined ? Number(argv['scale']) : undefined,
+          mobile: argv['mobile'] as boolean | undefined,
+          userAgent: argv['user-agent'] as string | undefined,
+          colorScheme: argv['color-scheme'] as string | undefined,
+        },
+        opts,
+        sessionName
+      );
       break;
     }
 
