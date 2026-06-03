@@ -1,5 +1,12 @@
 # @houwert/conductor
 
+## 0.18.0
+
+### Minor Changes
+
+- 411a7e6: Add a `set-viewport` command for web sessions. Resize the Playwright browser to a preset (`mobile`, `tablet`, `desktop`) or explicit `width`/`height`, with optional device scale factor, mobile emulation, user agent, and color scheme. The current URL is preserved across the resize, so a single browser session can be screenshotted at multiple form factors without booting more devices.
+- 2134af5: Add ephemeral `@eN` element refs. `capture-ui` now assigns each accessible element a short ref (`@e1`, `@e2`, …) and persists its screen coordinates per session, so `tap-on @e3` can act on the captured point directly without re-querying or fuzzy text/id matching. Stale snapshots (different device or older than 60s) emit an advisory warning rather than hard-failing.
+
 ## 0.17.0
 
 ### Minor Changes
