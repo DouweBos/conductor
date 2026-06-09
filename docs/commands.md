@@ -17,7 +17,7 @@ All commands accept `--session <name>` to scope to a named session and
 | ---------------- | ------------------------------------------------------------------------- |
 | `launch-app`     | Launch the given bundle id / package name. Saves it to the session.       |
 | `stop-app`       | Stop the running app.                                                     |
-| `clear-state`    | Wipe app data (uninstall + reinstall on Android; reset container on iOS). |
+| `clear-state`    | ⚠️ Destructive — wipes app data **and** the app's keychain items, signing the user out. Used via `launch-app --clear-state` or directly. Don't use this to reset focus/navigation state. |
 | `uninstall-app`  | Remove the app from the device.                                           |
 | `install-app`    | Install a `.app`, `.ipa`, or `.apk` from a path.                          |
 | `download-app`   | Download an installed app's binary back to disk.                          |
