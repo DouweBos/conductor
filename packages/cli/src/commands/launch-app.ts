@@ -1,6 +1,12 @@
 export const HELP = `  launch-app <appId>                  Launch app (saves to session)
-    --clear-state                     Clear app data/state before launching
-    --clear-keychain                  Clear keychain before launching
+    --clear-state                     DESTRUCTIVE: wipe app data AND signed-in state before launching.
+                                      On iOS this uninstall+reinstalls the app, which also drops the
+                                      app's keychain items — the user will be signed out and you
+                                      cannot undo it without their credentials. Do not use to reset
+                                      focus or navigation state; relaunch without this flag instead.
+    --clear-keychain                  DESTRUCTIVE: wipe the device keychain before launching. Signs
+                                      the user out of every app on the simulator. Cannot be undone
+                                      without re-entering credentials.
     --no-stop-app                     Do not stop the app before launching (resume instead of restart)
     --argument key=value              Set launch argument (repeatable)`;
 
@@ -29,6 +35,13 @@ export async function launchApp(
   }
 
   await updateSession({ appId, ...(deviceId ? { deviceId } : {}) }, sessionName);
+
+  if (flags.clearState || flags.clearKeychain) {
+    process.stderr.write(
+      'warning: --clear-state / --clear-keychain wipes app data AND signed-in state; ' +
+        'the user will be signed out and cannot be recovered without their credentials.\n'
+    );
+  }
 
   const result = await runDirect(async (driver) => {
     if (flags.clearKeychain) await driver.clearKeychain();

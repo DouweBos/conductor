@@ -1,4 +1,8 @@
-export const HELP = `  clear-state [<appId>]                Clear app data/state`;
+export const HELP = `  clear-state [<appId>]                DESTRUCTIVE: wipe app data and signed-in state.
+                                       On iOS this uninstall+reinstalls the app, which also drops
+                                       the app's keychain items — the user will be signed out and
+                                       cannot be recovered without their credentials. Do not use to
+                                       reset focus or navigation state.`;
 
 import { runDirect } from '../runner.js';
 import { getSession } from '../session.js';
@@ -16,6 +20,11 @@ export async function clearState(
     printError('clear-state: no appId provided and no active session. Run launch-app first.', opts);
     return 1;
   }
+
+  process.stderr.write(
+    'warning: clear-state wipes app data AND signed-in state; the user will be signed out ' +
+      'and cannot be recovered without their credentials.\n'
+  );
 
   const result = await runDirect(async (driver) => {
     await driver.clearAppState(resolvedAppId);
