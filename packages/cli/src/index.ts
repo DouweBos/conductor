@@ -255,7 +255,7 @@ async function main(): Promise<void> {
       'user-agent',
       'color-scheme',
     ],
-    alias: { h: 'help', v: 'verbose', V: 'version' },
+    alias: { h: 'help', v: 'verbose', V: 'version', o: 'output' },
   });
 
   if (argv['verbose']) setVerbose(true);

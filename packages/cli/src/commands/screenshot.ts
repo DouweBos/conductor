@@ -91,9 +91,14 @@ export async function screenshot(
       let hierarchyW: number;
       let hierarchyH: number;
       if (driver instanceof IOSDriver) {
-        const h = await driver.viewHierarchy(false, [], { cache: false });
-        hierarchyW = h.axElement.frame.Width;
-        hierarchyH = h.axElement.frame.Height;
+        // The root axElement returned by the driver is a synthetic wrapper
+        // around the foreground app + status bars and has frame=.zero, so
+        // reading scale from it would always collapse to 1× and crop the
+        // wrong region on retina/4K screens. Use deviceInfo, which reports
+        // both points (AX space) and pixels (screenshot space).
+        const info = await driver.deviceInfo();
+        hierarchyW = info.widthPoints;
+        hierarchyH = info.heightPoints;
         el = await waitForIOSElement(
           (o) => driver.viewHierarchy(false, [], { cache: o?.cached }).then((x) => x.axElement),
           sel,
@@ -121,10 +126,15 @@ export async function screenshot(
       const scaleX = hierarchyW > 0 ? pngW / hierarchyW : 1;
       const scaleY = hierarchyH > 0 ? pngH / hierarchyH : 1;
 
-      const rectX = Math.round(el.bounds.x * scaleX - margin);
-      const rectY = Math.round(el.bounds.y * scaleY - margin);
-      const rectW = Math.round(el.bounds.width * scaleX + margin * 2);
-      const rectH = Math.round(el.bounds.height * scaleY + margin * 2);
+      // Margin is in the same logical units as the bounds (points on iOS,
+      // pixels on Android/Web — same units the `inspect` command prints),
+      // so scale it into screenshot pixels alongside the bounds.
+      const marginX = margin * scaleX;
+      const marginY = margin * scaleY;
+      const rectX = Math.round(el.bounds.x * scaleX - marginX);
+      const rectY = Math.round(el.bounds.y * scaleY - marginY);
+      const rectW = Math.round(el.bounds.width * scaleX + marginX * 2);
+      const rectH = Math.round(el.bounds.height * scaleY + marginY * 2);
 
       if (rectX + rectW <= 0 || rectY + rectH <= 0 || rectX >= pngW || rectY >= pngH) {
         throw new Error(
