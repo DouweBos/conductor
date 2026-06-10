@@ -1,5 +1,16 @@
 # @houwert/conductor
 
+## 0.19.0
+
+### Minor Changes
+
+- 9a7b868: `screenshot` can now target a single element via `--selector` (or a positional selector argument), cropping the capture to that element's bounds. Adds a new `png-crop` helper for in-process PNG cropping, so no external image tooling is required.
+- 98b5170: Restore app focus on tvOS via a new `RestoreFocusHandler` in the iOS driver, wired through the daemon and bootstrap so tvOS sessions can recover focus after backgrounding or navigation.
+
+### Patch Changes
+
+- 016ccb3: Make the blast radius of `launch-app --clear-state` and `--clear-keychain` explicit: clarified `--help` text, updated `docs/commands.md`, and added a one-line stderr warning when either flag is used. These flags drop the app's keychain items (signing the user out) and are easy to reach for as a debugging shortcut — the new messaging spells that out. No behavior change.
+
 ## 0.18.0
 
 ### Minor Changes
