@@ -30,6 +30,8 @@ export interface ElementSelector {
 export interface ResolvedElement {
   centerX: number;
   centerY: number;
+  /** Pixel rect in the same coordinate space as the source hierarchy (iOS = points). */
+  bounds: { x: number; y: number; width: number; height: number };
   text?: string;
   id?: string;
 }
@@ -252,6 +254,7 @@ export function findIOSElement(root: AXElement, sel: ElementSelector): ResolvedE
   return {
     centerX: X + Width / 2,
     centerY: Y + Height / 2,
+    bounds: { x: X, y: Y, width: Width, height: Height },
     text: iosTextOf(node) || undefined,
     id: node.identifier || undefined,
   };
@@ -433,6 +436,7 @@ export function findAndroidElement(xml: string, sel: ElementSelector): ResolvedE
   return {
     centerX: (x1 + x2) / 2,
     centerY: (y1 + y2) / 2,
+    bounds: { x: x1, y: y1, width: x2 - x1, height: y2 - y1 },
     text: androidTextOf(node) || undefined,
     id: node.resourceId || undefined,
   };
@@ -657,6 +661,7 @@ export function findWebElement(
   return {
     centerX: b.x + b.width / 2,
     centerY: b.y + b.height / 2,
+    bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
     text: node.name || undefined,
     id: node.ref || undefined,
   };

@@ -614,7 +614,21 @@ async function main(): Promise<void> {
     case 'take-screenshot': {
       const outPath = argv['output'] as string | undefined;
       const fullPage = Boolean(argv['full-page']);
-      exitCode = await screenshot(outPath, opts, sessionName, fullPage);
+      const element = rest.join(' ');
+      exitCode = await screenshot(outPath, opts, sessionName, fullPage, element, {
+        id: argv['id'] as string | undefined,
+        text: argv['text'] as string | undefined,
+        index: argv['index'] !== undefined ? Number(argv['index']) : undefined,
+        margin: argv['margin'] !== undefined ? Number(argv['margin']) : undefined,
+        focused: argv['focused'] !== undefined ? (argv['focused'] as boolean) : undefined,
+        enabled: argv['enabled'] !== undefined ? (argv['enabled'] as boolean) : undefined,
+        checked: argv['checked'] !== undefined ? (argv['checked'] as boolean) : undefined,
+        selected: argv['selected'] !== undefined ? (argv['selected'] as boolean) : undefined,
+        below: argv['below'] as string | undefined,
+        above: argv['above'] as string | undefined,
+        leftOf: argv['left-of'] as string | undefined,
+        rightOf: argv['right-of'] as string | undefined,
+      });
       break;
     }
 

@@ -86,6 +86,7 @@ export function makeIOSDirectResolver(
     return {
       centerX: X + Width / 2,
       centerY: Y + Height / 2,
+      bounds: { x: X, y: Y, width: Width, height: Height },
       text: n.label || n.title || n.value || n.placeholderValue || undefined,
       id: n.identifier || undefined,
     };
