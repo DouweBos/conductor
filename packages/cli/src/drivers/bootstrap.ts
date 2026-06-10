@@ -605,14 +605,19 @@ export async function setupTvOSDriverCache(): Promise<void> {
  * Start the tvOS XCTest driver via `xcodebuild test-without-building`.
  * Mirrors startIOSDriver but targets the tvOS xctestrun.
  *
- * On first launch the runner app appears in the foreground, so we press the
- * home button to dismiss it. On subsequent restarts (e.g. health-check recovery)
- * we skip the dismiss to avoid disrupting the user's navigation state.
+ * On first launch the runner app appears in the foreground, displacing whatever
+ * app the user had open. When `restoreFocusAfterLaunch` is set we ask the driver
+ * to re-activate that app once the server is up; otherwise the runner stays in
+ * front and commands like `inspect` run against the wrong target. The driver
+ * falls back to pressing home when no candidate app is found.
+ *
+ * Subsequent restarts (e.g. health-check recovery) skip the restore to avoid
+ * disrupting whatever the user is doing.
  */
 export async function startTvOSDriver(
   deviceId: string,
   port = TVOS_BASE_PORT,
-  dismissAfterLaunch = false
+  restoreFocusAfterLaunch = false
 ): Promise<void> {
   if (await isPortOpen(port)) {
     log(`tvOS driver already running on port ${port}`);
@@ -650,12 +655,16 @@ export async function startTvOSDriver(
     await sleep(TVOS_STARTUP_POLL_MS);
     if (await isPortOpen(port)) {
       log(`tvOS driver ready on port ${port}`);
-      if (dismissAfterLaunch) {
+      if (restoreFocusAfterLaunch) {
         try {
-          await pressButtonViaDriver(port, 'home');
-          log('Dismissed tvOS driver app');
+          const restored = await restoreFocusViaDriver(port);
+          if (restored) {
+            log(`Restored tvOS focus to ${restored}`);
+          } else {
+            log('Dismissed tvOS driver app (no previous app to restore)');
+          }
         } catch {
-          log('Could not dismiss tvOS driver app (non-fatal)');
+          log('Could not restore tvOS focus (non-fatal)');
         }
       }
       return;
@@ -944,27 +953,38 @@ export async function uninstallDriver(deviceId: string, platform: Platform): Pro
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Send a pressButton command directly to the driver HTTP server. */
-function pressButtonViaDriver(port: number, button: string): Promise<void> {
+/**
+ * Ask the driver to restore foreground focus to whatever app was active before
+ * the runner launched. Returns the bundle ID that was activated, or null when
+ * the driver fell back to pressing home because no previous app was found.
+ */
+function restoreFocusViaDriver(port: number): Promise<string | null> {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ button });
     const options = {
       hostname: '127.0.0.1',
       port,
-      path: '/pressButton',
+      path: '/restoreFocus',
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      headers: { 'Content-Type': 'application/json', 'Content-Length': 0 },
     };
     const req = http.request(options, (res) => {
-      res.resume();
-      res.on('end', () =>
-        res.statusCode && res.statusCode < 300
-          ? resolve()
-          : reject(new Error(`HTTP ${res.statusCode}`))
-      );
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => {
+        if (!res.statusCode || res.statusCode >= 300) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
+        try {
+          const body = Buffer.concat(chunks).toString('utf-8');
+          const parsed = JSON.parse(body) as { restoredBundleId?: string };
+          resolve(parsed.restoredBundleId ? parsed.restoredBundleId : null);
+        } catch (err) {
+          reject(err);
+        }
+      });
     });
     req.on('error', reject);
-    req.write(body);
     req.end();
   });
 }

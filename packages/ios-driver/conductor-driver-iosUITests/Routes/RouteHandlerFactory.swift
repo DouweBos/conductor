@@ -42,6 +42,8 @@ class RouteHandlerFactory {
             return TerminateAppHandler()
         case .launchApp:
              return LaunchAppHandler()
+        case .restoreFocus:
+            return RestoreFocusHandler()
         }
     }
 }

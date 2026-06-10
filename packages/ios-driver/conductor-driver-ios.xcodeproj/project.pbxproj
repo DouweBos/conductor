@@ -11,6 +11,7 @@
 		32097965297092A800340282 /* InputTextRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32097964297092A800340282 /* InputTextRequest.swift */; };
 		32762AFA2966DC8300FB69BD /* SwipeRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32762AF92966DC8300FB69BD /* SwipeRequest.swift */; };
 		32A9C73C2D7A62B500545435 /* LaunchAppHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A9C73B2D7A62AF00545435 /* LaunchAppHandler.swift */; };
+		5252525252525252525250F1 /* RestoreFocusHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5252525252525252525250F0 /* RestoreFocusHandler.swift */; };
 		32A9C73E2D7A631A00545435 /* LaunchAppRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A9C73D2D7A631400545435 /* LaunchAppRequest.swift */; };
 		32ECCB262980449200A1A0A0 /* TouchRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32ECCB252980449200A1A0A0 /* TouchRequest.swift */; };
 		32ECCB28298044C200A1A0A0 /* TouchRouteHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32ECCB27298044C200A1A0A0 /* TouchRouteHandler.swift */; };
@@ -151,6 +152,7 @@
 		TVOS00242DF24A0000000024 /* StatusResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F33A932AE6823100692902 /* StatusResponse.swift */; };
 		TVOS00252DF24A0000000025 /* LaunchAppRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A9C73D2D7A631400545435 /* LaunchAppRequest.swift */; };
 		TVOS00262DF24A0000000026 /* LaunchAppHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A9C73B2D7A62AF00545435 /* LaunchAppHandler.swift */; };
+		TVOS00F02DF24A00000000F0 /* RestoreFocusHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5252525252525252525250F0 /* RestoreFocusHandler.swift */; };
 		TVOS00272DF24A0000000027 /* AXClientSwizzler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 610D58FA2A49E3CA00B4BBEB /* AXClientSwizzler.swift */; };
 		TVOS00282DF24A0000000028 /* StringExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F328D3E52A2A98E7000546D3 /* StringExtensions.swift */; };
 		TVOS00292DF24A0000000029 /* SetOrientationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8E0ABB2CD562D000E9D439 /* SetOrientationHandler.swift */; };
@@ -279,6 +281,7 @@
 		32097964297092A800340282 /* InputTextRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputTextRequest.swift; sourceTree = "<group>"; };
 		32762AF92966DC8300FB69BD /* SwipeRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeRequest.swift; sourceTree = "<group>"; };
 		32A9C73B2D7A62AF00545435 /* LaunchAppHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAppHandler.swift; sourceTree = "<group>"; };
+		5252525252525252525250F0 /* RestoreFocusHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreFocusHandler.swift; sourceTree = "<group>"; };
 		32A9C73D2D7A631400545435 /* LaunchAppRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAppRequest.swift; sourceTree = "<group>"; };
 		32ECCB252980449200A1A0A0 /* TouchRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchRequest.swift; sourceTree = "<group>"; };
 		32ECCB27298044C200A1A0A0 /* TouchRouteHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchRouteHandler.swift; sourceTree = "<group>"; };
@@ -836,6 +839,7 @@
 			children = (
 				521C1F112D86CE8A0024EE42 /* TerminateAppHandler.swift */,
 				32A9C73B2D7A62AF00545435 /* LaunchAppHandler.swift */,
+				5252525252525252525250F0 /* RestoreFocusHandler.swift */,
 				610D58F82A45B5DA00B4BBEB /* ViewHierarchyHandler.swift */,
 				943A9087293F5EAA00C85136 /* RunningAppRouteHandler.swift */,
 				61A79B9629DF0B8A00C38882 /* SwipeRouteHandler.swift */,
@@ -1252,6 +1256,7 @@
 				52F33A942AE6823100692902 /* StatusResponse.swift in Sources */,
 				32A9C73E2D7A631A00545435 /* LaunchAppRequest.swift in Sources */,
 				32A9C73C2D7A62B500545435 /* LaunchAppHandler.swift in Sources */,
+				5252525252525252525250F1 /* RestoreFocusHandler.swift in Sources */,
 				610D58FB2A49E3CA00B4BBEB /* AXClientSwizzler.swift in Sources */,
 				F328D3E62A2A98E7000546D3 /* StringExtensions.swift in Sources */,
 				5B8E0ABC2CD562D000E9D439 /* SetOrientationHandler.swift in Sources */,
@@ -1364,6 +1369,7 @@
 				TVOS00242DF24A0000000024 /* StatusResponse.swift in Sources */,
 				TVOS00252DF24A0000000025 /* LaunchAppRequest.swift in Sources */,
 				TVOS00262DF24A0000000026 /* LaunchAppHandler.swift in Sources */,
+				TVOS00F02DF24A00000000F0 /* RestoreFocusHandler.swift in Sources */,
 				TVOS00272DF24A0000000027 /* AXClientSwizzler.swift in Sources */,
 				TVOS00282DF24A0000000028 /* StringExtensions.swift in Sources */,
 				TVOS00292DF24A0000000029 /* SetOrientationHandler.swift in Sources */,

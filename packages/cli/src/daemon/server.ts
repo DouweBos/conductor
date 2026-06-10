@@ -130,7 +130,7 @@ async function ensureDriverRunning(): Promise<void> {
         await startIOSDriver(sessionName, driverPort);
       } else if (driverPlatform === 'tvos') {
         // Health-check restart — don't dismiss, to avoid disrupting user's app
-        await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ false);
+        await startTvOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ false);
       } else if (driverPlatform === 'web') {
         await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl, cdpTargetId);
       } else {
@@ -378,8 +378,9 @@ async function main(): Promise<void> {
               if (platform === 'ios') {
                 await startIOSDriver(sessionName, driverPort);
               } else if (platform === 'tvos') {
-                // First install — dismiss the runner app to return to homescreen
-                await startTvOSDriver(sessionName, driverPort, /* dismissAfterLaunch */ true);
+                // First install — the runner takes foreground; ask it to hand
+                // focus back to whatever app the user had open.
+                await startTvOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ true);
               } else if (platform === 'web') {
                 await startWebServer(
                   driverPort,
