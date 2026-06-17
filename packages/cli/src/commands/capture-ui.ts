@@ -1,4 +1,4 @@
-export const HELP = `  capture-ui [--output <path>]         Capture screenshot + hierarchy + a11y snapshot (for Argus UI panel)`;
+export const HELP = `  capture-ui [--output <path.json>]    Capture screenshot + hierarchy + a11y snapshot as a JSON bundle (for Argus UI panel)`;
 
 import fs from 'fs/promises';
 import path from 'path';
@@ -43,6 +43,23 @@ export async function captureUI(
   sessionName = 'default'
 ): Promise<number> {
   try {
+    // capture-ui always emits a JSON bundle (screenshot is embedded as base64).
+    // Reject non-JSON output paths up front so a `.png`/`.jpg` mistake doesn't
+    // silently produce an image-named file full of JSON. Use take-screenshot
+    // for an actual image.
+    if (outputPath) {
+      const ext = path.extname(outputPath).toLowerCase();
+      if (ext && ext !== '.json') {
+        printError(
+          `capture-ui — \`--output\` must be a .json path (got "${ext}"). ` +
+            `capture-ui writes a JSON bundle (screenshot + hierarchy + a11y snapshot), not an image. ` +
+            `Use \`take-screenshot\` to save an image file.`,
+          opts
+        );
+        return 1;
+      }
+    }
+
     const driver = await getDriver(sessionName);
     const capturedAt = new Date().toISOString();
 
