@@ -19,7 +19,7 @@ import {
   targetsForDevice,
 } from '../drivers/log-sources/metro-discovery.js';
 import { DaemonLogSource } from '../drivers/log-sources/daemon.js';
-import { fetchDaemonLogs } from '../daemon/client.js';
+import { fetchDaemonLogs, startDaemon } from '../daemon/client.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 
 export interface LogsOptions {
@@ -52,6 +52,22 @@ function formatEntry(entry: LogEntry, opts: OutputOptions): string {
     line += '\n' + entry.stackTrace;
   }
   return line;
+}
+
+/**
+ * Ensure both the device driver and its daemon are up before reading logs.
+ *
+ * getDriver() starts the daemon when the driver *port* is closed, but skips it
+ * when the port is already open — which happens after the daemon idle-times-out
+ * while leaving the driver alive (e.g. tvOS deliberately keeps its runner up
+ * across daemon restarts). The log collector lives inside the daemon, so a live
+ * driver port is not enough: we must guarantee the daemon socket itself is up,
+ * otherwise the log source connects to a dead socket. startDaemon() is
+ * idempotent — it returns immediately when the daemon already answers /status.
+ */
+async function ensureLogDaemon(sessionName: string): Promise<void> {
+  await getDriver(sessionName);
+  await startDaemon(sessionName);
 }
 
 async function resolvePlatformAndDevice(
@@ -145,7 +161,7 @@ export async function logs(
   try {
     // ── Snapshot mode (--recent N) ──────────────────────────────────────────
     if (recent !== undefined) {
-      await getDriver(sessionName);
+      await ensureLogDaemon(sessionName);
 
       const minSeverity = level ? (LEVEL_SEVERITY[level] ?? 0) : 0;
       const entries = await fetchDaemonLogs(sessionName, { limit: recent, level });
@@ -161,7 +177,7 @@ export async function logs(
 
     // ── Streaming modes ─────────────────────────────────────────────────────
     // Ensure daemon is running; its log collector auto-discovers Metro.
-    await getDriver(sessionName);
+    await ensureLogDaemon(sessionName);
 
     const minSeverity = level ? (LEVEL_SEVERITY[level] ?? 0) : 0;
     const logSource = new DaemonLogSource(sessionName);
