@@ -1,5 +1,5 @@
 export const HELP = `  debug status [--port N]              Show RN debugger connection info
-  debug evaluate <expr> [--port N]     Run JS in the app runtime (Hermes/Fusebox)
+  debug evaluate <expr> [--port N]     Run JS in the app runtime (RN: Hermes/Fusebox; web: page context)
   debug component-tree [--port N]      Print the React component tree (on-screen)
   debug inspect-element <x,y>          Print the React component at a screen point
   debug log-registry [--source metro]  Summarize recent Metro/Hermes console logs`;
@@ -11,6 +11,17 @@ import { detectPlatform } from '../drivers/bootstrap.js';
 import { fetchTargets } from '../drivers/log-sources/metro.js';
 import { makeComponentTreeScript, makeInspectElementScript } from '../drivers/metro-scripts.js';
 import { logs as logsCmd } from './logs.js';
+import { getDriver } from '../runner.js';
+import { WebDriver } from '../drivers/web.js';
+
+/** Resolve the web driver when this session targets a web device, else null (→ Metro path). */
+async function webDriverFor(sessionName: string): Promise<WebDriver | null> {
+  if (!sessionName || sessionName === 'default') return null;
+  const platform = await detectPlatform(sessionName).catch(() => undefined);
+  if (platform !== 'web') return null;
+  const driver = await getDriver(sessionName);
+  return driver instanceof WebDriver ? driver : null;
+}
 
 function newRequestId(): string {
   return crypto.randomBytes(6).toString('hex');
@@ -101,6 +112,25 @@ export async function debugEvaluate(
     printError('debug evaluate requires a JS expression', opts);
     return 1;
   }
+
+  // Web: evaluate in the page runtime via Playwright (no Metro/Hermes).
+  const web = await webDriverFor(sessionName);
+  if (web) {
+    try {
+      const { result, error } = await web.evaluate(expr);
+      if (error) {
+        printError(`debug evaluate — ${error}`, opts);
+        return 1;
+      }
+      if (opts.json) printData({ result }, opts);
+      else console.log(typeof result === 'string' ? result : JSON.stringify(result, null, 2));
+      return 0;
+    } catch (err) {
+      printError(`debug evaluate — ${err instanceof Error ? err.message : String(err)}`, opts);
+      return 1;
+    }
+  }
+
   const port = debugOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   try {

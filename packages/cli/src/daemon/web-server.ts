@@ -11,7 +11,7 @@
 import http from 'http';
 import { createServer as createTcpServer } from 'net';
 import url from 'url';
-import { chromium, firefox, webkit, Browser, BrowserContext, Page } from 'playwright-core';
+import { chromium, firefox, webkit, Browser, BrowserContext, Page, Request } from 'playwright-core';
 
 // ── Console log buffer ──────────────────────────────────────────────────────
 
@@ -75,6 +75,69 @@ function attachConsoleListeners(page: Page): void {
       stackTrace: err.stack ?? null,
       source: 'console',
     });
+  });
+
+  attachNetworkListeners(page);
+}
+
+// ── Network log buffer ───────────────────────────────────────────────────────
+
+interface NetworkLogEntry {
+  id: number;
+  timestamp: string; // ISO of request start
+  method: string;
+  url: string;
+  resourceType: string;
+  status: number | null;
+  durationMs: number | null;
+  error: string | null;
+}
+
+const MAX_NETWORK_BUFFER = 500;
+const _networkBuffer: NetworkLogEntry[] = [];
+let _netSeq = 0;
+
+function pushNetworkEntry(entry: NetworkLogEntry): void {
+  _networkBuffer.push(entry);
+  if (_networkBuffer.length > MAX_NETWORK_BUFFER) {
+    _networkBuffer.splice(0, _networkBuffer.length - MAX_NETWORK_BUFFER);
+  }
+}
+
+/**
+ * Capture all page network traffic via Playwright events — covers fetch/XHR plus
+ * document/script/image/media loads (a canvas webtv app's API calls included), without
+ * injecting a shim into the page (unlike the React Native Metro path).
+ */
+function attachNetworkListeners(page: Page): void {
+  const inflight = new WeakMap<Request, { entry: NetworkLogEntry; start: number }>();
+  page.on('request', (req) => {
+    const entry: NetworkLogEntry = {
+      id: _netSeq++,
+      timestamp: new Date().toISOString(),
+      method: req.method(),
+      url: req.url(),
+      resourceType: req.resourceType(),
+      status: null,
+      durationMs: null,
+      error: null,
+    };
+    inflight.set(req, { entry, start: Date.now() });
+    pushNetworkEntry(entry);
+  });
+  page.on('response', (res) => {
+    const rec = inflight.get(res.request());
+    if (rec) {
+      rec.entry.status = res.status();
+      rec.entry.durationMs = Date.now() - rec.start;
+    }
+  });
+  page.on('requestfailed', (req) => {
+    const rec = inflight.get(req);
+    if (rec) {
+      rec.entry.error = req.failure()?.errorText ?? 'request failed';
+      rec.entry.durationMs = Date.now() - rec.start;
+    }
   });
 }
 
@@ -1189,6 +1252,17 @@ async function handleRequest(
         return;
       }
 
+      case '/networkLogs': {
+        const since = (parsedUrl.query['since'] as string) ?? '';
+        const limit = Number(parsedUrl.query['limit'] ?? 0);
+        let entries = since
+          ? _networkBuffer.filter((e) => e.timestamp > since)
+          : _networkBuffer.slice();
+        if (limit > 0) entries = entries.slice(-limit);
+        jsonResponse(res, { entries });
+        return;
+      }
+
       default: {
         res.writeHead(404);
         res.end('Not found');
@@ -1258,6 +1332,59 @@ async function handleRequest(
         const key = body['key'] as string;
         await (await getPage(dlog)).keyboard.press(key);
         jsonResponse(res, { ok: true });
+        return;
+      }
+
+      case '/evaluate': {
+        const expr = body['expr'] as string;
+        if (!expr) {
+          jsonResponse(res, { error: 'expr is required' }, 400);
+          return;
+        }
+        const p = await getPage(dlog);
+        try {
+          // Wrap so a bare expression (e.g. `1+1`) and a statement block both work.
+          const result = await p.evaluate(`(() => { return (${expr}); })()`).catch(
+            // Fall back to evaluating as-is for IIFEs / `async () => …` expressions.
+            () => p.evaluate(expr as string)
+          );
+          jsonResponse(res, { result });
+        } catch (e) {
+          jsonResponse(res, { error: e instanceof Error ? e.message : String(e) });
+        }
+        return;
+      }
+
+      case '/networkRequest': {
+        const url = body['url'] as string;
+        if (!url) {
+          jsonResponse(res, { error: 'url is required' }, 400);
+          return;
+        }
+        const reqMethod = ((body['method'] as string) ?? 'GET').toUpperCase();
+        const headers = (body['headers'] as Record<string, string>) ?? {};
+        const data = body['body'] as string | undefined;
+        if (!_context) {
+          jsonResponse(res, { error: 'no browser context' }, 500);
+          return;
+        }
+        try {
+          const apiRes = await _context.request.fetch(url, {
+            method: reqMethod,
+            headers,
+            ...(data !== undefined ? { data } : {}),
+          });
+          const hdrs = apiRes.headers();
+          const text = await apiRes.text();
+          jsonResponse(res, {
+            ok: apiRes.ok(),
+            status: apiRes.status(),
+            headers: hdrs,
+            body: text,
+          });
+        } catch (e) {
+          jsonResponse(res, { ok: false, error: e instanceof Error ? e.message : String(e) });
+        }
         return;
       }
 

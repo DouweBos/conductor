@@ -1,10 +1,37 @@
-export const HELP = `  network logs [--port N] [--limit N]  Read recent HTTP traffic (installs a fetch/XHR shim once)
+export const HELP = `  network logs [--port N] [--limit N]  Read recent HTTP traffic (RN: fetch/XHR shim; web: all traffic via Playwright)
   network request <url> [--method M] [--body STR] [--header K=V] [--port N]
                                        Issue an HTTP request from the app's context`;
 
 import { printError, printData, OutputOptions } from '../output.js';
 import { MetroCdpClient } from '../drivers/metro-cdp.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
+import { getDriver } from '../runner.js';
+import { WebDriver } from '../drivers/web.js';
+
+/** Resolve the web driver when this session targets a web device, else null (→ Metro path). */
+async function webDriverFor(sessionName: string): Promise<WebDriver | null> {
+  if (!sessionName || sessionName === 'default') return null;
+  const platform = await detectPlatform(sessionName).catch(() => undefined);
+  if (platform !== 'web') return null;
+  const driver = await getDriver(sessionName);
+  return driver instanceof WebDriver ? driver : null;
+}
+
+function formatNetEntry(e: {
+  timestamp: string;
+  method: string;
+  url: string;
+  status: number | null;
+  durationMs: number | null;
+  error: string | null;
+  resourceType?: string;
+  kind?: string;
+}): string {
+  const ts = e.timestamp.slice(11, 23);
+  const status = e.error ? `ERR ${e.error}` : e.status !== null ? String(e.status) : '...';
+  const dur = e.durationMs !== null ? `${e.durationMs}ms` : '-';
+  return `${ts}  ${status.padEnd(6)} ${e.method.padEnd(6)} ${e.url} (${dur}, ${e.resourceType ?? e.kind ?? ''})`;
+}
 
 export interface NetworkOptions {
   port?: number;
@@ -134,8 +161,28 @@ export async function networkLogs(
   sessionName: string,
   netOpts: NetworkOptions
 ): Promise<number> {
-  const port = netOpts.port ?? 8081;
   const limit = netOpts.limit ?? 50;
+
+  // Web: Playwright captures all traffic natively — no Metro, no injected shim.
+  const web = await webDriverFor(sessionName);
+  if (web) {
+    try {
+      const { entries } = await web.networkLogs({ limit });
+      if (opts.json) {
+        printData({ installed: true, count: entries.length, entries }, opts);
+      } else if (entries.length === 0) {
+        console.log('No network entries captured yet. Reload the app and try again.');
+      } else {
+        for (const e of entries) console.log(formatNetEntry(e));
+      }
+      return 0;
+    } catch (err) {
+      printError(`network logs — ${err instanceof Error ? err.message : String(err)}`, opts);
+      return 1;
+    }
+  }
+
+  const port = netOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   try {
     const platform = await platformPromise;
@@ -190,6 +237,29 @@ export async function networkRequest(
     if (idx > 0) headers[h.slice(0, idx)] = h.slice(idx + 1);
   }
   const body = reqOpts.body;
+
+  // Web: issue via the browser context (shares the page's cookies/session).
+  const web = await webDriverFor(sessionName);
+  if (web) {
+    try {
+      const result = await web.networkRequest(url, { method, headers, body });
+      if (opts.json) printData(result, opts);
+      else {
+        if (result.error) console.error(`error: ${result.error}`);
+        console.log(`status: ${result.status ?? 'n/a'}`);
+        for (const [k, v] of Object.entries(result.headers ?? {})) console.log(`${k}: ${v}`);
+        if (result.body !== undefined) {
+          console.log('');
+          console.log(result.body);
+        }
+      }
+      return result.ok ? 0 : 1;
+    } catch (err) {
+      printError(`network request — ${err instanceof Error ? err.message : String(err)}`, opts);
+      return 1;
+    }
+  }
+
   const init = JSON.stringify({
     method,
     headers,

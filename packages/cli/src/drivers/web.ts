@@ -32,6 +32,17 @@ export interface WebViewHierarchy {
   ariaSnapshot: string;
 }
 
+export interface WebNetworkEntry {
+  id: number;
+  timestamp: string;
+  method: string;
+  url: string;
+  resourceType: string;
+  status: number | null;
+  durationMs: number | null;
+  error: string | null;
+}
+
 export interface WebDeviceInfo {
   widthPixels: number;
   heightPixels: number;
@@ -97,6 +108,17 @@ export class WebDriver {
     if (status < 200 || status >= 300) {
       throw new Error(
         `Web driver GET ${path} failed (HTTP ${status}): ${data.toString('utf-8').slice(0, 200)}`
+      );
+    }
+    return JSON.parse(data.toString('utf-8')) as T;
+  }
+
+  /** POST that returns the parsed JSON response body (unlike `post`, which discards it). */
+  private async postJson<T>(path: string, body: unknown): Promise<T> {
+    const { status, data } = await this.request('POST', `/${path}`, body);
+    if (status < 200 || status >= 300) {
+      throw new Error(
+        `Web driver ${path} failed (HTTP ${status}): ${data.toString('utf-8').slice(0, 200)}`
       );
     }
     return JSON.parse(data.toString('utf-8')) as T;
@@ -232,6 +254,36 @@ export class WebDriver {
       );
     }
     return data.toString('utf-8');
+  }
+
+  /** Recent page network traffic captured via Playwright request/response events. */
+  async networkLogs(opts: { limit?: number; since?: string } = {}): Promise<{
+    entries: WebNetworkEntry[];
+  }> {
+    const qs = new URLSearchParams();
+    if (opts.limit) qs.set('limit', String(opts.limit));
+    if (opts.since) qs.set('since', opts.since);
+    const s = qs.toString();
+    return this.get(`networkLogs${s ? `?${s}` : ''}`);
+  }
+
+  /** Issue an HTTP request from the browser context (shares cookies/session with the page). */
+  async networkRequest(
+    url: string,
+    opts: { method?: string; headers?: Record<string, string>; body?: string } = {}
+  ): Promise<{
+    ok: boolean;
+    status?: number;
+    headers?: Record<string, string>;
+    body?: string;
+    error?: string;
+  }> {
+    return this.postJson('networkRequest', { url, ...opts });
+  }
+
+  /** Evaluate a JS expression in the page runtime and return its (JSON-serializable) value. */
+  async evaluate(expr: string): Promise<{ result?: unknown; error?: string }> {
+    return this.postJson('evaluate', { expr });
   }
 
   async eraseAllText(count = 50): Promise<void> {
