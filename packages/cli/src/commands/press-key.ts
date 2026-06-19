@@ -158,6 +158,13 @@ export async function pressKey(
         Escape: 'Escape',
         Home: 'Home',
         End: 'End',
+        // Canvas webtv apps (Lightning/WPE) navigate focus via the D-pad, which they listen
+        // for as arrow keys (and Enter for select). Maps the TV remote onto web keyboard.
+        'Remote Dpad Up': 'ArrowUp',
+        'Remote Dpad Down': 'ArrowDown',
+        'Remote Dpad Left': 'ArrowLeft',
+        'Remote Dpad Right': 'ArrowRight',
+        'Remote Dpad Center': 'Enter',
       };
       const webKey = WEB_KEY_MAP[matched];
       if (webKey) {

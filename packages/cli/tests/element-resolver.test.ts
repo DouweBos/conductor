@@ -275,4 +275,28 @@ elementResolver.test('Web: regex on name and id suffix on ref', async () => {
   assert(byRef !== null, 'ref: suffix after last /');
 });
 
+elementResolver.test('Web: id: matches data-testid (canvas mirror) over ref', async () => {
+  const h = makeWebHierarchy([{ ...webEl('generic', 'Sign In', 'e25'), testId: 'sign-in-button' }]);
+  const byTestId = findWebElement(h, { id: 'sign-in-button' });
+  assert(byTestId !== null, 'id: matches the harvested data-testid');
+  assert(byTestId!.id === 'sign-in-button', `resolved id is testId, got ${byTestId!.id}`);
+  // The ARIA ref must not shadow the testId for id: selectors.
+  assert(findWebElement(h, { id: 'e25' }) === null, 'id: no longer matches the ARIA ref');
+});
+
+elementResolver.test('Web: query matches either text or data-testid', async () => {
+  const h = makeWebHierarchy([{ ...webEl('generic', 'Skip Sign Up', 'e26'), testId: 'skip-sign-up-button' }]);
+  assert(findWebElement(h, { query: 'skip-sign-up-button' }) !== null, 'query matches testId');
+  assert(findWebElement(h, { query: 'Skip Sign Up' }) !== null, 'query still matches text');
+});
+
+elementResolver.test('Web: focused: matches the data-focused node', async () => {
+  const h = makeWebHierarchy([
+    { ...webEl('generic', 'Sign In', 'e25'), testId: 'sign-in-button', focused: true },
+    { ...webEl('generic', 'Skip Sign Up', 'e26', { x: 200, y: 0, width: 80, height: 32 }), testId: 'skip-sign-up-button' },
+  ]);
+  const f = findWebElement(h, { focused: true });
+  assert(f !== null && f.id === 'sign-in-button', `focused selector resolved ${f?.id}`);
+});
+
 if (require.main === module) runAll([elementResolver]);

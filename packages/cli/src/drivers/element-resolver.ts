@@ -528,7 +528,7 @@ function collectWebElements(nodes: WebElement[], results: WebElement[]): void {
     const visible = node.bounds && node.bounds.width > 0 && node.bounds.height > 0;
 
     if (visible) {
-      const hasContent = !!(node.name || node.ref);
+      const hasContent = !!(node.name || node.ref || node.testId);
       const isLeaf = !node.children || node.children.length === 0;
       if (hasContent || isLeaf) {
         results.push(node);
@@ -541,17 +541,22 @@ function collectWebElements(nodes: WebElement[], results: WebElement[]): void {
   }
 }
 
+/** Web id field: prefer the canvas mirror's `data-testid`, else the ARIA `ref`. */
+function webElementId(node: WebElement): string {
+  return node.testId || node.ref;
+}
+
 function matchesWebElement(node: WebElement, sel: ElementSelector): boolean {
   if (sel.query) {
     const textOk = matchPatternAgainstAnyTextField(sel.query, [node.name]);
-    const idOk = matchPatternAgainstElementId(sel.query, node.ref);
+    const idOk = matchPatternAgainstElementId(sel.query, webElementId(node));
     if (!textOk && !idOk) return false;
   }
   if (sel.text) {
     if (!matchPatternAgainstAnyTextField(sel.text, [node.name])) return false;
   }
   if (sel.id) {
-    if (!matchPatternAgainstElementId(sel.id, node.ref)) return false;
+    if (!matchPatternAgainstElementId(sel.id, webElementId(node))) return false;
   }
   if (sel.enabled !== undefined && node.enabled !== sel.enabled) return false;
   if (sel.checked !== undefined && node.checked !== sel.checked) return false;
@@ -625,7 +630,7 @@ export function findWebElement(
     const b = n.bounds!;
     const interactive = WEB_INTERACTIVE_ROLES.has(n.role);
     log(
-      `  [${i}] text="${n.name}" ref="${n.ref}" role="${n.role}" ` +
+      `  [${i}] text="${n.name}" id="${webElementId(n)}" role="${n.role}" ` +
         `bounds=[${Math.round(b.x)},${Math.round(b.y)}][${Math.round(b.x + b.width)},${Math.round(b.y + b.height)}]` +
         `${interactive ? ' (interactive)' : ''}`
     );
@@ -654,7 +659,7 @@ export function findWebElement(
 
   const b = node.bounds!;
   log(
-    `[Web] chose [${idx}] text="${node.name}" ref="${node.ref}" role="${node.role}" ` +
+    `[Web] chose [${idx}] text="${node.name}" id="${webElementId(node)}" role="${node.role}" ` +
       `bounds=[${Math.round(b.x)},${Math.round(b.y)}][${Math.round(b.x + b.width)},${Math.round(b.y + b.height)}] ` +
       `→ tap (${Math.round(b.x + b.width / 2)}, ${Math.round(b.y + b.height / 2)})`
   );
@@ -663,7 +668,7 @@ export function findWebElement(
     centerY: b.y + b.height / 2,
     bounds: { x: b.x, y: b.y, width: b.width, height: b.height },
     text: node.name || undefined,
-    id: node.ref || undefined,
+    id: webElementId(node) || undefined,
   };
 }
 
@@ -681,6 +686,7 @@ function visitWeb(nodes: WebElement[], lines: string[], depth: number): void {
     const parts: string[] = [];
     parts.push(node.role);
     if (node.name) parts.push(`"${node.name}"`);
+    if (node.testId) parts.push(`id=${node.testId}`);
     if (node.ref) parts.push(`ref=${node.ref}`);
     if (node.bounds) {
       const b = node.bounds;
@@ -691,7 +697,12 @@ function visitWeb(nodes: WebElement[], lines: string[], depth: number): void {
     if (!node.enabled) parts.push('disabled');
 
     // Only output nodes that have content
-    if (node.name || node.ref || (node.bounds && (!node.children || node.children.length === 0))) {
+    if (
+      node.name ||
+      node.ref ||
+      node.testId ||
+      (node.bounds && (!node.children || node.children.length === 0))
+    ) {
       lines.push(`${'  '.repeat(depth)}${parts.join(' ')}`);
     }
 

@@ -11,6 +11,12 @@ export interface WebElement {
   role: string;
   name: string;
   ref: string;
+  /**
+   * `data-testid` harvested from a canvas DOM-inspector mirror (e.g. Lightning/WPE webtv
+   * apps). Preferred over `ref` for `id:` selectors, since canvas nodes carry their real
+   * identity here while the DOM `id` is a meaningless per-node number.
+   */
+  testId?: string;
   bounds?: { x: number; y: number; width: number; height: number };
   enabled: boolean;
   focused: boolean;

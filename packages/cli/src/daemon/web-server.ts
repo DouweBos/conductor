@@ -84,6 +84,12 @@ export interface WebElement {
   role: string;
   name: string;
   ref: string;
+  /**
+   * `data-testid` harvested from a canvas DOM-inspector mirror (e.g. Lightning/WPE webtv
+   * apps). Preferred over `ref` for `id:` selectors, since canvas nodes carry their real
+   * identity here while the DOM `id` is a meaningless per-node number.
+   */
+  testId?: string;
   bounds?: { x: number; y: number; width: number; height: number };
   enabled: boolean;
   focused: boolean;
@@ -459,6 +465,128 @@ async function stampFocusFromDocumentActiveElement(
 
   if (rectPick.best !== null && rectPick.bestScore > 0.15) {
     rectPick.best.focused = true;
+  }
+}
+
+// ── Canvas DOM-inspector mirror (webtv) ──────────────────────────────────────
+
+interface MirrorNode {
+  testId: string;
+  focused: boolean;
+  role: string;
+  name: string;
+  disabled: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** IoU + center-inside score of a candidate node's bounds against a mirror rect. */
+function overlapScore(
+  bounds: { x: number; y: number; width: number; height: number },
+  m: MirrorNode
+): number {
+  const x1 = Math.max(m.x, bounds.x);
+  const y1 = Math.max(m.y, bounds.y);
+  const x2 = Math.min(m.x + m.width, bounds.x + bounds.width);
+  const y2 = Math.min(m.y + m.height, bounds.y + bounds.height);
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  if (inter <= 0) return 0;
+  const union = m.width * m.height + bounds.width * bounds.height - inter;
+  const iou = union > 0 ? inter / union : 0;
+  const mcx = m.x + m.width / 2;
+  const mcy = m.y + m.height / 2;
+  const centerInside =
+    mcx >= bounds.x &&
+    mcx <= bounds.x + bounds.width &&
+    mcy >= bounds.y &&
+    mcy <= bounds.y + bounds.height;
+  return centerInside ? iou + 1 : iou;
+}
+
+/** Find the existing tree node whose bounds best overlap a mirror rect (>0.5 score). */
+function bestOverlappingNode(elements: WebElement[], m: MirrorNode): WebElement | null {
+  let best: WebElement | null = null;
+  let bestScore = 0.5;
+  const walk = (els: WebElement[]): void => {
+    for (const el of els) {
+      if (el.bounds) {
+        const s = overlapScore(el.bounds, m);
+        if (s > bestScore) {
+          bestScore = s;
+          best = el;
+        }
+      }
+      if (el.children) walk(el.children);
+    }
+  };
+  walk(elements);
+  return best;
+}
+
+/**
+ * Harvest a canvas DOM-inspector mirror into the hierarchy. Canvas webtv frameworks
+ * (Lightning/WPE/RDK) render the whole UI into one `<canvas>` and expose the scene graph as
+ * off-screen `<div>`s carrying `data-testid` (real identity) and `data-focused="true"` (focus
+ * — the canvas owns `document.activeElement`, so the normal focus path can't see it).
+ *
+ * Each mirror node is matched to an existing ARIA node by bounds overlap and used to enrich it
+ * (testId + focus); unmatched mirror nodes are appended as new nodes. Mirror rects come from
+ * `getBoundingClientRect`, i.e. the same viewport-CSS-pixel space taps use — drive TV apps at
+ * the app's native resolution (e.g. `set-viewport 1920 1080`) so lower nodes aren't off-screen.
+ */
+async function harvestDomMirror(page: Page, elements: WebElement[]): Promise<void> {
+  let mirror: MirrorNode[] | null = null;
+  try {
+    mirror = (await page.evaluate(`(() => {
+      const nodes = document.querySelectorAll('[data-testid],[data-focused]');
+      if (!nodes.length) return null;
+      const out = [];
+      nodes.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        out.push({
+          testId: el.getAttribute('data-testid') || '',
+          focused: el.getAttribute('data-focused') === 'true',
+          role: el.getAttribute('role') || 'generic',
+          name: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 200),
+          disabled: el.getAttribute('aria-disabled') === 'true',
+          x: r.x, y: r.y, width: r.width, height: r.height,
+        });
+      });
+      return out;
+    })()`)) as MirrorNode[] | null;
+  } catch {
+    return;
+  }
+  if (!mirror || mirror.length === 0) return;
+
+  // data-focused is authoritative for canvas apps (activeElement is the <canvas>, never the
+  // focused scene node), so clear any focus already inferred from the ARIA snapshot.
+  if (mirror.some((m) => m.focused)) clearFocusedFlags(elements);
+
+  for (const m of mirror) {
+    const bounds =
+      m.width > 0 && m.height > 0
+        ? { x: m.x, y: m.y, width: m.width, height: m.height }
+        : undefined;
+    const target = bounds ? bestOverlappingNode(elements, m) : null;
+    if (target) {
+      if (m.testId) target.testId = m.testId;
+      if (m.focused) target.focused = true;
+      if (!target.name && m.name) target.name = m.name;
+    } else {
+      elements.push({
+        role: m.role,
+        name: m.name,
+        ref: '',
+        testId: m.testId || undefined,
+        bounds,
+        enabled: !m.disabled,
+        focused: m.focused,
+        children: [],
+      });
+    }
   }
 }
 
@@ -938,6 +1066,9 @@ async function handleRequest(
         await resolveBoundingBoxesByRole(p, elements);
         clearFocusedFlags(elements);
         applyFocusFromAriaSnapshotYaml(ariaSnapshot, elements);
+        // Canvas webtv: merge the data-testid/data-focused mirror before falling back to
+        // document.activeElement (which is the <canvas>, not the focused scene node).
+        await harvestDomMirror(p, elements);
         await stampFocusFromDocumentActiveElement(p, elements);
         jsonResponse(res, {
           url: p.url(),
