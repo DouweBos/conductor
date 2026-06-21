@@ -1,5 +1,33 @@
 # @houwert/conductor
 
+## 0.20.0
+
+### Minor Changes
+
+- 92dbb8a: Wire `network logs`, `network request`, and `debug evaluate` to the web (Playwright) driver.
+
+  These commands previously only spoke to a React Native Metro/Hermes target, so on a web/webtv device they failed with "Could not connect to Metro". They now branch to the web driver when the session targets a web device:
+  - `network logs` — captures all page traffic via Playwright `request`/`response`/`requestfailed` events (fetch/XHR plus document/script/image/media), buffered in the daemon. Reports method, URL, status, resource type, duration, and failures. No page shim needed (unlike the RN path).
+  - `network request <url>` — issues the request through the browser context, so it shares the page's cookies/session.
+  - `debug evaluate <expr>` — evaluates JS in the page runtime via Playwright and returns the value, for poking a canvas webtv app (e.g. Lightning) at runtime.
+
+  Backed by new web-driver endpoints (`/networkLogs`, `/networkRequest`, `/evaluate`) and client methods. The RN/Metro behavior of all three commands is unchanged.
+
+- 51c8d08: Support canvas-rendered webtv apps (Lightning/WPE/RDK) in the web driver.
+
+  Such apps draw their whole UI into a single `<canvas>` and expose the scene graph through a DOM-inspector mirror of off-screen `<div>`s — the real identity lives in `data-testid` and the focused node is flagged `data-focused="true"` (the canvas owns `document.activeElement`, so normal focus detection can't see it). conductor's web hierarchy is built from Playwright's ARIA snapshot, which captures none of this.
+  - The web `/viewHierarchy` now harvests the `data-testid`/`data-focused` mirror via a single `page.evaluate` and merges it into the hierarchy: each mirror node enriches the overlapping ARIA node (adding `testId` and focus), or is appended when the ARIA snapshot lacks it.
+  - `id:`/`query:` selectors match the harvested `data-testid` in preference to the ARIA `ref`, so `tap-on --id sign-in-button`, `assert-visible --id …`, etc. target the conventional test hook.
+  - `focused:` and `conductor focused` now reflect `data-focused`, making D-pad focus navigation observable.
+  - `press-key` maps `Remote Dpad Up/Down/Left/Right/Center` onto `ArrowUp/Down/Left/Right/Enter` on web, so the TV remote drives focus on canvas apps.
+
+  Drive TV apps at the app's native resolution (e.g. `set-viewport 1920 1080`); mirror bounds are reported in viewport CSS pixels, so off-screen nodes need the matching viewport. Normal accessible web is unaffected — the mirror pass is a no-op when no `data-testid`/`data-focused` is present.
+
+### Patch Changes
+
+- bd37f09: `capture-ui` now rejects a non-`.json` `--output` path. The command always emits a JSON bundle (the screenshot is embedded as base64), so passing an image path like `--output foo.png` previously produced an image-named file full of JSON. It now fails fast with a clear message pointing to `take-screenshot` for actual image files. Extensionless and `.json` paths are unchanged.
+- cd6e04e: Auto-start the daemon when reading logs without one running. `conductor logs` (both `--recent` and streaming) previously relied on `getDriver()` to bring the daemon up, but `getDriver()` only spawns the daemon when the driver _port_ is closed. After the daemon idle-times-out while leaving the driver alive (e.g. tvOS deliberately keeps its runner up across daemon restarts), the port stays open but the daemon socket — which hosts the log collector — is gone, so log reads failed with "Daemon … is not responding". The command now explicitly ensures the daemon socket is up via the idempotent `startDaemon()` before connecting.
+
 ## 0.19.1
 
 ### Patch Changes
