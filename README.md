@@ -38,7 +38,18 @@ One agent writes the feature. Another taps through the app. They talk. It works.
 npm install -g @houwert/conductor
 ```
 
-That's it. Conductor is a pure CLI — no Claude Code plugin or skill is registered. Wire it into your agent however you like (a custom `CLAUDE.md`, a project skill, a slash command — it's up to you). Run `conductor --help` for the full command reference, or `conductor <command> --help` for per-command flags.
+That's it. Conductor is a pure CLI. To teach an AI agent how to use it, set up the bundled skills in your repo:
+
+```bash
+conductor init            # interactive: pick scope + skills, writes them into .claude/skills/
+conductor init --yes      # non-interactive: install all skills into ./.claude/skills/
+conductor init --global   # install into ~/.claude/skills/ for all repos
+conductor init --force    # re-sync skills you've already installed
+```
+
+`init` is the one manual setup step — run it once per repo. In a terminal it walks you through which skills and where; piped or headless (CI/agent) it installs everything non-interactively. It drops a set of capability-scoped Claude Code skills — `conductor-device-interact`, `conductor-inspect`, `conductor-create-flow`, `conductor-metro-debugger`, `conductor-profiler`, and `conductor-device-setup` — that document every command and the act → observe → act workflow.
+
+When you upgrade conductor, re-run `conductor init --force` to re-sync the installed skills (it stamps the installed version, so `init` tells you when they're out of date, and prunes any skills no longer shipped). Or wire it in however you like (a custom `CLAUDE.md`, a slash command — it's up to you). Run `conductor --help` for the full command reference, or `conductor <command> --help` for per-command flags.
 
 ### 📱 What the CLI can do
 

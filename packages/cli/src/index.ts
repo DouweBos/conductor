@@ -34,6 +34,7 @@ import {
   HELP_DAEMON_STATUS as daemonStatusHelp,
 } from './commands/daemon.js';
 import { installWebCli, HELP_INSTALL_WEB } from './commands/install.js';
+import { init, HELP as initHelp } from './commands/init.js';
 import { devicePool, HELP as devicePoolHelp } from './commands/device-pool.js';
 import { runParallel, HELP as runParallelHelp } from './commands/run-parallel.js';
 import { runSequence, HELP as runSequenceHelp } from './commands/run-sequence.js';
@@ -130,6 +131,7 @@ const COMMAND_HELP: Record<string, string> = {
   'run-flow-inline': runFlowInlineHelp,
   session: sessionHelp,
   'install-web': HELP_INSTALL_WEB,
+  init: initHelp,
   'daemon-start': daemonStartHelp,
   'daemon-stop': daemonStopHelp,
   'daemon-status': daemonStatusHelp,
@@ -196,6 +198,9 @@ async function main(): Promise<void> {
       'leaks',
       'snapshots',
       'growth-only',
+      'global',
+      'force',
+      'yes',
     ],
     string: [
       'device',
@@ -255,7 +260,7 @@ async function main(): Promise<void> {
       'user-agent',
       'color-scheme',
     ],
-    alias: { h: 'help', v: 'verbose', V: 'version', o: 'output' },
+    alias: { h: 'help', v: 'verbose', V: 'version', o: 'output', y: 'yes' },
   });
 
   if (argv['verbose']) setVerbose(true);
@@ -290,6 +295,7 @@ async function main(): Promise<void> {
     'stop-device',
     'delete-device',
     'install-web',
+    'init',
     'copy-app',
     'device-pool',
     'run-parallel',
@@ -706,6 +712,14 @@ async function main(): Promise<void> {
         opts,
         sessionName
       );
+      break;
+
+    case 'init':
+      exitCode = await init(opts, rest[0], {
+        global: argv['global'] as boolean,
+        force: argv['force'] as boolean,
+        yes: argv['yes'] as boolean,
+      });
       break;
 
     case 'install-web':
