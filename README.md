@@ -63,6 +63,7 @@ When you upgrade conductor, re-run `conductor init --force` to re-sync the insta
 | Flows | `run-flow`, `run-flow-inline`, `run-parallel` |
 | Devices | `start-device`, `list-devices`, `set-location`, `set-orientation` |
 | Web setup | `install-web [browser]` (installs a Playwright browser; `--check` prints status) |
+| Discovery | `list-options [command]` / `<command> --options` (valid values for enumerated params) |
 
 ## 🔨 Building locally
 

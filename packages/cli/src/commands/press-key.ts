@@ -6,7 +6,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 
-const VALID_KEYS = [
+export const VALID_KEYS = [
   'Enter',
   'Backspace',
   'Home',

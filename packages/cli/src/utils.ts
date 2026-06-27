@@ -2,7 +2,8 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type Direction = 'down' | 'up' | 'left' | 'right';
+export const DIRECTIONS = ['down', 'up', 'left', 'right'] as const;
+export type Direction = (typeof DIRECTIONS)[number];
 
 export function swipeCoords(dir: Direction): {
   startX: number;

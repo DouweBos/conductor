@@ -17,7 +17,7 @@ interface Preset {
   isMobile: boolean;
 }
 
-const PRESETS: Record<string, Preset> = {
+export const PRESETS: Record<string, Preset> = {
   mobile: { width: 390, height: 844, deviceScaleFactor: 3, isMobile: true },
   tablet: { width: 820, height: 1180, deviceScaleFactor: 2, isMobile: true },
   desktop: { width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false },

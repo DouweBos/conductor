@@ -50,6 +50,19 @@ conductor assert-visible "Dashboard"
 | `conductor rotate-gesture [--degrees N] [--center x,y]` | Two-finger rotate |
 | `conductor gesture <json\|--file path>` | Play a multi-touch path |
 | `conductor clipboard read` / `clipboard write <text>` / `paste` | Clipboard (iOS) |
+| `conductor list-options [command]` | List valid values for enumerated params |
+
+## Discovering valid values
+
+Several commands only accept a fixed set of values (`press-key <key>`,
+`--direction`, `set-orientation`, `set-viewport --preset`/`--color-scheme`,
+`logs --level`/`--source`, `--platform`). Don't guess — list them:
+
+- `conductor <command> --options` — valid values for that command, e.g.
+  `conductor press-key --options`, `conductor swipe --options`.
+- `conductor list-options [command|param]` — same data; with no argument it
+  lists every enumerated parameter, or filter by name (`list-options direction`).
+- Add `--json` for machine-readable output.
 
 ## Selecting elements
 

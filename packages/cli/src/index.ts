@@ -88,6 +88,7 @@ import {
   paste,
   HELP as clipboardHelp,
 } from './commands/clipboard.js';
+import { listOptions, HELP as optionsHelp } from './commands/options.js';
 import { pickDevice } from './device-picker.js';
 import { checkForUpdates } from './update-check.js';
 import { findPkgRoot } from './pkg-root.js';
@@ -150,6 +151,7 @@ const COMMAND_HELP: Record<string, string> = {
   metro: metroHelp,
   clipboard: clipboardHelp,
   paste: '  paste                                Trigger OS-level paste (or type clipboard on iOS)',
+  'list-options': optionsHelp,
 };
 
 const OPTIONS_HELP = `Options:
@@ -157,6 +159,7 @@ const OPTIONS_HELP = `Options:
   --device-name <n> Target a booted device by name (resolved to ID from booted devices)
   --platform <p>    Filter to devices of this platform (ios, android, tvos, web)
   --json            Output as machine-readable JSON
+  --options         List valid values for a command's enumerated parameters and exit
   --verbose, -v     Log daemon calls, fallbacks, and raw output
   --version, -V     Print version number
   --help, -h        Show this help`;
@@ -176,6 +179,7 @@ async function main(): Promise<void> {
     boolean: [
       'json',
       'help',
+      'options',
       'version',
       'clear',
       'list',
@@ -275,6 +279,13 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  // `<command> --options` lists the valid values for that command's enumerated
+  // parameters and exits — no device resolution needed. With no command it
+  // lists every enumerated parameter. `--help` still wins if both are passed.
+  if (argv['options'] && !argv['help'] && command !== 'list-options') {
+    process.exit(listOptions(command, opts));
+  }
+
   // Handle help and unknown commands before device resolution —
   // no point prompting for a device if we're just printing help or erroring out.
   if (!command || argv['help']) {
@@ -301,6 +312,7 @@ async function main(): Promise<void> {
     'run-parallel',
     'metro',
     'workspace',
+    'list-options',
     // `logs --list` and `logs --source metro` only query Metro on localhost — no device needed
     // `logs` always needs a device session — Metro discovery is device-scoped.
     // `daemon-stop --all` stops every daemon — no device needed
@@ -486,6 +498,11 @@ async function main(): Promise<void> {
     case 'press-key': {
       const key = rest[0] ?? '';
       exitCode = await pressKey(key, opts, sessionName);
+      break;
+    }
+
+    case 'list-options': {
+      exitCode = listOptions(rest[0], opts);
       break;
     }
 
