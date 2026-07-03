@@ -48,7 +48,7 @@ interface CdpRequest {
  */
 export function selectDebuggerUrl(
   targets: MetroTarget[],
-  opts: Pick<CdpCallOptions, 'port' | 'host' | 'targetIndex'>,
+  opts: Pick<CdpCallOptions, 'port' | 'host' | 'targetIndex' | 'deviceId'>,
   displayName?: string
 ): string {
   const port = opts.port ?? 8081;
@@ -68,12 +68,22 @@ export function selectDebuggerUrl(
     return withWs[opts.targetIndex].webSocketDebuggerUrl!;
   }
 
-  if (displayName) {
-    const target = selectTargetForDevice(withWs, displayName);
+  // Device-scoped: must resolve to that device's own target. Never silently
+  // fall back to another device — that reloads the wrong app and reports success.
+  if (opts.deviceId) {
+    const target = displayName ? selectTargetForDevice(withWs, displayName) : undefined;
     if (target) return target.webSocketDebuggerUrl!;
+    const available = withWs
+      .map((t, i) => `  [${i}] ${t.deviceName ?? t.title ?? '(unnamed)'}`)
+      .join('\n');
+    throw new Error(
+      `No Metro debugger target for device ${opts.deviceId}` +
+        (displayName ? ` (${displayName})` : '') +
+        `.\nAvailable targets:\n${available}\nPass --target <index> to pick one explicitly.`
+    );
   }
 
-  // Prefer the Hermes/React target by title, otherwise first.
+  // No device requested: prefer the Hermes/React target by title, otherwise first.
   const target = withWs.find((t) => t.title && /hermes|react/i.test(t.title)) ?? withWs[0];
   return target.webSocketDebuggerUrl!;
 }

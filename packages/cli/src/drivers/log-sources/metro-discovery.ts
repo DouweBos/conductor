@@ -197,6 +197,19 @@ export async function getDeviceDisplayName(
 }
 
 /**
+ * Whether a Metro target's `deviceName` refers to the same device as `displayName`.
+ * Tolerant of the suffixes Metro appends to the bare model name — e.g. Android's
+ * `ro.product.model` is `Chromecast` while Metro reports `Chromecast - 14 - API 34`.
+ */
+export function deviceNameMatches(
+  targetDeviceName: string | undefined,
+  displayName: string
+): boolean {
+  if (!targetDeviceName) return false;
+  return targetDeviceName === displayName || targetDeviceName.startsWith(`${displayName} `);
+}
+
+/**
  * Filter Metro /json targets to those belonging to this device (by display
  * name), preferring the fusebox runtime if present. Returns undefined when
  * no matching target is found — the device may not be connected to Metro,
@@ -207,7 +220,7 @@ export function selectTargetForDevice(
   displayName: string
 ): MetroTarget | undefined {
   const withWs = targets.filter((t) => t.webSocketDebuggerUrl);
-  const matches = withWs.filter((t) => t.deviceName === displayName);
+  const matches = withWs.filter((t) => deviceNameMatches(t.deviceName, displayName));
   if (matches.length === 0) return undefined;
   const fusebox = matches.find((t) => t.reactNative?.capabilities?.prefersFuseboxFrontend);
   return fusebox ?? matches[0];
@@ -215,5 +228,7 @@ export function selectTargetForDevice(
 
 /** Convenience: all /json targets belonging to this device. */
 export function targetsForDevice(targets: MetroTarget[], displayName: string): MetroTarget[] {
-  return targets.filter((t) => t.webSocketDebuggerUrl && t.deviceName === displayName);
+  return targets.filter(
+    (t) => t.webSocketDebuggerUrl && deviceNameMatches(t.deviceName, displayName)
+  );
 }

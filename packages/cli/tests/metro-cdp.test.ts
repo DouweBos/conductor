@@ -77,20 +77,38 @@ metroCdp.test('displayName picks the matching device target', async () => {
     target({ webSocketDebuggerUrl: 'ws://mine', deviceName: 'iPhone 15 Pro' }),
   ];
   assert(
-    selectDebuggerUrl(targets, {}, 'iPhone 15 Pro') === 'ws://mine',
+    selectDebuggerUrl(targets, { deviceId: 'udid' }, 'iPhone 15 Pro') === 'ws://mine',
     'should select the target whose deviceName matches'
   );
 });
 
-metroCdp.test('unmatched displayName falls back to the Hermes/React target', async () => {
+metroCdp.test('tolerates Metro suffixing the model name', async () => {
   const targets = [
-    target({ webSocketDebuggerUrl: 'ws://plain', title: 'Page' }),
-    target({ webSocketDebuggerUrl: 'ws://hermes', title: 'Hermes React Native' }),
+    target({ webSocketDebuggerUrl: 'ws://atv', deviceName: 'Menu - Apple TV 4K' }),
+    target({ webSocketDebuggerUrl: 'ws://cast', deviceName: 'Chromecast - 14 - API 34' }),
   ];
   assert(
-    selectDebuggerUrl(targets, {}, 'No Such Device') === 'ws://hermes',
-    'no device match → prefer the Hermes target'
+    selectDebuggerUrl(targets, { deviceId: '33021HFDD8EW8F' }, 'Chromecast') === 'ws://cast',
+    'bare model "Chromecast" should match "Chromecast - 14 - API 34"'
   );
+});
+
+metroCdp.test('device requested but unmatched throws instead of picking another', async () => {
+  const targets = [
+    target({ webSocketDebuggerUrl: 'ws://plain', title: 'Page', deviceName: 'iPhone 14' }),
+    target({ webSocketDebuggerUrl: 'ws://hermes', title: 'Hermes React Native' }),
+  ];
+  let threw = false;
+  try {
+    selectDebuggerUrl(targets, { deviceId: 'udid' }, 'No Such Device');
+  } catch (err) {
+    threw = true;
+    assert(
+      err instanceof Error && /No Metro debugger target for device udid/.test(err.message),
+      'error should name the unmatched device'
+    );
+  }
+  assert(threw, 'a device-scoped call with no match must not silently reload another device');
 });
 
 metroCdp.test('prefers a Hermes/React-titled target over the first', async () => {
