@@ -13,53 +13,53 @@ All commands accept `--session <name>` to scope to a named session and
 
 ## App lifecycle
 
-| Command          | What it does                                                              |
-| ---------------- | ------------------------------------------------------------------------- |
-| `launch-app`     | Launch the given bundle id / package name. Saves it to the session.       |
-| `stop-app`       | Stop the running app.                                                     |
+| Command          | What it does                                                                                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `launch-app`     | Launch the given bundle id / package name. Saves it to the session.                                                                                                                      |
+| `stop-app`       | Stop the running app.                                                                                                                                                                    |
 | `clear-state`    | ⚠️ Destructive — wipes app data **and** the app's keychain items, signing the user out. Used via `launch-app --clear-state` or directly. Don't use this to reset focus/navigation state. |
-| `uninstall-app`  | Remove the app from the device.                                           |
-| `install-app`    | Install a `.app`, `.ipa`, or `.apk` from a path.                          |
-| `download-app`   | Download an installed app's binary back to disk.                          |
-| `foreground-app` | Print the bundle id / package name of the currently foregrounded app.     |
-| `copy-app`       | Copy an app between iOS simulators (handy for repro setups).              |
+| `uninstall-app`  | Remove the app from the device.                                                                                                                                                          |
+| `install-app`    | Install a `.app`, `.ipa`, or `.apk` from a path.                                                                                                                                         |
+| `download-app`   | Download an installed app's binary back to disk.                                                                                                                                         |
+| `foreground-app` | Print the bundle id / package name of the currently foregrounded app.                                                                                                                    |
+| `copy-app`       | Copy an app between iOS simulators (handy for repro setups).                                                                                                                             |
 
 ---
 
 ## Interaction
 
-| Command                | What it does                                                             |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `tap-on`               | Tap the matched element (positional or `--id` / `--text` / coordinates). |
-| `input-text`           | Type into the focused field.                                             |
-| `erase-text`           | Backspace `n` characters (default 50).                                   |
-| `back`                 | Press the back / Esc key.                                                |
-| `hide-keyboard`        | Dismiss the on-screen keyboard.                                          |
-| `press-key`            | Press a hardware or system key (`home`, `enter`, `volume_up`, …).        |
-| `scroll`               | Scroll a direction or onto an element.                                   |
-| `scroll-until-visible` | Repeatedly scroll until the target element appears.                      |
-| `swipe`                | Swipe between two points (or in a cardinal direction).                   |
-| `pinch`                | Two-finger pinch. `--scale <n>` (zoom out <1, zoom in >1), `--center x,y`, `--angle <deg>`, `--duration <ms>`. |
-| `rotate-gesture`       | Two-finger rotate. `--degrees <n>`, `--center x,y`, `--duration <ms>`.   |
+| Command                | What it does                                                                                                                                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tap-on`               | Tap the matched element (positional or `--id` / `--text` / coordinates).                                                                                                                                  |
+| `input-text`           | Type into the focused field.                                                                                                                                                                              |
+| `erase-text`           | Backspace `n` characters (default 50).                                                                                                                                                                    |
+| `back`                 | Press the back / Esc key.                                                                                                                                                                                 |
+| `hide-keyboard`        | Dismiss the on-screen keyboard.                                                                                                                                                                           |
+| `press-key`            | Press a hardware or system key (`home`, `enter`, `volume_up`, …).                                                                                                                                         |
+| `scroll`               | Scroll a direction or onto an element.                                                                                                                                                                    |
+| `scroll-until-visible` | Repeatedly scroll until the target element appears.                                                                                                                                                       |
+| `swipe`                | Swipe between two points (or in a cardinal direction).                                                                                                                                                    |
+| `pinch`                | Two-finger pinch. `--scale <n>` (zoom out <1, zoom in >1), `--center x,y`, `--angle <deg>`, `--duration <ms>`.                                                                                            |
+| `rotate-gesture`       | Two-finger rotate. `--degrees <n>`, `--center x,y`, `--duration <ms>`.                                                                                                                                    |
 | `gesture <json>`       | Play an arbitrary multi-touch path. JSON shape: `[{"steps":[{"x":,"y":,"dt":}]}, ...]`. One path per finger; `dt` is delay since previous step (seconds). Pass `--file path.json` instead of inline JSON. |
-| `clipboard read`       | Print the iOS simulator clipboard. iOS only — Android has no portable userspace clipboard API. |
-| `clipboard write <t>`  | Set the iOS simulator clipboard.                                         |
-| `paste`                | Type the clipboard contents into the focused field (iOS only).           |
+| `clipboard read`       | Print the iOS simulator clipboard. iOS only — Android has no portable userspace clipboard API.                                                                                                            |
+| `clipboard write <t>`  | Set the iOS simulator clipboard.                                                                                                                                                                          |
+| `paste`                | Type the clipboard contents into the focused field (iOS only).                                                                                                                                            |
 
 ---
 
 ## Inspection
 
-| Command           | What it does                                                                          |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| `inspect`         | Dump the live UI hierarchy as JSON. `--dump` prints the raw driver output unmodified. |
-| `inspect --at x,y`| Print the topmost view at a screen point. Add `--tappable` to filter to interactive elements. |
-| `focused`         | Print metadata of the focused element. `--poll` keeps printing on change.             |
-| `take-screenshot` | Save a PNG to `--output <path>` (or stdout if omitted).                               |
-| `capture-ui`      | Combined screenshot + hierarchy + a11y snapshot — designed to feed into Argus.        |
-| `list-apps`       | List installed apps on the current device.                                            |
-| `logs`            | Stream platform logs scoped to the current app.                                       |
-| `memory`          | Print memory usage / capture a heap profile (Android `hprof`).                        |
+| Command            | What it does                                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `inspect`          | Dump the live UI hierarchy as JSON. `--dump` prints the raw driver output unmodified.         |
+| `inspect --at x,y` | Print the topmost view at a screen point. Add `--tappable` to filter to interactive elements. |
+| `focused`          | Print metadata of the focused element. `--poll` keeps printing on change.                     |
+| `take-screenshot`  | Save a PNG to `--output <path>` (or stdout if omitted).                                       |
+| `capture-ui`       | Combined screenshot + hierarchy + a11y snapshot — designed to feed into Argus.                |
+| `list-apps`        | List installed apps on the current device.                                                    |
+| `logs`             | Stream platform logs scoped to the current app.                                               |
+| `memory`           | Print memory usage / capture a heap profile (Android `hprof`).                                |
 
 ---
 
@@ -101,16 +101,16 @@ Both accept the same disambiguators as `tap-on`: `--id`, `--text`,
 
 ## Flows
 
-| Command           | What it does                                                                       |
-| ----------------- | ---------------------------------------------------------------------------------- |
-| `run-flow`        | Run a YAML flow file against the current session's device.                         |
-| `run-flow-inline` | Run a YAML flow string passed on the command line (great for one-off agent calls). |
-| `run-parallel`    | Shard a directory of flow files round-robin across every booted device.            |
-| `run-sequence`    | Run a batch of commands serially against one session, stopping on first failure. Reads `{"steps":[{"cmd":"tap-on","args":["Login"]}, ...]}` from `--file path.json` or stdin. |
-| `flow record start` | Begin recording subsequent device-action commands into a YAML flow at `--out <path>` (or `~/.conductor/recordings/`). Any action you run while recording is appended automatically. |
-| `flow record echo <text>` | Insert a `runScript` comment step into the active recording.                |
-| `flow record status` | Show the active recording path (if any).                                       |
-| `flow record finish` | Close the active recording and print the file path.                            |
+| Command                   | What it does                                                                                                                                                                        |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run-flow`                | Run a YAML flow file against the current session's device.                                                                                                                          |
+| `run-flow-inline`         | Run a YAML flow string passed on the command line (great for one-off agent calls).                                                                                                  |
+| `run-parallel`            | Shard a directory of flow files round-robin across every booted device.                                                                                                             |
+| `run-sequence`            | Run a batch of commands serially against one session, stopping on first failure. Reads `{"steps":[{"cmd":"tap-on","args":["Login"]}, ...]}` from `--file path.json` or stdin.       |
+| `flow record start`       | Begin recording subsequent device-action commands into a YAML flow at `--out <path>` (or `~/.conductor/recordings/`). Any action you run while recording is appended automatically. |
+| `flow record echo <text>` | Insert a `runScript` comment step into the active recording.                                                                                                                        |
+| `flow record status`      | Show the active recording path (if any).                                                                                                                                            |
+| `flow record finish`      | Close the active recording and print the file path.                                                                                                                                 |
 
 See [Flows](/conductor/docs/flows) for the YAML format, env var
 injection, and parallel execution semantics.
@@ -119,20 +119,23 @@ injection, and parallel execution semantics.
 
 ## Web
 
-| Command       | What it does                                                                             |
-| ------------- | ---------------------------------------------------------------------------------------- |
-| `install-web` | Install a Playwright browser (`chromium`, `firefox`, `webkit`). `--check` prints status. |
+| Command       | What it does                                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `install-web` | Install a Playwright browser (`chromium`, `firefox`, `webkit`). `--check` prints status.                                                                                  |
+| `web-targets` | `--cdp-url <url>` — list the controllable page targets an existing browser exposes over CDP (e.g. one per Electron webview), with a ready-to-paste bind command for each. |
 
 Once installed, the same commands above work on `web` "devices" — see
-[Web testing](/conductor/docs/web).
+[Web testing](/conductor/docs/web). To drive an already-running browser
+(e.g. an Electron app) instead of launching one, see
+[Attaching to an existing browser](/conductor/docs/web#attaching-to-an-existing-browser-cdp).
 
 ---
 
 ## Workspace
 
-| Command           | What it does                                                                       |
-| ----------------- | ---------------------------------------------------------------------------------- |
-| `workspace info`  | One-shot report of project type (RN / Expo / iOS / Android / Web / mixed), bundle ids, detected `ios/` and `android/` dirs, Metro port, and booted devices. Avoids the agent re-deriving these from `package.json` and `list-devices`. |
+| Command          | What it does                                                                                                                                                                                                                           |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspace info` | One-shot report of project type (RN / Expo / iOS / Android / Web / mixed), bundle ids, detected `ios/` and `android/` dirs, Metro port, and booted devices. Avoids the agent re-deriving these from `package.json` and `list-devices`. |
 
 ---
 
@@ -140,20 +143,20 @@ Once installed, the same commands above work on `web` "devices" — see
 
 For React Native projects.
 
-| Command         | What it does                                                                             |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| `metro stop`    | Stop the Metro bundler process listening on `--port <n>` (default 8081). Uses `lsof` + `SIGTERM`, escalates to `SIGKILL` after 2s. |
-| `metro reload`  | Reload the JS bundle without restarting the native process. `Page.reload` over CDP, falls back to `POST /reload`. |
+| Command        | What it does                                                                                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `metro stop`   | Stop the Metro bundler process listening on `--port <n>` (default 8081). Uses `lsof` + `SIGTERM`, escalates to `SIGKILL` after 2s. |
+| `metro reload` | Reload the JS bundle without restarting the native process. `Page.reload` over CDP, falls back to `POST /reload`.                  |
 
 ---
 
 ## Crashes
 
-| Command            | What it does                                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------- |
-| `crashes list`     | List recent crash reports. iOS host-side `.ips`/`.crash` files from `~/Library/Logs/DiagnosticReports/`, plus Android `logcat -b crash` for the current device. `--app <bundleId>`, `--since <duration>` (e.g. `2h`, `30m`). |
-| `crashes show <id>`| Print a specific iOS crash report by file name.                                          |
-| `crashes tail`     | Stream new crash reports as they appear. iOS via `fs.watch` on the diagnostic reports directory; Android via `adb logcat -b crash`. |
+| Command             | What it does                                                                                                                                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crashes list`      | List recent crash reports. iOS host-side `.ips`/`.crash` files from `~/Library/Logs/DiagnosticReports/`, plus Android `logcat -b crash` for the current device. `--app <bundleId>`, `--since <duration>` (e.g. `2h`, `30m`). |
+| `crashes show <id>` | Print a specific iOS crash report by file name.                                                                                                                                                                              |
+| `crashes tail`      | Stream new crash reports as they appear. iOS via `fs.watch` on the diagnostic reports directory; Android via `adb logcat -b crash`.                                                                                          |
 
 Output schema (JSON): `{ id, timestamp, app, type, signal, threadName, topFrames[], sourceFile, platform }`.
 The text parser is heuristic — most fields are best-effort across iOS versions; symbolicated frames may not appear without a matching `.dSYM`.

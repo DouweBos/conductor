@@ -30,13 +30,13 @@ commands; you don't need to reinstall per session.
 
 A "web device" is selected via `--device`:
 
-| Device id        | Browser                                |
-| ---------------- | -------------------------------------- |
-| `web`            | Chromium (default).                    |
-| `web:chromium`   | Chromium, explicit.                    |
-| `web:firefox`    | Firefox.                               |
-| `web:webkit`     | WebKit.                                |
-| `web:firefox:foo`| Firefox in a sub-instance named `foo`. |
+| Device id         | Browser                                |
+| ----------------- | -------------------------------------- |
+| `web`             | Chromium (default).                    |
+| `web:chromium`    | Chromium, explicit.                    |
+| `web:firefox`     | Firefox.                               |
+| `web:webkit`      | WebKit.                                |
+| `web:firefox:foo` | Firefox in a sub-instance named `foo`. |
 
 The third segment is an opaque sub-id Conductor uses to isolate
 parallel browser instances. Useful when running flows in parallel —
@@ -47,6 +47,59 @@ conductor --device web open-link https://example.com
 conductor --device web tap-on "Get started"
 conductor --device web assert-visible "Welcome"
 ```
+
+---
+
+## Attaching to an existing browser (CDP)
+
+Instead of launching its own Playwright browser, Conductor can attach to
+a browser that's already running and exposes the Chrome DevTools Protocol
+over a remote-debugging port — for example an Electron app started with
+`--remote-debugging-port`, where each window / `WebContentsView` is a
+separate page target you may want to drive independently.
+
+Two flags opt in (both map to the `CONDUCTOR_CDP_URL` /
+`CONDUCTOR_CDP_TARGET_ID` env the daemon reads):
+
+| Flag           | Meaning                                                                              |
+| -------------- | ------------------------------------------------------------------------------------ |
+| `--cdp-url`    | The CDP endpoint to attach to (e.g. `http://127.0.0.1:9222`).                        |
+| `--cdp-target` | Which page target to control. Required when the endpoint exposes more than one page. |
+
+First list what's there:
+
+```bash
+conductor web-targets --cdp-url http://127.0.0.1:9222
+```
+
+That prints every controllable page target (id, url, title) and a
+ready-to-paste bind command for each. Then bind a `--device` to a target
+once — the attachment is persisted to that session, so later commands for
+the same `--device` don't need the flags:
+
+```bash
+# bind (any command works; flags only needed the first time)
+conductor --device web:chromium:tile1 \
+  --cdp-url http://127.0.0.1:9222 --cdp-target <TARGET_ID> inspect
+
+# thereafter
+conductor --device web:chromium:tile1 press-key "Remote Dpad Down"
+conductor --device web:chromium:tile1 take-screenshot -o tile1.png
+```
+
+Use a distinct, fully-qualified `--device web:<browser>:<label>` per target
+(the three-segment form pins a stable session; a bare `web` / `web:chromium`
+gets an auto-generated sub-id instead). Each target is an independent session
+with its own daemon, so several can be driven concurrently.
+
+Notes:
+
+- Only `type=page` targets are controllable. A host that embeds content as a
+  `<webview>` guest (`type=webview` in CDP) won't surface as a Playwright page.
+- Conductor attaches as an additional CDP client; it coexists with any
+  debugger the host app already has attached to the same target.
+- In CDP mode Conductor never launches or closes the browser — it only
+  releases its handles on `daemon-stop`.
 
 ---
 

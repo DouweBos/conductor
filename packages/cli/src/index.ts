@@ -89,6 +89,8 @@ import {
   HELP as clipboardHelp,
 } from './commands/clipboard.js';
 import { listOptions, HELP as optionsHelp } from './commands/options.js';
+import { webTargets, HELP as webTargetsHelp } from './commands/web-targets.js';
+import { getSession, updateSession } from './session.js';
 import { pickDevice } from './device-picker.js';
 import { checkForUpdates } from './update-check.js';
 import { findPkgRoot } from './pkg-root.js';
@@ -152,12 +154,16 @@ const COMMAND_HELP: Record<string, string> = {
   clipboard: clipboardHelp,
   paste: '  paste                                Trigger OS-level paste (or type clipboard on iOS)',
   'list-options': optionsHelp,
+  'web-targets': webTargetsHelp,
 };
 
 const OPTIONS_HELP = `Options:
   --device <id>     Target device ID (also keys the session and daemon)
   --device-name <n> Target a booted device by name (resolved to ID from booted devices)
   --platform <p>    Filter to devices of this platform (ios, android, tvos, web)
+  --cdp-url <url>   Attach the web driver to an existing browser over CDP (e.g. an
+                    Electron app started with --remote-debugging-port). Remembered per session.
+  --cdp-target <id> Pick which CDP page target to control (see \`conductor web-targets\`)
   --json            Output as machine-readable JSON
   --options         List valid values for a command's enumerated parameters and exit
   --verbose, -v     Log daemon calls, fallbacks, and raw output
@@ -263,6 +269,8 @@ async function main(): Promise<void> {
       'height',
       'user-agent',
       'color-scheme',
+      'cdp-url',
+      'cdp-target',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version', o: 'output', y: 'yes' },
   });
@@ -313,6 +321,7 @@ async function main(): Promise<void> {
     'metro',
     'workspace',
     'list-options',
+    'web-targets',
     // `logs --list` and `logs --source metro` only query Metro on localhost — no device needed
     // `logs` always needs a device session — Metro discovery is device-scoped.
     // `daemon-stop --all` stops every daemon — no device needed
@@ -354,9 +363,41 @@ async function main(): Promise<void> {
     }
   }
 
+  // CDP attach settings (web only): --cdp-url/--cdp-target map to the env the daemon
+  // reads. Passing them once persists them to the session so later commands for the
+  // same --device don't need the flags; absent flags hydrate from the saved session.
+  const isWebSession = sessionName === 'web' || sessionName.startsWith('web:');
+  if (isWebSession && !NO_DEVICE_COMMANDS.has(command)) {
+    const cdpUrlFlag = argv['cdp-url'] as string | undefined;
+    const cdpTargetFlag = argv['cdp-target'] as string | undefined;
+    if (cdpUrlFlag || cdpTargetFlag) {
+      if (cdpUrlFlag) process.env.CONDUCTOR_CDP_URL = cdpUrlFlag;
+      if (cdpTargetFlag) process.env.CONDUCTOR_CDP_TARGET_ID = cdpTargetFlag;
+      await updateSession(
+        {
+          cdpUrl: process.env.CONDUCTOR_CDP_URL,
+          cdpTargetId: process.env.CONDUCTOR_CDP_TARGET_ID,
+        },
+        sessionName
+      );
+    } else {
+      const saved = await getSession(sessionName);
+      if (saved.cdpUrl && !process.env.CONDUCTOR_CDP_URL) {
+        process.env.CONDUCTOR_CDP_URL = saved.cdpUrl;
+      }
+      if (saved.cdpTargetId && !process.env.CONDUCTOR_CDP_TARGET_ID) {
+        process.env.CONDUCTOR_CDP_TARGET_ID = saved.cdpTargetId;
+      }
+    }
+  }
+
   let exitCode = 0;
 
   switch (command) {
+    case 'web-targets':
+      exitCode = await webTargets(argv['cdp-url'] as string | undefined, opts);
+      break;
+
     case 'start-device':
       exitCode = await startDevice(argv['platform'] as string | undefined, opts, {
         osVersion: argv['os-version'] as string | undefined,

@@ -7,6 +7,10 @@ export interface Session {
   deviceId?: string;
   /** Path of the active `flow record` recording, when one is in progress. */
   recordingPath?: string;
+  /** CDP endpoint for a web session attached to an external browser (e.g. Electron). */
+  cdpUrl?: string;
+  /** CDP page target ID this web session drives (one per Electron webview/tile). */
+  cdpTargetId?: string;
 }
 
 const CONDUCTOR_DIR = path.join(os.homedir(), '.conductor');
