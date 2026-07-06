@@ -1,5 +1,35 @@
 # @houwert/conductor
 
+## 0.22.0
+
+### Minor Changes
+
+- 8e86c40: Add `web-targets` and `--cdp-url` / `--cdp-target` for driving an existing
+  browser over CDP.
+  - `web-targets --cdp-url <url>` lists the controllable page targets a browser
+    exposes over its remote-debugging endpoint (e.g. one per Electron
+    `WebContentsView`), each with a ready-to-paste bind command. Reads the
+    DevTools `/json/list` endpoint directly — no Playwright needed, works before
+    any session exists.
+  - `--cdp-url` / `--cdp-target` set the CDP attachment for a web session and
+    persist it to the session, so after binding a `--device` to a target once,
+    later commands for that device no longer need the flags. Use a distinct
+    fully-qualified `--device web:<browser>:<label>` per target to drive several
+    concurrently.
+
+### Patch Changes
+
+- 5a13c01: Fix `metro reload --device` reloading the wrong device (or silently no-op)
+  when multiple apps share one Metro server.
+  - Device matching is now tolerant of the suffixes Metro appends to the model
+    name — Android's `ro.product.model` is `Chromecast` while Metro reports it as
+    `Chromecast - 14 - API 34`, so the exact-match lookup never matched and the
+    reload fell through to the first target (e.g. an Apple TV) while reporting
+    success.
+  - A device-scoped reload that can't find its device now errors and lists the
+    available targets instead of silently reloading a different one. Use
+    `--target <index>` to pick one explicitly.
+
 ## 0.21.0
 
 ### Minor Changes
