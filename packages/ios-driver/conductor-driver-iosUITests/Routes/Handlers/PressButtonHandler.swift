@@ -16,36 +16,40 @@ struct PressButtonHandler: HTTPHandler {
             return AppError(type: .precondition, message: "Incorrect request body for PressButton Handler").httpResponse
         }
         
+        #if os(tvOS)
+        // Map to an XCUIRemote button, then honor an optional held-press duration.
+        let remoteButton: XCUIRemote.Button
+        switch requestBody.button {
+        case .home, .lock:
+            remoteButton = .home
+        case .up:
+            remoteButton = .up
+        case .down:
+            remoteButton = .down
+        case .left:
+            remoteButton = .left
+        case .right:
+            remoteButton = .right
+        case .select:
+            remoteButton = .select
+        case .menu:
+            remoteButton = .menu
+        case .playPause:
+            remoteButton = .playPause
+        }
+        if let duration = requestBody.duration, duration > 0 {
+            XCUIRemote.shared.press(remoteButton, forDuration: duration)
+        } else {
+            XCUIRemote.shared.press(remoteButton)
+        }
+        #else
         switch requestBody.button {
         case .home:
-            #if os(tvOS)
-            XCUIRemote.shared.press(.home)
-            #else
             XCUIDevice.shared.press(.home)
-            #endif
         case .lock:
-            #if os(tvOS)
-            XCUIRemote.shared.press(.home)
-            #else
             XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
-            #endif
-        #if os(tvOS)    
-        case .up:
-            XCUIRemote.shared.press(.up)
-        case .down:
-            XCUIRemote.shared.press(.down)
-        case .left:
-            XCUIRemote.shared.press(.left)
-        case .right:
-            XCUIRemote.shared.press(.right)
-        case .select:
-            XCUIRemote.shared.press(.select)
-        case .menu:
-            XCUIRemote.shared.press(.menu)
-        case .playPause:
-            XCUIRemote.shared.press(.playPause)
-        #endif
         }
+        #endif
         return HTTPResponse(statusCode: .ok)
     }
 }

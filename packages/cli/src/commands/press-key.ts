@@ -1,4 +1,6 @@
-export const HELP = `  press-key <key>                     Press a key (Enter, Backspace, Home, ...)`;
+export const HELP = `  press-key <key>                     Press a key (Enter, Backspace, Home, ...)
+    --long-press                      Hold the button ~1.5s (tvOS remote buttons)
+    --duration <seconds>              Hold for a custom duration (tvOS remote buttons)`;
 
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
@@ -115,8 +117,12 @@ const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
 export async function pressKey(
   key: string,
   opts: OutputOptions = {},
-  sessionName = 'default'
+  sessionName = 'default',
+  flags: { longPress?: boolean; duration?: number } = {}
 ): Promise<number> {
+  // A held press is requested via --long-press (default 1.5s) or an explicit --duration.
+  const holdSeconds = flags.duration ?? (flags.longPress ? 1.5 : undefined);
+
   if (!key) {
     printError(`press-key requires <key>. Valid keys: ${VALID_KEYS.join(', ')}`, opts);
     return 1;
@@ -134,9 +140,9 @@ export async function pressKey(
         const tvosButton = TVOS_REMOTE_BUTTONS[matched];
         const iosButton = IOS_BUTTON_MAP[matched];
         if (tvosButton) {
-          await driver.pressButton(tvosButton);
+          await driver.pressButton(tvosButton, holdSeconds);
         } else if (iosButton) {
-          await driver.pressButton(iosButton);
+          await driver.pressButton(iosButton, holdSeconds);
         }
         // Keys not mapped on tvOS are silently ignored
       } else {

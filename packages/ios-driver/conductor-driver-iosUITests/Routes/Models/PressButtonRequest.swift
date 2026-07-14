@@ -18,4 +18,6 @@ struct PressButtonRequest: Codable {
     }
 
     let button: Button
+    // tvOS held press (seconds); ignored off-tvOS.
+    let duration: TimeInterval?
 }

@@ -237,9 +237,13 @@ export class IOSDriver {
   }
 
   async pressButton(
-    button: 'home' | 'lock' | 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause'
+    button: 'home' | 'lock' | 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause',
+    duration?: number
   ): Promise<void> {
-    await this.post('pressButton', { button });
+    await this.post('pressButton', {
+      button,
+      ...(duration !== undefined ? { duration } : {}),
+    });
     this.invalidateHierarchyCache();
   }
 

@@ -39,7 +39,7 @@ conductor assert-visible "Dashboard"
 | `conductor tap-on <element>` | Tap by text, id, or `@eN`. `--long-press`, `--double-tap`, `--optional`, `--index <n>` |
 | `conductor input-text <text>` | Type into the focused field |
 | `conductor erase-text [n]` | Erase n characters (default 50) |
-| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) |
+| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …). `--long-press` / `--duration <seconds>` holds tvOS remote buttons |
 | `conductor hide-keyboard` | Dismiss the on-screen keyboard |
 | `conductor back` | Press back |
 | `conductor scroll [--direction down\|up\|left\|right]` | Scroll |

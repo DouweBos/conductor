@@ -271,6 +271,7 @@ async function main(): Promise<void> {
       'color-scheme',
       'cdp-url',
       'cdp-target',
+      'duration',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version', o: 'output', y: 'yes' },
   });
@@ -538,7 +539,11 @@ async function main(): Promise<void> {
 
     case 'press-key': {
       const key = rest[0] ?? '';
-      exitCode = await pressKey(key, opts, sessionName);
+      const durationArg = argv['duration'] as string | undefined;
+      exitCode = await pressKey(key, opts, sessionName, {
+        longPress: argv['long-press'] as boolean,
+        duration: durationArg !== undefined ? Number(durationArg) : undefined,
+      });
       break;
     }
 

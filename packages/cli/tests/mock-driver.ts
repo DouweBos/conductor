@@ -97,8 +97,11 @@ export class MockIOSDriver extends IOSDriver {
     return Promise.resolve();
   }
 
-  override pressButton(button: 'home' | 'lock'): Promise<void> {
-    this.calls.push({ method: 'pressButton', args: [button] });
+  override pressButton(
+    button: 'home' | 'lock' | 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause',
+    duration?: number
+  ): Promise<void> {
+    this.calls.push({ method: 'pressButton', args: [button, duration] });
     return Promise.resolve();
   }
 
