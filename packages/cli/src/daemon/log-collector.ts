@@ -26,6 +26,7 @@ import http from 'http';
 import { LogEntry, LogSource, LEVEL_SEVERITY } from '../drivers/log-sources/types.js';
 import { IOSLogSource } from '../drivers/log-sources/ios.js';
 import { AndroidLogSource } from '../drivers/log-sources/android.js';
+import { VegaLogSource } from '../drivers/log-sources/vega.js';
 import { MetroLogSource, fetchTargets } from '../drivers/log-sources/metro.js';
 import {
   discoverMetroPortForDevice,
@@ -88,7 +89,12 @@ export class LogCollector {
     // Metro is always auto-discovered. Discovery retries forever with a
     // backoff ceiling — the app may be launched long after the daemon starts,
     // and the cost per attempt is tiny (a few spawns + one HTTP call).
-    if (this.platform === 'ios' || this.platform === 'tvos' || this.platform === 'android') {
+    if (
+      this.platform === 'ios' ||
+      this.platform === 'tvos' ||
+      this.platform === 'android' ||
+      this.platform === 'vega'
+    ) {
       this.startMetroAutoDiscovery();
     }
   }
@@ -166,6 +172,9 @@ export class LogCollector {
         this.source = new IOSLogSource(this.deviceId, this.appId);
       } else if (this.platform === 'android') {
         this.source = new AndroidLogSource(this.deviceId, this.appId);
+      } else if (this.platform === 'vega') {
+        // deviceId is `vega:<serial>`; VegaCli wants the bare serial.
+        this.source = new VegaLogSource(this.deviceId.replace(/^vega:/, ''));
       } else {
         return; // Unsupported platform for device log collection
       }

@@ -5,6 +5,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 
 export async function uninstallApp(
   appId: string,
@@ -21,6 +22,8 @@ export async function uninstallApp(
       await driver.uninstallApp(appId);
     } else if (driver instanceof WebDriver) {
       throw new Error('uninstall-app is not supported on web');
+    } else if (driver instanceof VegaDriver) {
+      throw new Error('uninstall-app is not supported on vega (Amazon Fire TV)');
     } else if (driver instanceof AndroidDriver) {
       await driver.uninstallApp(appId);
     }

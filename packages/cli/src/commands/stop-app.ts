@@ -6,6 +6,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 
 export async function stopApp(
   appId?: string,
@@ -25,6 +26,8 @@ export async function stopApp(
       await driver.terminateApp(resolvedAppId);
     } else if (driver instanceof WebDriver) {
       await driver.terminateApp();
+    } else if (driver instanceof VegaDriver) {
+      await driver.stopApp(resolvedAppId);
     } else if (driver instanceof AndroidDriver) {
       await driver.stopApp(resolvedAppId);
     }

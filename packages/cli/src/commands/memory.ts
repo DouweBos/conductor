@@ -1383,6 +1383,12 @@ export async function memory(
 
   const platform = await detectPlatform(deviceId);
 
+  if (platform === 'vega') {
+    // Memory relies on adb/simctl host tooling that has no Vega equivalent yet.
+    printError('memory is not yet supported on vega (Amazon Fire TV)', opts);
+    return 1;
+  }
+
   let report: MemoryReport;
   if (platform === 'web') {
     report = await collectWeb(deviceId, sessionName, memOpts);

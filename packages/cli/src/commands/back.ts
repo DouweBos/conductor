@@ -5,6 +5,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 
 export async function back(opts: OutputOptions = {}, sessionName = 'default'): Promise<number> {
   const result = await runDirect(async (driver) => {
@@ -15,6 +16,8 @@ export async function back(opts: OutputOptions = {}, sessionName = 'default'): P
       // Plain iOS has no universal "back" concept — this is a no-op (same as maestro IOSDriver.backPress)
     } else if (driver instanceof WebDriver) {
       await driver.goBack();
+    } else if (driver instanceof VegaDriver) {
+      await driver.back();
     } else if (driver instanceof AndroidDriver) {
       await driver.back(); // adb shell input keyevent 4
     }

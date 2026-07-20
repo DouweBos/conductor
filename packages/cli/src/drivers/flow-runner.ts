@@ -9,6 +9,8 @@ import yaml from 'js-yaml';
 import { IOSDriver, AXElement } from './ios.js';
 import { AndroidDriver } from './android.js';
 import { WebDriver } from './web.js';
+import { VegaDriver } from './vega.js';
+import { VegaButton } from './vega/input.js';
 import {
   waitForIOSElement,
   waitForAndroidElement,
@@ -28,7 +30,22 @@ function fmtMs(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-type AnyDriver = IOSDriver | AndroidDriver | WebDriver;
+type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver;
+
+// vega (Amazon Fire TV) remote key names → VegaDriver button values, for flow pressKey.
+const VEGA_FLOW_BUTTONS: Record<string, VegaButton> = {
+  BACK: 'back',
+  HOME: 'home',
+  'REMOTE DPAD UP': 'up',
+  'REMOTE DPAD DOWN': 'down',
+  'REMOTE DPAD LEFT': 'left',
+  'REMOTE DPAD RIGHT': 'right',
+  'REMOTE DPAD CENTER': 'select',
+  ENTER: 'select',
+  RETURN: 'select',
+  VOLUME_UP: 'volumeUp',
+  VOLUME_DOWN: 'volumeDown',
+};
 
 // ── Selector ──────────────────────────────────────────────────────────────────
 
@@ -618,7 +635,13 @@ function getConductorObj(
   output: Record<string, unknown>
 ): Record<string, unknown> {
   const platform =
-    driver instanceof IOSDriver ? 'ios' : driver instanceof WebDriver ? 'web' : 'android';
+    driver instanceof IOSDriver
+      ? 'ios'
+      : driver instanceof WebDriver
+        ? 'web'
+        : driver instanceof VegaDriver
+          ? 'vega'
+          : 'android';
   return {
     platform,
     copiedText: (output['__copiedText'] as string) ?? '',
@@ -785,12 +808,11 @@ async function executeCommandBody(
         typeof val === 'number'
           ? val
           : ((val as { charactersToErase?: number })?.charactersToErase ?? 50);
-      if (driver instanceof AndroidDriver) {
-        await driver.eraseAllText(n);
-      } else if (driver instanceof WebDriver) {
-        await driver.eraseAllText(n);
-      } else {
+      if (driver instanceof IOSDriver) {
         for (let i = 0; i < n; i++) await driver.pressKey('delete');
+      } else {
+        // Android, web, and vega all expose eraseAllText.
+        await driver.eraseAllText(n);
       }
       break;
     }
@@ -937,6 +959,7 @@ async function executeCommandBody(
     case 'back': {
       if (driver instanceof AndroidDriver) await driver.back();
       else if (driver instanceof WebDriver) await driver.goBack();
+      else if (driver instanceof VegaDriver) await driver.back();
       // iOS has no hardware back button — noop
       break;
     }
@@ -1230,6 +1253,10 @@ async function executeCommandBody(
           ESCAPE: 'Escape',
         };
         await driver.pressKey(WEB_KEY_MAP[keyName] ?? keyName);
+      } else if (driver instanceof VegaDriver) {
+        const button = VEGA_FLOW_BUTTONS[keyName];
+        if (!button) throw new Error(`pressKey: key "${val}" is not supported on vega`);
+        await driver.pressButton(button);
       } else {
         const keycode = ANDROID_KEYCODES[keyName];
         if (keycode === undefined) throw new Error(`pressKey: unknown key "${val}"`);
@@ -1245,6 +1272,8 @@ async function executeCommandBody(
         });
       } else if (driver instanceof WebDriver) {
         // No virtual keyboard on web — noop
+      } else if (driver instanceof VegaDriver) {
+        // No reliable keyboard-hide primitive on vega — noop
       } else {
         await driver.pressKeyEvent(111); // KEYCODE_ESCAPE
       }

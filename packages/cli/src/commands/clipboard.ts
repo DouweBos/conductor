@@ -7,6 +7,7 @@ import { printSuccess, printError, printData, OutputOptions } from '../output.js
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 
 const ANDROID_MSG =
   'clipboard is iOS-only. On Android, use `conductor input-text` to type instead.';
@@ -19,6 +20,7 @@ export async function clipboardRead(
     if (driver instanceof IOSDriver) return await driver.clipboardRead();
     if (driver instanceof AndroidDriver) throw new Error(ANDROID_MSG);
     if (driver instanceof WebDriver) throw new Error('clipboard read is not supported on Web');
+    if (driver instanceof VegaDriver) throw new Error('clipboard read is not supported on vega');
     return '';
   }, sessionName);
 
@@ -44,6 +46,8 @@ export async function clipboardWrite(
       throw new Error(ANDROID_MSG);
     } else if (driver instanceof WebDriver) {
       throw new Error('clipboard write is not supported on Web');
+    } else if (driver instanceof VegaDriver) {
+      throw new Error('clipboard write is not supported on vega');
     }
   }, sessionName);
 
@@ -68,6 +72,8 @@ export async function paste(opts: OutputOptions = {}, sessionName = 'default'): 
       throw new Error('paste is iOS-only. On Android, use `conductor input-text` instead.');
     } else if (driver instanceof WebDriver) {
       throw new Error('paste is not supported on Web');
+    } else if (driver instanceof VegaDriver) {
+      throw new Error('paste is not supported on vega');
     }
   }, sessionName);
 

@@ -1,5 +1,5 @@
 export const HELP = `  stop-device [<name-or-id>]
-    --platform <ios|tvos|android|web> Scope to a single platform
+    --platform <ios|tvos|android|web|vega> Scope to a single platform
     --all                             Stop all booted simulators / running emulators / web sessions`;
 
 import { spawnCommand } from '../runner.js';
@@ -43,6 +43,7 @@ export async function stopDevice(
   const includeTvOS = !platform || platform === 'tvos';
   const includeAndroid = !platform || platform === 'android';
   const includeWeb = !platform || platform === 'web';
+  const includeVega = !platform || platform === 'vega';
   const stopped: { id: string; name: string; platform: string }[] = [];
 
   // ── --all mode ───────────────────────────────────────────────────────────
@@ -55,13 +56,15 @@ export async function stopDevice(
       if (d.platform === 'tvos' && !includeTvOS) continue;
       if (d.platform === 'android' && !includeAndroid) continue;
       if (d.platform === 'web' && !includeWeb) continue;
+      if (d.platform === 'vega' && !includeVega) continue;
 
       try {
         if (d.platform === 'ios' || d.platform === 'tvos') {
           await shutdownSimulator(d.id);
         } else if (d.platform === 'android') {
           await killEmulator(d.id);
-        } else if (d.platform === 'web') {
+        } else if (d.platform === 'web' || d.platform === 'vega') {
+          // Vega VVD lifecycle is owned by Amazon's tooling — we only stop our log daemon.
           await stopDaemon(d.id);
         }
         stopped.push({ id: d.id, name: d.name, platform: d.platform });
@@ -106,7 +109,8 @@ export async function stopDevice(
       await shutdownSimulator(match.id);
     } else if (match.platform === 'android') {
       await killEmulator(match.id);
-    } else if (match.platform === 'web') {
+    } else if (match.platform === 'web' || match.platform === 'vega') {
+      // Vega VVD lifecycle is owned by Amazon's tooling — we only stop our log daemon.
       await stopDaemon(match.id);
     }
   } catch (e) {

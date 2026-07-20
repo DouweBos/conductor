@@ -5,6 +5,7 @@ import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { getSession } from '../session.js';
 import { printData, printError, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
+import { VegaCli } from '../drivers/vega/cli.js';
 
 async function resolveDeviceId(sessionName: string): Promise<string | undefined> {
   if (sessionName !== 'default') return sessionName;
@@ -29,6 +30,9 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
       opts
     );
     return 1;
+  } else if (platform === 'vega') {
+    // Vega is driven through Amazon's CLI, not adb; strip the `vega:` id prefix.
+    appIds = (await new VegaCli(deviceId.replace(/^vega:/, '')).listInstalledApps()).sort();
   } else if (platform === 'ios' || platform === 'tvos') {
     const result = await spawnCommand('bash', [
       '-c',

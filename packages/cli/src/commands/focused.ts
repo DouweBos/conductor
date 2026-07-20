@@ -6,6 +6,7 @@ import { printError, OutputOptions } from '../output.js';
 import { IOSDriver, AXElement } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver, WebElement } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 import { parseAndroidHierarchy } from '../drivers/element-resolver.js';
 
 // XCUIElementType rawValue → human-readable name.
@@ -216,7 +217,7 @@ function formatWebElement(node: WebElement): Record<string, unknown> {
 }
 
 async function queryFocused(
-  driver: IOSDriver | AndroidDriver | WebDriver
+  driver: IOSDriver | AndroidDriver | WebDriver | VegaDriver
 ): Promise<Record<string, unknown> | null> {
   if (driver instanceof IOSDriver) {
     const hierarchy = await driver.viewHierarchy(false);
@@ -226,7 +227,8 @@ async function queryFocused(
     const hierarchy = await driver.viewHierarchy();
     const node = findFocusedWeb(hierarchy.elements);
     return node ? formatWebElement(node) : null;
-  } else if (driver instanceof AndroidDriver) {
+  } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
+    // Vega emits uiautomator-style XML, so it reuses the Android parser.
     const xml = await driver.viewHierarchy();
     const nodes = parseAndroidHierarchy(xml);
     const node = nodes.find((n) => n.focused);

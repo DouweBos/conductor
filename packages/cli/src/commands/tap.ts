@@ -19,6 +19,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../drivers/wait.js';
 import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 import { isRefQuery, loadSnapshot, resolveRef } from '../snapshot-store.js';
@@ -97,6 +98,9 @@ export async function tap(
       );
     } else if (driver instanceof WebDriver) {
       el = await waitForWebElement(() => driver.viewHierarchy(), sel);
+    } else if (driver instanceof VegaDriver) {
+      // Vega emits uiautomator-style XML, so it reuses the Android resolver.
+      el = await waitForAndroidElement(() => driver.viewHierarchy(), sel);
     } else if (driver instanceof AndroidDriver) {
       el = await waitForAndroidElement(() => driver.viewHierarchy(), sel);
     } else {
@@ -104,12 +108,11 @@ export async function tap(
     }
 
     if (flags.longPress) {
-      if (driver instanceof IOSDriver) {
-        await driver.tap(el.centerX, el.centerY, 1.5);
-      } else if (driver instanceof WebDriver) {
-        await driver.tap(el.centerX, el.centerY, 1.5);
+      if (driver instanceof AndroidDriver) {
+        await driver.swipe(el.centerX, el.centerY, el.centerX, el.centerY, 1500);
       } else {
-        await (driver as AndroidDriver).swipe(el.centerX, el.centerY, el.centerX, el.centerY, 1500);
+        // iOS, web, and vega express a long press as a held tap.
+        await driver.tap(el.centerX, el.centerY, 1.5);
       }
     } else if (flags.doubleTap) {
       await driver.tap(el.centerX, el.centerY);

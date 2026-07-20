@@ -92,7 +92,7 @@ function dlog(msg: string): void {
 // ── Driver lifecycle ──────────────────────────────────────────────────────────
 
 let driverPort = 1075;
-let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' = 'ios';
+let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' | 'vega' = 'ios';
 let logCollector: LogCollector | null = null;
 
 const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
@@ -103,6 +103,8 @@ let _driverStartError: string | null = null;
 
 async function ensureDriverRunning(): Promise<void> {
   if (_restartInProgress || !_driverStarted) return;
+  // Vega has no driver process/port to health-check — control is host-side via the CLI.
+  if (driverPlatform === 'vega') return;
 
   let alive: boolean;
   if (driverPlatform === 'android') {
@@ -213,6 +215,8 @@ async function main(): Promise<void> {
       // the user's navigation state in the target app.
       if (driverPlatform === 'tvos') {
         dlog('tvOS: leaving driver running to preserve app state');
+      } else if (driverPlatform === 'vega') {
+        dlog('vega: no driver process to stop (control is host-side via the CLI)');
       } else if (driverPlatform === 'web') {
         dlog('Stopping web driver');
         try {
@@ -345,59 +349,13 @@ async function main(): Promise<void> {
           driverPort = await getDriverPort(platform, sessionName);
           dlog(`Platform: ${platform}, port: ${driverPort}`);
 
-          let driverAlive: boolean;
-          if (platform === 'android') {
-            const probe = new AndroidDriver(sessionName, driverPort);
-            await probe.connect();
-            driverAlive = await probe.isAlive().catch(() => false);
-            probe.close();
-          } else {
-            // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive
-            driverAlive = await isPortOpen(driverPort);
-          }
-          if (driverAlive) {
+          // Vega has no driver process — control is host-side via the vega CLI.
+          // The daemon exists only to collect device + Metro logs.
+          if (platform === 'vega') {
             _driverStarted = true;
-            dlog(`Driver already running on port ${driverPort}`);
+            dlog('vega: no driver process to start; collecting logs only');
           } else {
-            // Android: install APKs before starting the driver.
-            // iOS/tvOS: xcodebuild installs silently via DependentProductPaths.
-            // Web: ensure Playwright browser binary is installed.
-            if (platform === 'android') {
-              dlog(`Installing Android driver on ${sessionName}`);
-              await installDriver(sessionName);
-              dlog(`Driver installation complete`);
-            } else if (platform === 'web' && !cdpUrl) {
-              // Only install Playwright browser when launching standalone.
-              // In CDP mode we attach to the host app's browser (e.g. Electron).
-              const browser = webBrowserName(sessionName);
-              await ensurePlaywrightBrowser(browser, dlog);
-            }
-
-            dlog(`Starting ${platform} driver on port ${driverPort}`);
-            try {
-              if (platform === 'ios') {
-                await startIOSDriver(sessionName, driverPort);
-              } else if (platform === 'tvos') {
-                // First install — the runner takes foreground; ask it to hand
-                // focus back to whatever app the user had open.
-                await startTvOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ true);
-              } else if (platform === 'web') {
-                await startWebServer(
-                  driverPort,
-                  webBrowserName(sessionName),
-                  dlog,
-                  cdpUrl,
-                  cdpTargetId
-                );
-              } else {
-                await startAndroidDriver(sessionName, driverPort);
-              }
-              _driverStarted = true;
-              dlog(`Driver started successfully`);
-            } catch (err) {
-              _driverStartError = err instanceof Error ? err.message : String(err);
-              dlog(`Driver startup error: ${_driverStartError}`);
-            }
+            await startDriverForPlatform(platform);
           }
 
           // Start collecting logs once the driver is (or was already) running.
@@ -425,6 +383,62 @@ async function main(): Promise<void> {
         });
     }
   });
+}
+
+/**
+ * Bring up the driver process for a non-vega platform. Sets `_driverStarted` /
+ * `_driverStartError`. Extracted so the vega path can skip it entirely.
+ */
+async function startDriverForPlatform(platform: 'ios' | 'android' | 'tvos' | 'web'): Promise<void> {
+  let driverAlive: boolean;
+  if (platform === 'android') {
+    const probe = new AndroidDriver(sessionName, driverPort);
+    await probe.connect();
+    driverAlive = await probe.isAlive().catch(() => false);
+    probe.close();
+  } else {
+    // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive
+    driverAlive = await isPortOpen(driverPort);
+  }
+  if (driverAlive) {
+    _driverStarted = true;
+    dlog(`Driver already running on port ${driverPort}`);
+    return;
+  }
+
+  // Android: install APKs before starting the driver.
+  // iOS/tvOS: xcodebuild installs silently via DependentProductPaths.
+  // Web: ensure Playwright browser binary is installed.
+  if (platform === 'android') {
+    dlog(`Installing Android driver on ${sessionName}`);
+    await installDriver(sessionName);
+    dlog(`Driver installation complete`);
+  } else if (platform === 'web' && !cdpUrl) {
+    // Only install Playwright browser when launching standalone.
+    // In CDP mode we attach to the host app's browser (e.g. Electron).
+    const browser = webBrowserName(sessionName);
+    await ensurePlaywrightBrowser(browser, dlog);
+  }
+
+  dlog(`Starting ${platform} driver on port ${driverPort}`);
+  try {
+    if (platform === 'ios') {
+      await startIOSDriver(sessionName, driverPort);
+    } else if (platform === 'tvos') {
+      // First install — the runner takes foreground; ask it to hand
+      // focus back to whatever app the user had open.
+      await startTvOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ true);
+    } else if (platform === 'web') {
+      await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl, cdpTargetId);
+    } else {
+      await startAndroidDriver(sessionName, driverPort);
+    }
+    _driverStarted = true;
+    dlog(`Driver started successfully`);
+  } catch (err) {
+    _driverStartError = err instanceof Error ? err.message : String(err);
+    dlog(`Driver startup error: ${_driverStartError}`);
+  }
 }
 
 main().catch((err) => {

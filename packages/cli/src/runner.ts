@@ -6,6 +6,8 @@ import { log } from './verbose.js';
 import { IOSDriver } from './drivers/ios.js';
 import { AndroidDriver } from './drivers/android.js';
 import { WebDriver } from './drivers/web.js';
+import { VegaDriver } from './drivers/vega.js';
+import { VegaCli } from './drivers/vega/cli.js';
 import {
   detectPlatform,
   getDriverPort,
@@ -84,6 +86,20 @@ export async function detectFirstDevice(): Promise<string | undefined> {
     }
   }
 
+  // Vega (Amazon Fire TV): query the vega CLI for a booted device. Best-effort —
+  // the CLI is absent unless the Vega SDK is installed.
+  try {
+    const devices = await new VegaCli().listDevices();
+    const device = devices[0];
+    if (device) {
+      log(`detectFirstDevice: found Vega device "${device.serial}"`);
+      _cachedDeviceId = `vega:${device.serial}`;
+      return _cachedDeviceId;
+    }
+  } catch {
+    /* vega CLI not installed */
+  }
+
   _cachedDeviceId = null;
   return undefined;
 }
@@ -97,7 +113,12 @@ export interface RunResult {
 
 // ── Driver management ─────────────────────────────────────────────────────────
 
-type AnyDriver = IOSDriver | AndroidDriver | WebDriver;
+type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver;
+
+/** Strip the `vega:` prefix to recover the bare Vega selector. */
+function vegaSerial(deviceId: string): string {
+  return deviceId.startsWith('vega:') ? deviceId.slice('vega:'.length) : deviceId;
+}
 
 /** Per-session driver cache (process lifetime). */
 const _driverCache = new Map<string, AnyDriver>();
@@ -196,6 +217,18 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
       );
     }
     driver = webDriver;
+  } else if (platform === 'vega') {
+    // Vega has no driver process/port — control is host-side via the vega CLI.
+    // Start the daemon best-effort for log collection, but never block control on it.
+    startDaemon(deviceId).catch(() => {});
+    const vegaDriver = new VegaDriver(vegaSerial(deviceId));
+    if (!(await vegaDriver.isAlive())) {
+      throw new Error(
+        `No running Vega device matches "${vegaSerial(deviceId)}".\n` +
+          `Boot a VVD and check \`vega device list\`, or install the Vega SDK (\`vega\`/\`kepler\`).`
+      );
+    }
+    driver = vegaDriver;
   } else {
     // Ensure the daemon is running — it handles APK install and driver startup.
     await startDaemon(deviceId);

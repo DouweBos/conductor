@@ -6,6 +6,7 @@ import { printError, printData, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 import {
   inspectIOSToText,
   inspectAndroidToText,
@@ -46,7 +47,7 @@ export async function inspect(
       if (driver instanceof IOSDriver) {
         const hierarchy = await driver.viewHierarchy(false);
         hit = findIOSViewAtPoint(hierarchy.axElement, x, y, tappable);
-      } else if (driver instanceof AndroidDriver) {
+      } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
         const xml = await driver.viewHierarchy();
         hit = findAndroidViewAtPoint(xml, x, y, tappable);
       } else if (driver instanceof WebDriver) {
@@ -80,7 +81,7 @@ export async function inspect(
         const vh = await driver.viewHierarchy();
         const built = buildWebA11y(vh);
         raw = JSON.stringify({ ...vh, elements: built.hierarchy }, null, 2);
-      } else if (driver instanceof AndroidDriver) {
+      } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
         const xml = await driver.viewHierarchy();
         const built = buildAndroidA11y(xml);
         raw = JSON.stringify(built.hierarchy, null, 2);
@@ -104,7 +105,7 @@ export async function inspect(
     } else if (driver instanceof WebDriver) {
       const hierarchy = await driver.viewHierarchy();
       text = inspectWebToText(hierarchy);
-    } else if (driver instanceof AndroidDriver) {
+    } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
       const xml = await driver.viewHierarchy();
       text = inspectAndroidToText(xml);
     } else {

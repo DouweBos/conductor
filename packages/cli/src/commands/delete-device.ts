@@ -1,5 +1,5 @@
 export const HELP = `  delete-device <name-or-id>
-    --platform <ios|tvos|android|web> Scope to a single platform
+    --platform <ios|tvos|android|web> Scope to a single platform (Vega VVDs are managed by Amazon's tooling)
     --all                             Delete all shutdown simulators / non-running AVDs / web sessions`;
 
 import fs from 'fs';
@@ -121,6 +121,14 @@ export async function deleteDevice(
   }
 
   const platform = flags.platform?.toLowerCase();
+  // Vega VVD lifecycle is owned by Amazon's tooling — we can't delete one.
+  if (platform === 'vega' || (nameOrId && nameOrId.startsWith('vega:'))) {
+    printError(
+      "delete-device is not supported on vega (Amazon Fire TV) — manage VVDs via Amazon's tooling.",
+      opts
+    );
+    return 1;
+  }
   const includeIOS = !platform || platform === 'ios';
   const includeTvOS = !platform || platform === 'tvos';
   const includeAndroid = !platform || platform === 'android';

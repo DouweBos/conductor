@@ -120,7 +120,13 @@ export async function workspaceInfo(opts: OutputOptions = {}): Promise<number> {
   const devices = await discoverBootedDevices().catch(() => []);
   let metroPort: number | null = null;
   for (const d of devices) {
-    if (d.platform !== 'ios' && d.platform !== 'tvos' && d.platform !== 'android') continue;
+    if (
+      d.platform !== 'ios' &&
+      d.platform !== 'tvos' &&
+      d.platform !== 'android' &&
+      d.platform !== 'vega'
+    )
+      continue;
     const port = await discoverMetroPortForDevice(d.platform, d.id).catch(() => null);
     if (port) {
       metroPort = port;

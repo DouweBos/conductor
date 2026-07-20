@@ -21,6 +21,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../drivers/wait.js';
 import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 import { cropPng, readPngDimensions } from '../png-crop.js';
@@ -111,7 +112,8 @@ export async function screenshot(
         hierarchyW = info.widthPixels;
         hierarchyH = info.heightPixels;
         el = await waitForWebElement(() => driver.viewHierarchy(), sel);
-      } else if (driver instanceof AndroidDriver) {
+      } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
+        // Vega emits uiautomator-style XML, so it reuses the Android resolver.
         const xml = await driver.viewHierarchy();
         // Android XML root bounds: derive from the first parseable <node bounds="[0,0][W,H]">
         const m = xml.match(/<node[^>]*bounds="\[0,0\]\[(\d+),(\d+)\]"/);

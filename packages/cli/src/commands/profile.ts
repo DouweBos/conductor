@@ -116,6 +116,10 @@ export async function profileCpu(
       await recordIosCpu(sessionName, profileOpts.appId, profileOpts.durationSec, out);
     } else if (platform === 'android') {
       await recordAndroidCpu(sessionName, profileOpts.appId, profileOpts.durationSec, out);
+    } else if (platform === 'vega') {
+      // No native CPU-trace tooling (xctrace/simpleperf) on Vega yet.
+      printError('profile cpu is not yet supported on vega (Amazon Fire TV)', opts);
+      return 1;
     } else {
       printError(`profile cpu is not supported on platform ${platform ?? '(unknown)'}`, opts);
       return 1;

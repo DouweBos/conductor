@@ -7,6 +7,7 @@ import { printError, printSuccess, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 import {
   buildIOSA11y,
   buildAndroidA11y,
@@ -19,7 +20,7 @@ export interface CaptureBundle {
   version: 1;
   capturedAt: string;
   device: {
-    platform: 'ios' | 'android' | 'web' | 'tvos';
+    platform: 'ios' | 'android' | 'web' | 'tvos' | 'vega';
     deviceId: string;
     width: number;
     height: number;
@@ -96,8 +97,9 @@ export async function captureUI(
       hierarchy = { ...vh, elements: built.hierarchy };
       a11ySnapshot = built.a11ySnapshot;
       screenshotBuf = shot;
-    } else if (driver instanceof AndroidDriver) {
-      platform = 'android';
+    } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
+      // Vega emits uiautomator-style XML, so it reuses the Android a11y builder.
+      platform = driver instanceof VegaDriver ? 'vega' : 'android';
       const [info, xml, shot] = await Promise.all([
         driver.deviceInfo(),
         driver.viewHierarchy(),

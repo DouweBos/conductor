@@ -18,6 +18,11 @@
 import { spawn } from 'child_process';
 import { fetchTargets, MetroTarget } from './metro.js';
 import { resolveAndroidTool } from '../../android/sdk.js';
+import { VegaCli } from '../vega/cli.js';
+
+// Standard Metro dev-server ports to probe for the Vega VVD, which — unlike
+// iOS/Android — exposes no host-visible socket mapping we can read.
+const VEGA_METRO_CANDIDATE_PORTS = [8081, 8082];
 
 /**
  * Heuristic to reject ports that obviously aren't a Metro dev server (system
@@ -60,6 +65,32 @@ export async function discoverMetroPortForDevice(
   }
   if (platform === 'ios' || platform === 'tvos') {
     return discoverMetroPortIOS(deviceId);
+  }
+  if (platform === 'vega') {
+    return discoverMetroPortVega(deviceId);
+  }
+  return null;
+}
+
+/**
+ * Locate the Metro port for a Vega VVD. There is no host-visible socket mapping,
+ * so probe the standard Metro ports and accept the first that is a real Metro
+ * server hosting a target for this device (matched by display name when known).
+ */
+async function discoverMetroPortVega(deviceId: string): Promise<number | null> {
+  const displayName = await getDeviceDisplayName('vega', deviceId);
+  for (const port of VEGA_METRO_CANDIDATE_PORTS) {
+    try {
+      const targets = await fetchTargets(port, 'localhost');
+      if (targets.length === 0) continue;
+      // Prefer a name match; fall back to any target (single-device v1).
+      if (!displayName || targets.some((t) => deviceNameMatches(t.deviceName, displayName))) {
+        return port;
+      }
+      return port;
+    } catch {
+      // not Metro on this port — try the next
+    }
   }
   return null;
 }
@@ -191,6 +222,17 @@ export async function getDeviceDisplayName(
       return name || null;
     } catch {
       return null;
+    }
+  }
+  if (platform === 'vega') {
+    // deviceId is `vega:<serial>`; resolve the VVD's reported description.
+    const serial = deviceId.replace(/^vega:/, '');
+    try {
+      const devices = await new VegaCli().listDevices();
+      const match = devices.find((d) => d.serial === serial);
+      return match?.description ?? serial;
+    } catch {
+      return serial;
     }
   }
   return null;

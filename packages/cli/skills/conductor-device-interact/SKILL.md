@@ -1,6 +1,6 @@
 ---
 name: conductor-device-interact
-description: Drive a running iOS simulator, Android emulator, tvOS simulator, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements, typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard keys, opening URLs or deep links, navigating back, or verifying an app change in the real running app.
+description: Drive a running iOS simulator, Android emulator, tvOS simulator, Vega (Amazon Fire TV) virtual device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements, typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys, opening URLs or deep links, navigating back, or verifying an app change in the real running app.
 ---
 
 # Conductor — device interaction
@@ -39,7 +39,7 @@ conductor assert-visible "Dashboard"
 | `conductor tap-on <element>` | Tap by text, id, or `@eN`. `--long-press`, `--double-tap`, `--optional`, `--index <n>` |
 | `conductor input-text <text>` | Type into the focused field |
 | `conductor erase-text [n]` | Erase n characters (default 50) |
-| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …). `--long-press` / `--duration <seconds>` holds tvOS remote buttons |
+| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`) for tvOS / Android TV / vega. `--long-press` / `--duration <seconds>` holds it |
 | `conductor hide-keyboard` | Dismiss the on-screen keyboard |
 | `conductor back` | Press back |
 | `conductor scroll [--direction down\|up\|left\|right]` | Scroll |
@@ -90,7 +90,8 @@ relaunch without the flag. (See `conductor-device-setup`.)
 
 ## Tips
 
-- `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web>` scopes by platform.
+- `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web|vega>` scopes by platform.
+- Vega (Amazon Fire TV) is D-pad driven: navigate with `press-key "Remote Dpad …"`; coordinate `tap-on` also works. `open-link`, `set-location`, gestures, and clipboard are unsupported. See `conductor-device-setup`.
 - Add `--json` for machine-readable output; failed assertions exit non-zero.
 - Run a per-session daemon for many commands (see `conductor-device-setup`).
 - `conductor <command> --help` for exact flags.

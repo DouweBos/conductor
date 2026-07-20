@@ -37,6 +37,11 @@ export async function downloadApp(
     return 1;
   }
 
+  if (platform === 'vega') {
+    printError('download-app is not supported on vega (Amazon Fire TV).', opts);
+    return 1;
+  }
+
   if (platform === 'ios' || platform === 'tvos') {
     // Get the .app bundle path from the simulator
     const getPath = await spawnCommand('xcrun', [

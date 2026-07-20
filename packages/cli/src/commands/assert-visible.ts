@@ -18,6 +18,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 import {
   waitForIOSElement,
   waitForAndroidElement,
@@ -84,7 +85,8 @@ export async function assertVisible(
         );
       } else if (driver instanceof WebDriver) {
         return waitForWebElement(() => driver.viewHierarchy(), sel, timeoutMs);
-      } else if (driver instanceof AndroidDriver) {
+      } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
+        // Vega emits uiautomator-style XML, so it reuses the Android resolver.
         return waitForAndroidElement(() => driver.viewHierarchy(), sel, timeoutMs);
       }
     };

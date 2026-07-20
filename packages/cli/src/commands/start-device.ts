@@ -1,5 +1,5 @@
 export const HELP = `  start-device
-    --platform <ios|android|tvos|web> Boot a simulator/emulator, or start the web driver (Playwright)
+    --platform <ios|android|tvos|web|vega> Boot a simulator/emulator, start the web driver (Playwright), or boot/attach a Vega VVD
     --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
     --avd <name>                      Android AVD name (default: first available; created if missing + --device-type)
     --name <name>                     Set a custom name on the device after creation (iOS/tvOS/web)
@@ -18,6 +18,7 @@ import { nameFile } from '../daemon/protocol.js';
 import { generateWebSessionId } from '../drivers/bootstrap.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { sleep } from '../utils.js';
+import { VegaCli, VegaDevice } from '../drivers/vega/cli.js';
 
 const IOS_BOOT_TIMEOUT_MS = 120_000;
 const ANDROID_BOOT_TIMEOUT_MS = 120_000;
@@ -825,6 +826,81 @@ async function startWebDriver(
   return 0;
 }
 
+// ── Vega (Amazon Fire TV) ───────────────────────────────────────────────────
+
+const VEGA_BOOT_TIMEOUT_MS = 180_000;
+
+/** Pick the target VVD from a device list: by name if given, else first virtual, else first. */
+function pickVegaDevice(devices: VegaDevice[], deviceName?: string): VegaDevice | undefined {
+  return (
+    (deviceName ? devices.find((d) => d.serial === deviceName) : undefined) ??
+    devices.find((d) => d.isVirtual) ??
+    devices[0]
+  );
+}
+
+/**
+ * Boot (or attach to) a Vega Virtual Device. If one is already running we attach;
+ * otherwise we launch it via `vega virtual-device start` and poll `vega device
+ * list` until it appears — mirroring how the Android emulator is booted. Then we
+ * prewarm the log daemon.
+ */
+async function startVega(opts: OutputOptions, deviceName?: string): Promise<number> {
+  const cli = new VegaCli();
+
+  let devices: VegaDevice[];
+  try {
+    devices = await cli.listDevices();
+  } catch {
+    printError(
+      'The Vega SDK CLI (`vega`/`kepler`) was not found. Install it and ensure it is on ' +
+        'PATH (or set CONDUCTOR_VEGA_CLI), then retry.',
+      opts
+    );
+    return 1;
+  }
+
+  let device = pickVegaDevice(devices, deviceName);
+
+  if (!device) {
+    console.log(
+      `No running Vega device — booting a VVD${deviceName ? ` (${deviceName})` : ''} ` +
+        `via \`vega virtual-device start\`...`
+    );
+    try {
+      cli.spawnVirtualDeviceStart(deviceName);
+    } catch (e) {
+      printError(
+        `Failed to start a Vega Virtual Device: ${e instanceof Error ? e.message : String(e)}`,
+        opts
+      );
+      return 1;
+    }
+
+    const deadline = Date.now() + VEGA_BOOT_TIMEOUT_MS;
+    while (Date.now() < deadline && !device) {
+      await sleep(POLL_MS);
+      const current = await cli.listDevices().catch(() => []);
+      device = pickVegaDevice(current, deviceName);
+    }
+
+    if (!device) {
+      printError(
+        `Vega Virtual Device did not become ready within ${VEGA_BOOT_TIMEOUT_MS / 1000}s. ` +
+          `Check \`vega virtual-device list\` — you may need to create one first, or pass ` +
+          `--name <vvd>.`,
+        opts
+      );
+      return 1;
+    }
+  }
+
+  // Prewarm the daemon so device/Metro log collection is already running.
+  await prewarmDriver(`vega:${device.serial}`);
+  printSuccess(`Vega device ready: ${device.serial}`, opts);
+  return 0;
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function startDevice(
@@ -840,7 +916,7 @@ export async function startDevice(
   }
 ): Promise<number> {
   if (!platform) {
-    printError('start-device requires --platform ios|android|tvos|web', opts);
+    printError('start-device requires --platform ios|android|tvos|web|vega', opts);
     return 1;
   }
 
@@ -853,8 +929,10 @@ export async function startDevice(
       return startAndroid(flags.avd, opts, flags.deviceType, flags.osVersion, flags.systemImage);
     case 'web':
       return startWebDriver(opts, flags.browser, flags.name);
+    case 'vega':
+      return startVega(opts, flags.name);
     default:
-      printError(`Unknown platform "${platform}". Use ios, android, tvos, or web.`, opts);
+      printError(`Unknown platform "${platform}". Use ios, android, tvos, web, or vega.`, opts);
       return 1;
   }
 }

@@ -5,6 +5,7 @@ import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { getSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
+import { VegaCli } from '../drivers/vega/cli.js';
 
 async function resolveDeviceId(sessionName: string): Promise<string | undefined> {
   if (sessionName !== 'default') return sessionName;
@@ -33,6 +34,14 @@ export async function installApp(
   if (platform === 'web') {
     printError('install-app is not supported on web. Use launch-app with a URL instead.', opts);
     return 1;
+  } else if (platform === 'vega') {
+    // Vega installs a `.vpkg` through Amazon's CLI; strip the `vega:` id prefix.
+    try {
+      await new VegaCli(deviceId.replace(/^vega:/, '')).installApp(appPath);
+    } catch (e) {
+      printError(`install-app failed: ${e instanceof Error ? e.message : String(e)}`, opts);
+      return 1;
+    }
   } else if (platform === 'ios' || platform === 'tvos') {
     const result = await spawnCommand('xcrun', ['simctl', 'install', deviceId, appPath]);
     if (!result.success) {

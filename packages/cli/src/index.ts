@@ -160,7 +160,7 @@ const COMMAND_HELP: Record<string, string> = {
 const OPTIONS_HELP = `Options:
   --device <id>     Target device ID (also keys the session and daemon)
   --device-name <n> Target a booted device by name (resolved to ID from booted devices)
-  --platform <p>    Filter to devices of this platform (ios, android, tvos, web)
+  --platform <p>    Filter to devices of this platform (ios, android, tvos, web, vega)
   --cdp-url <url>   Attach the web driver to an existing browser over CDP (e.g. an
                     Electron app started with --remote-debugging-port). Remembered per session.
   --cdp-target <id> Pick which CDP page target to control (see \`conductor web-targets\`)

@@ -5,6 +5,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 
 export async function hideKeyboard(
   opts: OutputOptions = {},
@@ -17,6 +18,8 @@ export async function hideKeyboard(
       });
     } else if (driver instanceof WebDriver) {
       // No virtual keyboard on web — no-op
+    } else if (driver instanceof VegaDriver) {
+      // Vega has no keyboard-hide primitive — no-op
     } else if (driver instanceof AndroidDriver) {
       await driver.pressKeyEvent(111); // KEYCODE_ESCAPE
     }

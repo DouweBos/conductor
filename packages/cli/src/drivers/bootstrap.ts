@@ -22,7 +22,7 @@ import { resolveAndroidTool } from '../android/sdk.js';
 
 // ── Platform detection ────────────────────────────────────────────────────────
 
-export type Platform = 'ios' | 'android' | 'tvos' | 'web';
+export type Platform = 'ios' | 'android' | 'tvos' | 'web' | 'vega';
 
 /** Cache: deviceId → platform */
 const _platformCache = new Map<string, Platform>();
@@ -34,6 +34,12 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
   if (deviceId === 'web' || deviceId.startsWith('web:')) {
     _platformCache.set(deviceId, 'web');
     return 'web';
+  }
+
+  // Vega (Amazon Fire TV): "vega:<serial>" (e.g. "vega:VirtualDevice")
+  if (deviceId === 'vega' || deviceId.startsWith('vega:')) {
+    _platformCache.set(deviceId, 'vega');
+    return 'vega';
   }
 
   // Check if it looks like an iOS/tvOS simulator UUID (8-4-4-4-12 hex chars)
@@ -68,6 +74,7 @@ const IOS_BASE_PORT = 1075;
 const TVOS_BASE_PORT = 2075;
 const ANDROID_BASE_PORT = 3763;
 const WEB_BASE_PORT = 4075;
+const VEGA_BASE_PORT = 5075;
 
 const PORT_FILE = path.join(os.homedir(), '.conductor', 'ports.json');
 const PORT_LOCK = PORT_FILE + '.lock';
@@ -79,6 +86,7 @@ interface PortState {
   nextTvosPort: number;
   nextAndroidPort: number;
   nextWebPort: number;
+  nextVegaPort: number;
 }
 
 function readPortState(): PortState {
@@ -91,6 +99,7 @@ function readPortState(): PortState {
       nextTvosPort: TVOS_BASE_PORT,
       nextAndroidPort: ANDROID_BASE_PORT,
       nextWebPort: WEB_BASE_PORT,
+      nextVegaPort: VEGA_BASE_PORT,
     };
   }
 }
@@ -137,6 +146,7 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
     // Ensure counters are initialised for port files created before new platform support
     if (state.nextTvosPort === undefined) state.nextTvosPort = TVOS_BASE_PORT;
     if (state.nextWebPort === undefined) state.nextWebPort = WEB_BASE_PORT;
+    if (state.nextVegaPort === undefined) state.nextVegaPort = VEGA_BASE_PORT;
     let port: number;
     if (platform === 'ios') {
       port = state.nextIosPort++;
@@ -144,6 +154,8 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
       port = state.nextTvosPort++;
     } else if (platform === 'web') {
       port = state.nextWebPort++;
+    } else if (platform === 'vega') {
+      port = state.nextVegaPort++;
     } else {
       port = state.nextAndroidPort++;
     }

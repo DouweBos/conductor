@@ -9,6 +9,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 import { Direction, swipeCoords } from '../utils.js';
 
 function parseCoordPair(s: string): { x: number; y: number } {
@@ -84,7 +85,7 @@ export async function swipe(
         endY = coords.endY * h;
       }
       await driver.swipe(startX, startY, endX, endY, durationMs);
-    } else if (driver instanceof AndroidDriver) {
+    } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
       const { widthPixels: w, heightPixels: h } = await driver.deviceInfo();
       const durationMs = flags.duration ?? 500;
 

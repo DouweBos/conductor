@@ -16,6 +16,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
 
 export async function launchApp(
   appId: string,
@@ -51,6 +52,7 @@ export async function launchApp(
     if (shouldStop) {
       if (driver instanceof IOSDriver) await driver.terminateApp(appId);
       else if (driver instanceof WebDriver) await driver.terminateApp();
+      else if (driver instanceof VegaDriver) await driver.terminateApp(appId);
       else if (driver instanceof AndroidDriver) await driver.stopApp(appId);
     }
 
@@ -58,6 +60,8 @@ export async function launchApp(
       await driver.launchApp(appId, flags.launchArgs);
     } else if (driver instanceof WebDriver) {
       await driver.launchApp(appId);
+    } else if (driver instanceof VegaDriver) {
+      await driver.launchApp(appId, flags.launchArgs);
     } else if (driver instanceof AndroidDriver) {
       await driver.launchApp(appId, flags.launchArgs);
     }

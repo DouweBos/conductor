@@ -7,6 +7,8 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
+import { VegaDriver } from '../drivers/vega.js';
+import { VegaButton } from '../drivers/vega/input.js';
 
 export const VALID_KEYS = [
   'Enter',
@@ -73,6 +75,23 @@ const TVOS_REMOTE_BUTTONS: Partial<
   'Remote Dpad Center': 'select',
   'Remote Menu': 'menu',
   'Remote Media Play Pause': 'playPause',
+};
+
+// vega (Amazon Fire TV) remote: map key names to VegaDriver button values.
+const VEGA_REMOTE_BUTTONS: Partial<Record<Key, VegaButton>> = {
+  'Remote Dpad Up': 'up',
+  'Remote Dpad Down': 'down',
+  'Remote Dpad Left': 'left',
+  'Remote Dpad Right': 'right',
+  'Remote Dpad Center': 'select',
+  'Remote Menu': 'menu',
+  'Remote Media Play Pause': 'playPause',
+  'Remote Media Rewind': 'rewind',
+  'Remote Media Fast Forward': 'fastForward',
+  Home: 'home',
+  Back: 'back',
+  VolumeUp: 'volumeUp',
+  VolumeDown: 'volumeDown',
 };
 
 // Android keyevent codes
@@ -176,6 +195,12 @@ export async function pressKey(
       if (webKey) {
         await driver.pressKey(webKey);
       }
+    } else if (driver instanceof VegaDriver) {
+      const vegaButton = VEGA_REMOTE_BUTTONS[matched];
+      if (vegaButton) {
+        await driver.pressButton(vegaButton);
+      }
+      // Keys not mapped on vega are silently ignored
     } else if (driver instanceof AndroidDriver) {
       const code = ANDROID_KEYCODE[matched];
       if (code !== undefined) {

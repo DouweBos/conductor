@@ -41,7 +41,7 @@ export const ENUM_PARAMS: EnumParam[] = [
     param: '<key>',
     description: 'Key, hardware button, or remote button to press',
     values: VALID_KEYS.map((value) => ({ value })),
-    note: 'Matched case-insensitively. Availability varies by platform: "Remote …" / "TV …" keys target tvOS and Android TV; hardware buttons (Home, Lock, Power, Volume…) target iOS/Android.',
+    note: 'Matched case-insensitively. Availability varies by platform: "Remote …" / "TV …" keys target tvOS, Android TV, and vega (Amazon Fire TV); hardware buttons (Home, Lock, Power, Volume…) target iOS/Android.',
   },
   {
     command: 'scroll',
@@ -73,7 +73,13 @@ export const ENUM_PARAMS: EnumParam[] = [
     param: '--platform',
     description: 'Platform of the device to start',
     // Source: switch in commands/start-device.ts
-    values: [{ value: 'ios' }, { value: 'android' }, { value: 'tvos' }, { value: 'web' }],
+    values: [
+      { value: 'ios' },
+      { value: 'android' },
+      { value: 'tvos' },
+      { value: 'web' },
+      { value: 'vega' },
+    ],
   },
   {
     command: 'install-web',
@@ -115,7 +121,13 @@ export const ENUM_PARAMS: EnumParam[] = [
     command: 'list-devices',
     param: '--platform',
     description: 'Filter listed devices by platform (also a global filter on most commands)',
-    values: [{ value: 'ios' }, { value: 'android' }, { value: 'tvos' }, { value: 'web' }],
+    values: [
+      { value: 'ios' },
+      { value: 'android' },
+      { value: 'tvos' },
+      { value: 'web' },
+      { value: 'vega' },
+    ],
   },
 ];
 

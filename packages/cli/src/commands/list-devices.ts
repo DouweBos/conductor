@@ -7,6 +7,7 @@ import { printData, printError, OutputOptions } from '../output.js';
 import { isPlaywrightBrowserInstalled, webBrowserName } from '../drivers/bootstrap.js';
 import { listDaemonSessions, daemonStatus } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
+import { VegaCli } from '../drivers/vega/cli.js';
 
 export interface Device {
   id: string;
@@ -90,6 +91,21 @@ export async function discoverBootedDevices(): Promise<Device[]> {
         });
       }
     }
+  }
+
+  // Vega (Amazon Fire TV): booted devices reported by the vega CLI. Best-effort —
+  // the CLI is absent unless the Vega SDK is installed.
+  try {
+    for (const d of await new VegaCli().listDevices()) {
+      devices.push({
+        id: `vega:${d.serial}`,
+        name: d.description,
+        platform: 'vega',
+        status: 'booted',
+      });
+    }
+  } catch {
+    /* vega CLI not installed */
   }
 
   return devices;

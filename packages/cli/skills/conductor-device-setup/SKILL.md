@@ -1,6 +1,6 @@
 ---
 name: conductor-device-setup
-description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
+description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, Vega (Amazon Fire TV) virtual devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
 ---
 
 # Conductor — device & app setup
@@ -21,7 +21,7 @@ conductor list-apps          # installed app ids / package names
 
 | Command                                                               | Purpose                                                                    |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `conductor start-device --platform <ios\|android\|tvos\|web>`         | Boot a simulator/emulator or start the web driver                          |
+| `conductor start-device --platform <ios\|android\|tvos\|web\|vega>`   | Boot a simulator/emulator, start the web driver, or attach to a Vega VVD    |
 | `conductor start-device --os-version <n> --device-type <name>`        | Pick OS version + device type (creates if needed)                          |
 | `conductor stop-device [<name-or-id>] [--all]`                        | Shut down device(s)                                                        |
 | `conductor delete-device <name-or-id> [--all]`                        | Delete simulator(s)/AVD(s)/web session(s)                                  |
@@ -46,6 +46,20 @@ Use a distinct fully-qualified `--device web:chromium:<label>` per target (a bar
 `web` gets an auto-generated sub-id instead). Each target is its own session, so
 several webviews can be driven concurrently. Only `type=page` targets are
 controllable. See [Web testing → Attaching to an existing browser](../../../docs/web.md).
+
+### Vega (Amazon Fire TV)
+
+Vega is a React Native OS driven through Amazon's own `vega`/`kepler` CLI (not
+adb/simctl) — install the Vega SDK and put the CLI on `PATH` (or set
+`CONDUCTOR_VEGA_CLI`). `conductor start-device --platform vega` boots a Vega
+Virtual Device (VVD) via `vega virtual-device start` (or attaches if one is
+already running); pass `--name <vvd>` to pick a specific one. Devices show up in
+`list-devices` as `vega:<serial>`. The VVD's
+**developer mode** must be on for input, and the automation toolkit attaches at
+app launch — so launch the app under test via conductor. Navigate with the D-pad
+(`press-key "Remote Dpad …"` / `"Remote Dpad Center"`); coordinate `tap-on` also
+works. Unsupported on Vega: deep links (`open-link`), `set-location`, gestures,
+screen recording, clipboard, `clear-state`/`uninstall-app`.
 
 ## App lifecycle
 

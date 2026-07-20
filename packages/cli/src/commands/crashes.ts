@@ -192,6 +192,9 @@ export async function crashesList(
   reports.push(...listIosReports({ app: listOpts.app, sinceMs }));
   if (platform === 'android' && sessionName !== 'default') {
     reports.push(...(await listAndroidReports(sessionName, { app: listOpts.app, sinceMs })));
+  } else if (platform === 'vega') {
+    // No crash-log retrieval channel on Vega in v1.
+    if (!opts.json) console.error('note: crash reports are not supported on vega (Amazon Fire TV)');
   }
 
   if (opts.json) {
