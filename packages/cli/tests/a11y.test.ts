@@ -8,7 +8,7 @@ import {
 } from '../src/drivers/a11y.js';
 import type { AXElement } from '../src/drivers/ios.js';
 import type { WebViewHierarchy, WebElement } from '../src/drivers/web.js';
-import { bestOverlappingNode } from '../src/daemon/web-server.js';
+import { mergeCanvasNodes, type MirrorNode } from '../src/daemon/web-server.js';
 import { TestSuite, assert, runAll } from './runner.js';
 
 export const a11ySuite = new TestSuite('A11y enrichment');
@@ -216,13 +216,14 @@ a11ySuite.test('capture-ui: bundle shape has expected top-level keys', async () 
   assert(bundle.capabilities.depthData === false, 'depthData must be false for v1');
 });
 
-// ── Canvas mirror focus matching ─────────────────────────────────────────────
+// ── Canvas mirror focus matching (identity, not geometry) ────────────────────
 
-function webEl(opts: Partial<WebElement> & { bounds: WebElement['bounds'] }): WebElement {
+function webEl(opts: Partial<WebElement> & { bounds?: WebElement['bounds'] }): WebElement {
   return {
     role: opts.role ?? 'generic',
     name: opts.name ?? '',
     ref: opts.ref ?? '',
+    testId: opts.testId,
     enabled: opts.enabled ?? true,
     focused: opts.focused ?? false,
     bounds: opts.bounds,
@@ -230,23 +231,42 @@ function webEl(opts: Partial<WebElement> & { bounds: WebElement['bounds'] }): We
   } as WebElement;
 }
 
-a11ySuite.test('mirror: focused canvas tile does not match an overlapping drawer item', async () => {
-  // Repro: an open drawer nav item (real DOM) overlaps a focused canvas tile. The tile's
-  // center falls inside the nav item, but their shapes differ (low IoU) — the nav item must
-  // NOT be picked, so focus is appended to the tile rather than hijacked by the nav item.
-  const navItem = webEl({ ref: 'e34', name: 'Live TV', bounds: { x: 65, y: 570, width: 322, height: 88 } });
-  const tileMirror = { testId: 'row-scroller-0-4', focused: true, role: 'generic', name: '', disabled: false, x: 128, y: 424, width: 240, height: 360 };
-  const match = bestOverlappingNode([navItem], tileMirror);
-  assert(match === null, `expected no match, got ${match && (match as WebElement).ref}`);
+function mirrorNode(opts: Partial<MirrorNode> & { testId: string }): MirrorNode {
+  return {
+    testId: opts.testId,
+    focused: opts.focused ?? false,
+    role: opts.role ?? 'generic',
+    name: opts.name ?? '',
+    disabled: opts.disabled ?? false,
+    x: opts.x ?? 0,
+    y: opts.y ?? 0,
+    width: opts.width ?? 100,
+    height: opts.height ?? 100,
+  };
+}
+
+a11ySuite.test('mirror: focused canvas tile does not hijack an overlapping drawer item', async () => {
+  // An open drawer nav item (real DOM) overlaps the focused canvas tile. The tile is canvas-only
+  // (no matching testId in the ARIA tree), so it must be surfaced as its own focused node — the
+  // geometrically-overlapping nav item must stay unfocused.
+  const nav = webEl({ ref: 'e34', name: 'Live TV', testId: 'primary-navigation-live-tv', bounds: { x: 65, y: 570, width: 322, height: 88 } });
+  const els: WebElement[] = [nav];
+  mergeCanvasNodes(els, [mirrorNode({ testId: 'row-scroller-0-4', focused: true, x: 128, y: 424, width: 240, height: 360 })]);
+
+  assert(nav.focused === false, 'overlapping nav item must not be focused');
+  const tile = els.find((e) => e.testId === 'row-scroller-0-4');
+  assert(!!tile && tile.focused === true, 'focused tile must be appended as its own focused node');
 });
 
-a11ySuite.test('mirror: an offset-but-coincident node still matches via center bonus', async () => {
-  // A canvas node slightly offset from its ARIA counterpart (same size/shape, high IoU)
-  // should still match so the center-inside bonus keeps rescuing genuine matches.
-  const aria = webEl({ ref: 'e10', bounds: { x: 100, y: 100, width: 240, height: 360 } });
-  const mirror = { testId: 'tile-1', focused: true, role: 'generic', name: '', disabled: false, x: 110, y: 108, width: 240, height: 360 };
-  const match = bestOverlappingNode([aria], mirror);
-  assert(match !== null && (match as WebElement).ref === 'e10', 'expected coincident node to match');
+a11ySuite.test('mirror: focus joins an existing node by testId with no duplicate', async () => {
+  // The focused tile IS in the ARIA tree (its element carries the same data-testid, read
+  // natively). Focus stamps that node in place — no second node is appended.
+  const tileNode = webEl({ ref: 'e35', testId: 'row-scroller-0-4', bounds: { x: 128, y: 424, width: 240, height: 360 } });
+  const els: WebElement[] = [tileNode];
+  mergeCanvasNodes(els, [mirrorNode({ testId: 'row-scroller-0-4', focused: true, x: 128, y: 424, width: 240, height: 360 })]);
+
+  assert(tileNode.focused === true, 'existing node must receive focus');
+  assert(els.length === 1, `expected no duplicate node, got ${els.length}`);
 });
 
 if (require.main === module) {
