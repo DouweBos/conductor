@@ -92,6 +92,7 @@ import { listOptions, HELP as optionsHelp } from './commands/options.js';
 import { webTargets, HELP as webTargetsHelp } from './commands/web-targets.js';
 import { getSession, updateSession } from './session.js';
 import { pickDevice } from './device-picker.js';
+import { parseCdpDeviceId } from './drivers/cdp-discovery.js';
 import { checkForUpdates } from './update-check.js';
 import { findPkgRoot } from './pkg-root.js';
 import fs from 'fs';
@@ -371,6 +372,9 @@ async function main(): Promise<void> {
   if (isWebSession && !NO_DEVICE_COMMANDS.has(command)) {
     const cdpUrlFlag = argv['cdp-url'] as string | undefined;
     const cdpTargetFlag = argv['cdp-target'] as string | undefined;
+    // A discovered `web:cdp:<port>:<target>` device id is self-describing —
+    // derive the CDP url/target from it so it's drivable with no --cdp-* flags.
+    const fromDeviceId = parseCdpDeviceId(sessionName);
     if (cdpUrlFlag || cdpTargetFlag) {
       if (cdpUrlFlag) process.env.CONDUCTOR_CDP_URL = cdpUrlFlag;
       if (cdpTargetFlag) process.env.CONDUCTOR_CDP_TARGET_ID = cdpTargetFlag;
@@ -381,6 +385,11 @@ async function main(): Promise<void> {
         },
         sessionName
       );
+    } else if (fromDeviceId) {
+      if (!process.env.CONDUCTOR_CDP_URL) process.env.CONDUCTOR_CDP_URL = fromDeviceId.cdpUrl;
+      if (!process.env.CONDUCTOR_CDP_TARGET_ID) {
+        process.env.CONDUCTOR_CDP_TARGET_ID = fromDeviceId.targetId;
+      }
     } else {
       const saved = await getSession(sessionName);
       if (saved.cdpUrl && !process.env.CONDUCTOR_CDP_URL) {

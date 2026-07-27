@@ -47,6 +47,13 @@ Use a distinct fully-qualified `--device web:chromium:<label>` per target (a bar
 several webviews can be driven concurrently. Only `type=page` targets are
 controllable. See [Web testing → Attaching to an existing browser](../../../docs/web.md).
 
+**Discovery:** endpoints on the conventional debugging ports (9222–9229 on
+localhost) are found automatically — `list-devices` shows each webview as a
+booted `web:cdp:<port>:<targetId>` device. That id is self-describing, so you can
+drive it directly (`conductor --device web:cdp:9222:<targetId> <cmd>`) without
+`--cdp-url`/`--cdp-target`. Use `web-targets --cdp-url <url>` for endpoints on a
+non-default port, or to list targets before binding.
+
 ### Vega (Amazon Fire TV)
 
 Vega is a React Native OS driven through Amazon's own `vega`/`kepler` CLI (not

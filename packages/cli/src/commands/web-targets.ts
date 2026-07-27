@@ -7,46 +7,8 @@
  * Playwright browser and works before any daemon session exists. Use the printed
  * target IDs with `--cdp-url` / `--cdp-target` to bind a session to a tile.
  */
-import http from 'http';
 import { printData } from '../output.js';
-
-interface CdpTarget {
-  id: string;
-  type: string;
-  title: string;
-  url: string;
-  webSocketDebuggerUrl?: string;
-}
-
-/** Derive the `http://host:port` base from a CDP URL (which may be ws:// or include a path). */
-function httpBase(cdpUrl: string): string {
-  const u = new URL(cdpUrl);
-  const proto = u.protocol === 'https:' || u.protocol === 'wss:' ? 'https:' : 'http:';
-  return `${proto}//${u.host}`;
-}
-
-function fetchTargets(cdpUrl: string): Promise<CdpTarget[]> {
-  const url = `${httpBase(cdpUrl)}/json/list`;
-  return new Promise((resolve, reject) => {
-    const req = http.get(url, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (c: Buffer) => chunks.push(c));
-      res.on('end', () => {
-        if ((res.statusCode ?? 0) >= 300) {
-          reject(new Error(`HTTP ${res.statusCode} from ${url}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')) as CdpTarget[]);
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-    req.setTimeout(5000, () => req.destroy(new Error(`Timed out fetching ${url}`)));
-    req.on('error', reject);
-  });
-}
+import { fetchCdpTargets } from '../drivers/cdp-discovery.js';
 
 export async function webTargets(
   cdpUrl: string | undefined,
@@ -60,9 +22,9 @@ export async function webTargets(
     return 1;
   }
 
-  let targets: CdpTarget[];
+  let targets;
   try {
-    targets = await fetchTargets(cdpUrl);
+    targets = await fetchCdpTargets(cdpUrl);
   } catch (err) {
     console.error(
       `Could not reach CDP endpoint at ${cdpUrl}: ${err instanceof Error ? err.message : String(err)}`

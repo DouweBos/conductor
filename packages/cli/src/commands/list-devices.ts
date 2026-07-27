@@ -8,6 +8,7 @@ import { isPlaywrightBrowserInstalled, webBrowserName } from '../drivers/bootstr
 import { listDaemonSessions, daemonStatus } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
 import { VegaCli } from '../drivers/vega/cli.js';
+import { discoverCdpDevices } from '../drivers/cdp-discovery.js';
 
 export interface Device {
   id: string;
@@ -107,6 +108,10 @@ export async function discoverBootedDevices(): Promise<Device[]> {
   } catch {
     /* vega CLI not installed */
   }
+
+  // External CDP endpoints (e.g. an Electron app started with
+  // --remote-debugging-port): one device per discovered webview/tile.
+  devices.push(...(await discoverCdpDevices()));
 
   return devices;
 }
