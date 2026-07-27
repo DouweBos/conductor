@@ -8,6 +8,7 @@ import {
 } from '../src/drivers/a11y.js';
 import type { AXElement } from '../src/drivers/ios.js';
 import type { WebViewHierarchy, WebElement } from '../src/drivers/web.js';
+import { bestOverlappingNode } from '../src/daemon/web-server.js';
 import { TestSuite, assert, runAll } from './runner.js';
 
 export const a11ySuite = new TestSuite('A11y enrichment');
@@ -213,6 +214,39 @@ a11ySuite.test('capture-ui: bundle shape has expected top-level keys', async () 
   }
   assert(bundle.capabilities.perViewPixels === false, 'perViewPixels must be false for v1');
   assert(bundle.capabilities.depthData === false, 'depthData must be false for v1');
+});
+
+// ── Canvas mirror focus matching ─────────────────────────────────────────────
+
+function webEl(opts: Partial<WebElement> & { bounds: WebElement['bounds'] }): WebElement {
+  return {
+    role: opts.role ?? 'generic',
+    name: opts.name ?? '',
+    ref: opts.ref ?? '',
+    enabled: opts.enabled ?? true,
+    focused: opts.focused ?? false,
+    bounds: opts.bounds,
+    children: opts.children,
+  } as WebElement;
+}
+
+a11ySuite.test('mirror: focused canvas tile does not match an overlapping drawer item', async () => {
+  // Repro: an open drawer nav item (real DOM) overlaps a focused canvas tile. The tile's
+  // center falls inside the nav item, but their shapes differ (low IoU) — the nav item must
+  // NOT be picked, so focus is appended to the tile rather than hijacked by the nav item.
+  const navItem = webEl({ ref: 'e34', name: 'Live TV', bounds: { x: 65, y: 570, width: 322, height: 88 } });
+  const tileMirror = { testId: 'row-scroller-0-4', focused: true, role: 'generic', name: '', disabled: false, x: 128, y: 424, width: 240, height: 360 };
+  const match = bestOverlappingNode([navItem], tileMirror);
+  assert(match === null, `expected no match, got ${match && (match as WebElement).ref}`);
+});
+
+a11ySuite.test('mirror: an offset-but-coincident node still matches via center bonus', async () => {
+  // A canvas node slightly offset from its ARIA counterpart (same size/shape, high IoU)
+  // should still match so the center-inside bonus keeps rescuing genuine matches.
+  const aria = webEl({ ref: 'e10', bounds: { x: 100, y: 100, width: 240, height: 360 } });
+  const mirror = { testId: 'tile-1', focused: true, role: 'generic', name: '', disabled: false, x: 110, y: 108, width: 240, height: 360 };
+  const match = bestOverlappingNode([aria], mirror);
+  assert(match !== null && (match as WebElement).ref === 'e10', 'expected coincident node to match');
 });
 
 if (require.main === module) {

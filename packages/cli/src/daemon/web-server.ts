@@ -533,7 +533,7 @@ async function stampFocusFromDocumentActiveElement(
 
 // ── Canvas DOM-inspector mirror (webtv) ──────────────────────────────────────
 
-interface MirrorNode {
+export interface MirrorNode {
   testId: string;
   focused: boolean;
   role: string;
@@ -544,6 +544,10 @@ interface MirrorNode {
   width: number;
   height: number;
 }
+
+/** Minimum IoU before a center-inside hit counts — stops a dissimilar overlapping node
+ * (e.g. an open drawer item straddling a canvas tile) from hijacking the tile's focus. */
+const CENTER_BONUS_MIN_IOU = 0.35;
 
 /** IoU + center-inside score of a candidate node's bounds against a mirror rect. */
 function overlapScore(
@@ -560,7 +564,10 @@ function overlapScore(
   const iou = union > 0 ? inter / union : 0;
   const mcx = m.x + m.width / 2;
   const mcy = m.y + m.height / 2;
+  // The +1 rescues an offset-but-same node; gate it on real overlap so it stays a
+  // tiebreaker for genuine matches rather than an override for weakly-overlapping ones.
   const centerInside =
+    iou >= CENTER_BONUS_MIN_IOU &&
     mcx >= bounds.x &&
     mcx <= bounds.x + bounds.width &&
     mcy >= bounds.y &&
@@ -569,7 +576,7 @@ function overlapScore(
 }
 
 /** Find the existing tree node whose bounds best overlap a mirror rect (>0.5 score). */
-function bestOverlappingNode(elements: WebElement[], m: MirrorNode): WebElement | null {
+export function bestOverlappingNode(elements: WebElement[], m: MirrorNode): WebElement | null {
   let best: WebElement | null = null;
   let bestScore = 0.5;
   const walk = (els: WebElement[]): void => {
