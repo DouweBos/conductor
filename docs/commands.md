@@ -89,7 +89,7 @@ Both accept the same disambiguators as `tap-on`: `--id`, `--text`,
 
 | Command           | What it does                                                               |
 | ----------------- | -------------------------------------------------------------------------- |
-| `start-device`    | Boot a simulator or emulator by name or id.                                |
+| `start-device`    | Boot a simulator or emulator by name or id. Android AVDs auto-created here get a 4096MB RAM floor (`--memory <mb>` to override). |
 | `stop-device`     | Shut it down.                                                              |
 | `delete-device`   | Delete a simulator / AVD.                                                  |
 | `list-devices`    | List bootable devices and which are currently booted.                      |

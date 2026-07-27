@@ -23,6 +23,7 @@ conductor list-apps          # installed app ids / package names
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `conductor start-device --platform <ios\|android\|tvos\|web\|vega>`   | Boot a simulator/emulator, start the web driver, or attach to a Vega VVD    |
 | `conductor start-device --os-version <n> --device-type <name>`        | Pick OS version + device type (creates if needed)                          |
+| `conductor start-device --platform android --avd <name> --device-type <profile> --memory <mb>` | Create an Android AVD with a RAM floor (default 4096MB; only raises, creation-time only) |
 | `conductor stop-device [<name-or-id>] [--all]`                        | Shut down device(s)                                                        |
 | `conductor delete-device <name-or-id> [--all]`                        | Delete simulator(s)/AVD(s)/web session(s)                                  |
 | `conductor set-location --lat <n> --lng <n>`                          | Set GPS coordinates                                                        |

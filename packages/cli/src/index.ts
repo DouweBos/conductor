@@ -416,6 +416,7 @@ async function main(): Promise<void> {
         deviceType: argv['device-type'] as string | undefined,
         systemImage: argv['system-image'] as string | undefined,
         browser: argv['browser'] as string | undefined,
+        memory: argv['memory'] !== undefined ? Number(argv['memory']) : undefined,
       });
       break;
 

@@ -5,11 +5,15 @@ export const HELP = `  start-device
     --name <name>                     Set a custom name on the device after creation (iOS/tvOS/web)
     --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K") or
                                       Android device profile (e.g. "pixel_7"); creates if needed
+    --memory <mb>                     Android only: RAM (MB) for a newly-created AVD (default: 4096).
+                                      Only raises; applied at creation time, never to an existing AVD
     --system-image <id>               Android only: override auto-picked system image
                                       (e.g. "system-images;android-34;google_apis;arm64-v8a")
     --browser <chromium|firefox|webkit> Web only: which Playwright browser to launch (default: chromium)`;
 
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { spawn } from 'child_process';
 import { spawnCommand, prewarmDriver } from '../runner.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
@@ -23,6 +27,11 @@ import { VegaCli, VegaDevice } from '../drivers/vega/cli.js';
 const IOS_BOOT_TIMEOUT_MS = 120_000;
 const ANDROID_BOOT_TIMEOUT_MS = 120_000;
 const POLL_MS = 1000;
+
+// Stock TV device profiles default to 1024MB RAM, which OOM-kills heavy RN debug
+// builds during JS bundle load. Raise freshly-created AVDs to this floor.
+const ANDROID_AVD_RAM_FLOOR_MB = 4096;
+const ANDROID_AVD_HEAP_MB = 512;
 
 // ── iOS ───────────────────────────────────────────────────────────────────────
 
@@ -572,6 +581,43 @@ export function buildAvdmanagerCreateArgs(
   return ['create', 'avd', '-n', avdName, '-k', systemImage, '-d', deviceProfile];
 }
 
+/** Parse a config.ini RAM value; only plain integer MB counts — `M`-suffixed or bogus values are 0. */
+function parsePlainMb(value: string): number {
+  const m = /^(\d+)$/.exec(value.trim());
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * Rewrite an AVD `config.ini` to raise `hw.ramSize`/`vm.heapSize` to the given floors.
+ * Pure and exported for tests. Values are written as plain integer MB — an `M` suffix
+ * makes the emulator silently fall back to 1024MB. Only ever raises; higher existing
+ * values are kept, and non-integer/`M`-suffixed existing values are treated as 0 so they
+ * get overwritten. Missing keys are appended; all other lines/ordering are preserved.
+ */
+export function raiseAvdConfigRam(
+  configIni: string,
+  targetRamMb: number,
+  heapMb: number = ANDROID_AVD_HEAP_MB
+): string {
+  const raiseKey = (contents: string, key: string, target: number): string => {
+    const lines = contents.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const m = /^(\s*)([^=\s]+)(\s*=\s*)(.*)$/.exec(lines[i]);
+      if (!m || m[2] !== key) continue;
+      const next = Math.max(parsePlainMb(m[4]), target);
+      lines[i] = `${m[1]}${key}${m[3]}${next}`;
+      return lines.join('\n');
+    }
+    let out = contents;
+    if (out.length > 0 && !out.endsWith('\n')) out += '\n';
+    return `${out}${key} = ${target}\n`;
+  };
+
+  let result = raiseKey(configIni, 'hw.ramSize', targetRamMb);
+  result = raiseKey(result, 'vm.heapSize', heapMb);
+  return result;
+}
+
 async function listInstalledSystemImages(): Promise<string[]> {
   const result = await spawnCommand('sdkmanager', ['--list_installed']);
   if (!result.success) {
@@ -606,7 +652,8 @@ async function createAndroidAVD(
   avdName: string,
   deviceProfile: string,
   apiLevel: string | undefined,
-  systemImageOverride: string | undefined
+  systemImageOverride: string | undefined,
+  targetRamMb: number
 ): Promise<void> {
   const arch = pickAndroidArch();
 
@@ -649,6 +696,23 @@ async function createAndroidAVD(
   if (!avds.includes(avdName)) {
     throw new Error(
       `AVD "${avdName}" was not registered after creation (not in emulator -list-avds).`
+    );
+  }
+
+  // Raise RAM above the stock profile default so heavy RN debug builds aren't OOM-killed.
+  const avdHome = process.env.ANDROID_AVD_HOME || path.join(os.homedir(), '.android', 'avd');
+  const configPath = path.join(avdHome, `${avdName}.avd`, 'config.ini');
+  if (fs.existsSync(configPath)) {
+    try {
+      const current = fs.readFileSync(configPath, 'utf-8');
+      fs.writeFileSync(configPath, raiseAvdConfigRam(current, targetRamMb), 'utf-8');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`Warning: could not raise RAM for AVD "${avdName}" (${msg}). Continuing.`);
+    }
+  } else {
+    console.warn(
+      `Warning: config.ini not found for AVD "${avdName}" at ${configPath}. Continuing.`
     );
   }
 }
@@ -697,7 +761,8 @@ async function startAndroid(
   opts: OutputOptions,
   deviceType?: string,
   osVersion?: string,
-  systemImage?: string
+  systemImage?: string,
+  memory?: number
 ): Promise<number> {
   let avds: string[];
   try {
@@ -721,8 +786,9 @@ async function startAndroid(
       return 1;
     }
     console.log(`No AVD "${avdName}" found. Creating one with device profile "${deviceType}"...`);
+    const targetRamMb = memory && memory > 0 ? memory : ANDROID_AVD_RAM_FLOOR_MB;
     try {
-      await createAndroidAVD(avdName, deviceType!, osVersion, systemImage);
+      await createAndroidAVD(avdName, deviceType!, osVersion, systemImage, targetRamMb);
     } catch (e) {
       printError(e instanceof Error ? e.message : String(e), opts);
       return 1;
@@ -913,6 +979,7 @@ export async function startDevice(
     deviceType?: string;
     systemImage?: string;
     browser?: string;
+    memory?: number;
   }
 ): Promise<number> {
   if (!platform) {
@@ -926,7 +993,14 @@ export async function startDevice(
     case 'tvos':
       return startTvOS(flags.osVersion, opts, flags.name, flags.deviceType);
     case 'android':
-      return startAndroid(flags.avd, opts, flags.deviceType, flags.osVersion, flags.systemImage);
+      return startAndroid(
+        flags.avd,
+        opts,
+        flags.deviceType,
+        flags.osVersion,
+        flags.systemImage,
+        flags.memory
+      );
     case 'web':
       return startWebDriver(opts, flags.browser, flags.name);
     case 'vega':

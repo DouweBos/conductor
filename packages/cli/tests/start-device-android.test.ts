@@ -4,6 +4,7 @@ import {
   parseInstalledSystemImages,
   pickSystemImage,
   buildAvdmanagerCreateArgs,
+  raiseAvdConfigRam,
 } from '../src/commands/start-device.js';
 
 export const startDeviceAndroid = new TestSuite('start-device (Android AVD creation)');
@@ -97,4 +98,36 @@ startDeviceAndroid.test('buildAvdmanagerCreateArgs constructs expected argv', as
       ]),
     `unexpected argv: ${JSON.stringify(args)}`
   );
+});
+
+startDeviceAndroid.test('raiseAvdConfigRam appends missing keys to a fresh config', async () => {
+  const config = ['hw.cpu.arch = arm64', 'image.sysdir.1 = system-images/android-34/'].join('\n');
+  const out = raiseAvdConfigRam(config, 4096);
+  assert(/^hw\.ramSize = 4096$/m.test(out), `expected hw.ramSize = 4096, got:\n${out}`);
+  assert(/^vm\.heapSize = 512$/m.test(out), `expected vm.heapSize = 512, got:\n${out}`);
+  // Unrelated keys are untouched.
+  assert(out.includes('hw.cpu.arch = arm64'), 'hw.cpu.arch should be preserved');
+  assert(out.includes('image.sysdir.1 = system-images/android-34/'), 'image.sysdir.1 preserved');
+});
+
+startDeviceAndroid.test('raiseAvdConfigRam preserves a higher existing hw.ramSize', async () => {
+  const config = ['hw.ramSize = 8192', 'vm.heapSize = 1024'].join('\n');
+  const out = raiseAvdConfigRam(config, 4096);
+  assert(/^hw\.ramSize = 8192$/m.test(out), `expected hw.ramSize kept at 8192, got:\n${out}`);
+  assert(/^vm\.heapSize = 1024$/m.test(out), `expected vm.heapSize kept at 1024, got:\n${out}`);
+});
+
+startDeviceAndroid.test('raiseAvdConfigRam replaces a bogus M-suffixed value with a plain integer', async () => {
+  const config = 'hw.ramSize = 2048M';
+  const out = raiseAvdConfigRam(config, 4096);
+  assert(/^hw\.ramSize = 4096$/m.test(out), `expected plain 4096, got:\n${out}`);
+  assert(!out.includes('4096M'), 'value must not carry an M suffix');
+});
+
+startDeviceAndroid.test('raiseAvdConfigRam handles key=value spacing and updates in place', async () => {
+  const config = ['foo=bar', 'hw.ramSize=1024', 'baz=qux'].join('\n');
+  const out = raiseAvdConfigRam(config, 4096);
+  assert(out.includes('hw.ramSize=4096'), `expected in-place update preserving spacing, got:\n${out}`);
+  assert(out.startsWith('foo=bar\n'), 'ordering/other lines preserved');
+  assert(out.includes('baz=qux'), 'trailing unrelated key preserved');
 });
