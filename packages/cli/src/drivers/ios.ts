@@ -144,15 +144,36 @@ export class IOSDriver {
     this.hierarchyCache = null;
   }
 
-  private simctl(args: string[]): Promise<void> {
+  private simctl(args: string[], childEnv?: Record<string, string>): Promise<void> {
     const _id = this.requireDeviceId();
     return new Promise((resolve, reject) => {
-      const proc = spawn('xcrun', ['simctl', ...args], { stdio: 'ignore' });
+      const proc = spawn('xcrun', ['simctl', ...args], {
+        stdio: 'ignore',
+        env: childEnv ? this.launchEnv(childEnv) : undefined,
+      });
       proc.on('close', (code) =>
         code === 0 ? resolve() : reject(new Error(`xcrun simctl ${args[0]} failed (exit ${code})`))
       );
       proc.on('error', reject);
     });
+  }
+
+  /**
+   * Build the env for a `simctl launch` that must forward vars into the target
+   * app. `simctl` copies `SIMCTL_CHILD_*` vars into the app's real environment at
+   * exec() — the only path dyld honours for restricted vars like
+   * DYLD_INSERT_LIBRARIES. Inherited SIMCTL_CHILD_* are stripped first so stale
+   * values (from a parent shell) can't override ours and silently break injection.
+   */
+  private launchEnv(childEnv: Record<string, string>): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    for (const key of Object.keys(env)) {
+      if (key.startsWith('SIMCTL_CHILD_')) delete env[key];
+    }
+    for (const [key, value] of Object.entries(childEnv)) {
+      env[`SIMCTL_CHILD_${key}`] = value;
+    }
+    return env;
   }
 
   private simctlCapture(args: string[]): Promise<string> {
@@ -247,15 +268,32 @@ export class IOSDriver {
     this.invalidateHierarchyCache();
   }
 
-  async launchApp(bundleId: string, args?: Record<string, string>): Promise<void> {
-    if (args && Object.keys(args).length > 0) {
+  async launchApp(
+    bundleId: string,
+    args?: Record<string, string>,
+    inject?: { dylibPath: string; inprocPort: number }
+  ): Promise<void> {
+    const argPairs: string[] = [];
+    for (const [key, value] of Object.entries(args ?? {})) {
+      argPairs.push(`-${key}`, value);
+    }
+
+    if (inject) {
+      // Injection requires simctl launch with SIMCTL_CHILD_ env — the XCTest
+      // /launchApp path only activates and can't set environment.
+      const deviceId = this.requireDeviceId();
+      await this.simctl(['terminate', deviceId, bundleId]).catch(() => {});
+      await this.simctl(
+        ['launch', '--terminate-running-process', deviceId, bundleId, ...argPairs],
+        {
+          DYLD_INSERT_LIBRARIES: inject.dylibPath,
+          CONDUCTOR_INPROC_PORT: String(inject.inprocPort),
+        }
+      );
+    } else if (argPairs.length > 0) {
       const deviceId = this.requireDeviceId();
       // xctest /launchApp doesn't support launch args — use simctl
       await this.simctl(['terminate', deviceId, bundleId]).catch(() => {});
-      const argPairs: string[] = [];
-      for (const [key, value] of Object.entries(args)) {
-        argPairs.push(`-${key}`, value);
-      }
       await this.simctl(['launch', '--terminate-running-process', deviceId, bundleId, ...argPairs]);
     } else {
       await this.post('launchApp', { bundleId });

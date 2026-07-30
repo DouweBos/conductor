@@ -29,6 +29,46 @@ conductor capture-ui --output /tmp/screen.json
 conductor tap-on @e5
 ```
 
+## Native in-process inspection (iOS/tvOS simulator)
+
+The commands above observe the app **externally** (accessibility snapshots), so
+they can't see real component colors, fonts, or the view-controller stack. When
+you need that native detail, launch the app with an injected in-process library
+and use the `native-*` commands. Requires `launch-app <appId> --inject` first
+(iOS/tvOS simulator only).
+
+| Command | Purpose |
+|---|---|
+| `conductor native-ping` | Verify the injected in-process control library is alive |
+| `conductor native-inspect` | Real UIView/CALayer tree: resolved colors (`#RRGGBBAA`), fonts, text (incl. React Native Fabric), corner radius, borders, shadows, gradients, and each node's `absFrame` |
+| `conductor native-nav` | Navigation state: `UINavigationController` stacks, tab selection, presented controllers, titles |
+| `conductor native-screenshot --output <p.png>` | In-process PNG of the key window |
+| `conductor native-image <x,y,w,h> --output <p.png>` | Extract a component as a PNG — pass a node's `absFrame` from `native-inspect` |
+| `conductor native-snapshot <id> --output <p.png>` | Isolated PNG of one view's own content (transparent) — per-layer texture for a 3D explosion; `--with-subviews` composites the subtree |
+| `conductor native-console [--since <n>]` / `native-network [--since <n>]` | App stdout/stderr + captured HTTP; poll with the returned `cursor` |
+| `conductor native-heap --pattern <s> \| --class <name> \| --read <addr> [--key <keyPath>]` | Live-object browser (find classes/instances, read a property off an address) |
+| `conductor native-appearance <light\|dark\|system> \| --direction <ltr\|rtl> \| --anim-speed <n>` | Force appearance / RTL / freeze animations app-wide |
+| `conductor native-eval '<swift>'` | Compile & run arbitrary Swift inside the app (full UIKit / ObjC-runtime access); `--mode full` for a whole function body. e.g. `native-eval 'UIScreen.main.bounds'` |
+| `conductor native-raw <path>` | Escape hatch — GET any in-process endpoint (e.g. `'/get?id=..&keyPath=layer.cornerRadius'`, `'/class?id=..'`, `'/responders?id=..'`, `'/swiftui'`, `'/defaults'`, `'/focus'`, `'/snapshots?scale=0.5'`). Full list in `packages/ios-inproc/README.md`. |
+| `conductor native-view <id>` | Full property detail for one view (class chain, transform, layer, gestures, text/font) |
+| `conductor native-set <id> <key> <value>` | **Live-edit** a property: alpha, hidden, backgroundColor, tintColor, cornerRadius, borderWidth, borderColor, frame, text |
+| `conductor native-constraints <id>` | Auto Layout constraints affecting a view + ambiguity |
+| `conductor native-hittest <x,y>` | Topmost view at a point + ancestor chain (select-by-point) |
+| `conductor native-highlight <id>` | Flash a highlight over the view on the device |
+| `conductor native-find [--class <name>] [--text <s>]` | Search views by class and/or text |
+
+Every `native-inspect` node has a stable `id` (for this launch). The Reveal-style loop:
+inspect → pick an `id` → `native-view` for detail → `native-set` to edit live → see it
+on the device. IDs are pointer-based and reset each launch, so re-inspect after relaunch.
+
+```bash
+conductor launch-app com.example.app --inject
+conductor native-inspect                              # tree with ids, colors, fonts, absFrame
+conductor native-view 0x10280d0c0                     # full detail for a view
+conductor native-set 0x10280d0c0 backgroundColor '#FF3B30FF'   # live-edit, visible on device
+conductor native-image 816,286,288,288 --output /tmp/avatar.png
+```
+
 ## Assertions
 
 | Command | Purpose |

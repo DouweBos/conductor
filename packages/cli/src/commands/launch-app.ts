@@ -8,12 +8,17 @@ export const HELP = `  launch-app <appId>                  Launch app (saves to 
                                       the user out of every app on the simulator. Cannot be undone
                                       without re-entering credentials.
     --no-stop-app                     Do not stop the app before launching (resume instead of restart)
-    --argument key=value              Set launch argument (repeatable)`;
+    --argument key=value              Set launch argument (repeatable)
+    --inject                          iOS simulator only: inject the in-process control library
+                                      (DYLD_INSERT_LIBRARIES) so native-* inspection commands work`;
 
 import { runDirect } from '../runner.js';
 import { updateSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
+import { getInprocDylibPath } from '../drivers/bootstrap.js';
+import { getInprocPort, InprocClient } from '../drivers/ios-inproc.js';
+import fs from 'fs';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
@@ -28,6 +33,7 @@ export async function launchApp(
     clearKeychain?: boolean;
     stopApp?: boolean;
     launchArgs?: Record<string, string>;
+    inject?: boolean;
   } = {}
 ): Promise<number> {
   if (!appId) {
@@ -44,6 +50,8 @@ export async function launchApp(
     );
   }
 
+  let injectionNote = '';
+
   const result = await runDirect(async (driver) => {
     if (flags.clearKeychain) await driver.clearKeychain();
     if (flags.clearState) await driver.clearAppState(appId);
@@ -57,7 +65,25 @@ export async function launchApp(
     }
 
     if (driver instanceof IOSDriver) {
-      await driver.launchApp(appId, flags.launchArgs);
+      if (flags.inject) {
+        const dylibPath = await getInprocDylibPath(driver.platform);
+        if (!fs.existsSync(dylibPath)) {
+          throw new Error(
+            `--inject: in-process library not found at ${dylibPath}. ` +
+              `Build it with packages/ios-inproc/tools/build-inproc-dylib.sh`
+          );
+        }
+        const deviceId = driver.deviceId;
+        if (!deviceId) throw new Error('--inject requires a resolved iOS simulator device');
+        const inprocPort = getInprocPort(deviceId);
+        await driver.launchApp(appId, flags.launchArgs, { dylibPath, inprocPort });
+        const ready = await new InprocClient(inprocPort).waitUntilReady(10000);
+        injectionNote = ready
+          ? ` (in-process control ready on :${inprocPort})`
+          : ` (warning: injected but in-process server did not answer on :${inprocPort})`;
+      } else {
+        await driver.launchApp(appId, flags.launchArgs);
+      }
     } else if (driver instanceof WebDriver) {
       await driver.launchApp(appId);
     } else if (driver instanceof VegaDriver) {
@@ -68,7 +94,7 @@ export async function launchApp(
   }, sessionName);
 
   if (result.success) {
-    printSuccess(`launch-app "${appId}" — done`, opts);
+    printSuccess(`launch-app "${appId}" — done${injectionNote}`, opts);
     return 0;
   } else {
     printError(`launch-app "${appId}" — failed\n${result.stderr}`, opts);
