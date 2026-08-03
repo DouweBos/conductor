@@ -290,6 +290,185 @@ export function makeComponentTreeScript(requestId: string): string {
 }
 
 /**
+ * Shared JS: locate a host fiber by its native reactTag, across every registered
+ * renderer and both RN architectures (Paper `_nativeTag`/`canonical.nativeTag`,
+ * Fabric bridgeless `__nativeTag` on the state node / public instance). Defines
+ * `findByTag(hook, TAG)` returning `{ fiber, renderer }` or null.
+ */
+const FIBER_BY_TAG_HELPERS = `
+    function nativeTagOf(f) {
+      if (typeof f.type !== 'string' || !f.stateNode) return null;
+      var sn = f.stateNode;
+      if (typeof sn._nativeTag === 'number') return sn._nativeTag;
+      if (typeof sn.__nativeTag === 'number') return sn.__nativeTag;
+      if (sn.canonical) {
+        if (typeof sn.canonical.nativeTag === 'number') return sn.canonical.nativeTag;
+        var pi = sn.canonical.publicInstance;
+        if (pi && typeof pi.__nativeTag === 'number') return pi.__nativeTag;
+      }
+      if (sn.node && typeof sn.node.__nativeTag === 'number') return sn.node.__nativeTag;
+      return null;
+    }
+    function findHostByTag(root, TAG) {
+      var stack = [root.current || root], seen = 0;
+      while (stack.length && seen < 40000) {
+        var f = stack.pop(); seen++;
+        if (!f) continue;
+        if (nativeTagOf(f) === TAG) return f;
+        if (f.sibling) stack.push(f.sibling);
+        if (f.child) stack.push(f.child);
+      }
+      return null;
+    }
+    function findByTag(hook, TAG) {
+      var entries = [];
+      hook.renderers.forEach(function(r, id) { entries.push([id, r]); });
+      for (var i = 0; i < entries.length; i++) {
+        var id = entries[i][0], r = entries[i][1], roots = null;
+        try { roots = hook.getFiberRoots(id); } catch (e) {}
+        if (!roots) continue;
+        var arr = Array.from(roots);
+        for (var j = 0; j < arr.length; j++) {
+          var hf = findHostByTag(arr[j], TAG);
+          if (hf) return { fiber: hf, renderer: r };
+        }
+      }
+      return null;
+    }`;
+
+/**
+ * Live-edit props via React DevTools' `overrideProps(fiber, path, value)` — the
+ * same call the DevTools "edit prop" UI makes. Maps `reactTag` → host fiber, then
+ * picks the fiber that owns the top-level path key (for `children`, prefers the
+ * composite `<Text>` ancestor, so the visible string changes). Returns a JSON
+ * string: `{status:'ok',applied:true}` or `{status:'error',message}`.
+ */
+export function makeOverridePropsScript(
+  reactTag: number,
+  path: string[],
+  valueJson: string
+): string {
+  return `(function() {
+    try {
+      var hook = globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      if (!hook || !hook.renderers || !hook.getFiberRoots) {
+        return JSON.stringify({ status: 'error', message: 'No React DevTools hook — not a dev/debug build?' });
+      }
+      var TAG = ${JSON.stringify(reactTag)};
+      var PATH = ${JSON.stringify(path)};
+      var VALUE = ${valueJson};
+      ${FIBER_BY_TAG_HELPERS}
+      var hit = findByTag(hook, TAG);
+      if (!hit) return JSON.stringify({ status: 'error', message: 'no fiber for reactTag ' + TAG });
+      var renderer = hit.renderer;
+      if (!renderer || typeof renderer.overrideProps !== 'function') {
+        return JSON.stringify({ status: 'error', message: 'renderer has no overrideProps — is this a dev build?' });
+      }
+      // Pick the fiber that owns the top path key. For 'children' prefer the
+      // nearest fiber whose children is a string (the renderable <Text>/RCTText),
+      // so overriding actually swaps the visible glyphs.
+      var key = PATH[0];
+      var cur = hit.fiber, hops = 0, fallback = null;
+      while (cur && hops < 10) {
+        var p = cur.memoizedProps;
+        if (p && typeof p === 'object' && Object.prototype.hasOwnProperty.call(p, key)) {
+          if (fallback === null) fallback = cur;
+          if (key !== 'children') { fallback = cur; break; }
+          if (typeof p.children === 'string') { fallback = cur; break; }
+        }
+        cur = cur.return; hops++;
+      }
+      var target = fallback || hit.fiber;
+      // RN styles are often arrays (StyleSheet composition). overrideProps' setIn
+      // can't create missing intermediates, and a key set on the array object is
+      // ignored by flattening — so for a 'style.<key>' path we flatten the current
+      // style to a plain object (what RN does anyway), apply the override, and set
+      // the whole 'style'. Works whether style started as an object or an array.
+      if (PATH[0] === 'style' && PATH.length >= 2) {
+        function flattenStyle(s) {
+          var acc = {};
+          (function merge(x) {
+            if (!x) return;
+            if (Array.isArray(x)) { for (var i = 0; i < x.length; i++) merge(x[i]); return; }
+            if (typeof x === 'object') { for (var k in x) if (Object.prototype.hasOwnProperty.call(x, k)) acc[k] = x[k]; }
+          })(s);
+          return acc;
+        }
+        var flat = flattenStyle(target.memoizedProps && target.memoizedProps.style);
+        var keys = PATH.slice(1), o = flat;
+        for (var i = 0; i < keys.length - 1; i++) {
+          if (typeof o[keys[i]] !== 'object' || o[keys[i]] === null) o[keys[i]] = {};
+          o = o[keys[i]];
+        }
+        o[keys[keys.length - 1]] = VALUE;
+        renderer.overrideProps(target, ['style'], flat);
+        return JSON.stringify({ status: 'ok', applied: true, note: 'style flattened to object; override applied' });
+      }
+      renderer.overrideProps(target, PATH, VALUE);
+      return JSON.stringify({ status: 'ok', applied: true });
+    } catch (e) {
+      return JSON.stringify({ status: 'error', message: String((e && e.message) || e) });
+    }
+  })();`;
+}
+
+/**
+ * Dump a host fiber's `memoizedProps` (the real JSX props RN passed to the native
+ * view — the JS-side analog of the native `/props` rawProps that Fabric drops).
+ * Functions become `"[Function: name]"`; cycles/over-depth become markers.
+ * Returns a JSON string `{status:'ok',props:{...}}` or `{status:'error',message}`.
+ */
+export function makeRnPropsScript(reactTag: number): string {
+  return `(function() {
+    try {
+      var hook = globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      if (!hook || !hook.renderers || !hook.getFiberRoots) {
+        return JSON.stringify({ status: 'error', message: 'No React DevTools hook — not a dev/debug build?' });
+      }
+      var TAG = ${JSON.stringify(reactTag)};
+      ${FIBER_BY_TAG_HELPERS}
+      var hit = findByTag(hook, TAG);
+      if (!hit) return JSON.stringify({ status: 'error', message: 'no fiber for reactTag ' + TAG });
+      var seen = [];
+      function ser(v, depth) {
+        if (v === null || v === undefined) return v === undefined ? undefined : null;
+        var t = typeof v;
+        if (t === 'string' || t === 'boolean') return v;
+        if (t === 'number') return isFinite(v) ? v : String(v);
+        if (t === 'function') return '[Function: ' + (v.name || 'anonymous') + ']';
+        if (t === 'symbol') return v.toString();
+        if (t === 'bigint') return String(v) + 'n';
+        if (t === 'object') {
+          if (depth > 6) return '[Object: max depth]';
+          if (seen.indexOf(v) !== -1) return '[Circular]';
+          if (v && v.$$typeof) return '[ReactElement]';
+          seen.push(v);
+          var out;
+          if (Array.isArray(v)) {
+            out = [];
+            for (var i = 0; i < v.length && i < 200; i++) out.push(ser(v[i], depth + 1));
+          } else {
+            out = {};
+            var keys = Object.keys(v);
+            for (var k = 0; k < keys.length; k++) {
+              var val = ser(v[keys[k]], depth + 1);
+              if (val !== undefined) out[keys[k]] = val;
+            }
+          }
+          seen.pop();
+          return out;
+        }
+        return String(v);
+      }
+      var props = ser(hit.fiber.memoizedProps || {}, 0);
+      return JSON.stringify({ status: 'ok', props: props });
+    } catch (e) {
+      return JSON.stringify({ status: 'error', message: String((e && e.message) || e) });
+    }
+  })();`;
+}
+
+/**
  * Inspect-at-point script. Uses React DevTools's own
  * `renderer.rendererConfig.getInspectorDataForViewAtPoint(inspectRef, x, y, cb)`,
  * which is the authoritative point lookup. Then walks UP via `.return` from

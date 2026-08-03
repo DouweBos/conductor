@@ -8,6 +8,52 @@ import {
   HELP as listDevicesHelp,
 } from './commands/list-devices.js';
 import { launchApp, HELP as launchAppHelp } from './commands/launch-app.js';
+import {
+  nativePing,
+  nativeInspect,
+  nativeNav,
+  nativeScreenshot,
+  nativeImage,
+  nativeSnapshot,
+  nativeView,
+  nativeSet,
+  nativeProps,
+  nativeConstraints,
+  nativeHittest,
+  nativeHighlight,
+  nativeFind,
+  nativeRaw,
+  nativeConsole,
+  nativeNetwork,
+  nativeHeap,
+  nativeAppearance,
+  nativeEval,
+  PING_HELP as nativePingHelp,
+  INSPECT_HELP as nativeInspectHelp,
+  NAV_HELP as nativeNavHelp,
+  SCREENSHOT_HELP as nativeScreenshotHelp,
+  IMAGE_HELP as nativeImageHelp,
+  SNAPSHOT_HELP as nativeSnapshotHelp,
+  VIEW_HELP as nativeViewHelp,
+  SET_HELP as nativeSetHelp,
+  PROPS_HELP as nativePropsHelp,
+  CONSTRAINTS_HELP as nativeConstraintsHelp,
+  HITTEST_HELP as nativeHittestHelp,
+  HIGHLIGHT_HELP as nativeHighlightHelp,
+  FIND_HELP as nativeFindHelp,
+  RAW_HELP as nativeRawHelp,
+  CONSOLE_HELP as nativeConsoleHelp,
+  NETWORK_HELP as nativeNetworkHelp,
+  HEAP_HELP as nativeHeapHelp,
+  APPEARANCE_HELP as nativeAppearanceHelp,
+  EVAL_HELP as nativeEvalHelp,
+} from './commands/native.js';
+import {
+  nativeRnSet,
+  nativeRnProps,
+  RN_SET_HELP as nativeRnSetHelp,
+  RN_PROPS_HELP as nativeRnPropsHelp,
+} from './commands/native-rn.js';
 import { stopApp, HELP as stopAppHelp } from './commands/stop-app.js';
 import { clearState, HELP as clearStateHelp } from './commands/clear-state.js';
 import { uninstallApp, HELP as uninstallAppHelp } from './commands/uninstall-app.js';
@@ -109,6 +155,27 @@ const COMMAND_HELP: Record<string, string> = {
   'download-app': downloadAppHelp,
   'install-app': installAppHelp,
   'launch-app': launchAppHelp,
+  'native-ping': nativePingHelp,
+  'native-inspect': nativeInspectHelp,
+  'native-nav': nativeNavHelp,
+  'native-screenshot': nativeScreenshotHelp,
+  'native-image': nativeImageHelp,
+  'native-snapshot': nativeSnapshotHelp,
+  'native-view': nativeViewHelp,
+  'native-set': nativeSetHelp,
+  'native-props': nativePropsHelp,
+  'native-rn-set': nativeRnSetHelp,
+  'native-rn-props': nativeRnPropsHelp,
+  'native-constraints': nativeConstraintsHelp,
+  'native-hittest': nativeHittestHelp,
+  'native-highlight': nativeHighlightHelp,
+  'native-find': nativeFindHelp,
+  'native-raw': nativeRawHelp,
+  'native-console': nativeConsoleHelp,
+  'native-network': nativeNetworkHelp,
+  'native-heap': nativeHeapHelp,
+  'native-appearance': nativeAppearanceHelp,
+  'native-eval': nativeEvalHelp,
   'stop-app': stopAppHelp,
   'clear-state': clearStateHelp,
   'uninstall-app': uninstallAppHelp,
@@ -273,6 +340,9 @@ async function main(): Promise<void> {
       'cdp-url',
       'cdp-target',
       'duration',
+      'react-tag',
+      'path',
+      'value',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version', o: 'output', y: 'yes' },
   });
@@ -479,7 +549,184 @@ async function main(): Promise<void> {
         clearKeychain: argv['clear-keychain'] as boolean,
         stopApp: argv['stop-app'] !== false,
         launchArgs,
+        inject: argv['inject'] as boolean,
       });
+      break;
+    }
+
+    case 'native-ping': {
+      exitCode = await nativePing(opts, sessionName);
+      break;
+    }
+
+    case 'native-inspect': {
+      exitCode = await nativeInspect(opts, sessionName);
+      break;
+    }
+
+    case 'native-nav': {
+      exitCode = await nativeNav(opts, sessionName);
+      break;
+    }
+
+    case 'native-screenshot': {
+      exitCode = await nativeScreenshot(argv['output'] as string | undefined, opts, sessionName);
+      break;
+    }
+
+    case 'native-image': {
+      exitCode = await nativeImage(
+        rest[0],
+        argv['output'] as string | undefined,
+        opts,
+        sessionName
+      );
+      break;
+    }
+
+    case 'native-snapshot': {
+      exitCode = await nativeSnapshot(
+        rest[0],
+        argv['with-subviews'] as boolean,
+        argv['output'] as string | undefined,
+        opts,
+        sessionName
+      );
+      break;
+    }
+
+    case 'native-view': {
+      exitCode = await nativeView(rest[0], opts, sessionName);
+      break;
+    }
+
+    case 'native-set': {
+      exitCode = await nativeSet(rest, opts, sessionName);
+      break;
+    }
+
+    case 'native-props': {
+      exitCode = await nativeProps(rest[0], opts, sessionName);
+      break;
+    }
+
+    case 'native-rn-set': {
+      const rnOpts = {
+        port: argv['port'] !== undefined ? Number(argv['port']) : undefined,
+        targetIndex: argv['target'] !== undefined ? Number(argv['target']) : undefined,
+      };
+      exitCode = await nativeRnSet(
+        {
+          reactTag: argv['react-tag'] as string | undefined,
+          path: argv['path'] as string | undefined,
+          value: argv['value'] as string | undefined,
+        },
+        opts,
+        sessionName,
+        rnOpts
+      );
+      break;
+    }
+
+    case 'native-rn-props': {
+      const rnOpts = {
+        port: argv['port'] !== undefined ? Number(argv['port']) : undefined,
+        targetIndex: argv['target'] !== undefined ? Number(argv['target']) : undefined,
+      };
+      exitCode = await nativeRnProps(
+        { reactTag: argv['react-tag'] as string | undefined },
+        opts,
+        sessionName,
+        rnOpts
+      );
+      break;
+    }
+
+    case 'native-constraints': {
+      exitCode = await nativeConstraints(rest[0], opts, sessionName);
+      break;
+    }
+
+    case 'native-hittest': {
+      exitCode = await nativeHittest(rest[0], opts, sessionName);
+      break;
+    }
+
+    case 'native-highlight': {
+      exitCode = await nativeHighlight(rest[0], opts, sessionName);
+      break;
+    }
+
+    case 'native-find': {
+      exitCode = await nativeFind(
+        {
+          className: argv['class'] as string | undefined,
+          text: argv['text'] as string | undefined,
+        },
+        opts,
+        sessionName
+      );
+      break;
+    }
+
+    case 'native-raw': {
+      exitCode = await nativeRaw(rest[0], argv['output'] as string | undefined, opts, sessionName);
+      break;
+    }
+
+    case 'native-console': {
+      exitCode = await nativeConsole(
+        argv['since'] !== undefined ? Number(argv['since']) : undefined,
+        opts,
+        sessionName
+      );
+      break;
+    }
+
+    case 'native-network': {
+      exitCode = await nativeNetwork(
+        argv['since'] !== undefined ? Number(argv['since']) : undefined,
+        opts,
+        sessionName
+      );
+      break;
+    }
+
+    case 'native-heap': {
+      exitCode = await nativeHeap(
+        {
+          className: argv['class'] as string | undefined,
+          pattern: argv['pattern'] as string | undefined,
+          read: argv['read'] as string | undefined,
+          key: argv['key'] as string | undefined,
+        },
+        opts,
+        sessionName
+      );
+      break;
+    }
+
+    case 'native-appearance': {
+      exitCode = await nativeAppearance(
+        {
+          style: rest[0],
+          direction: argv['direction'] as string | undefined,
+          contentSize: argv['content-size'] as string | undefined,
+          animSpeed: argv['anim-speed'] as string | undefined,
+        },
+        opts,
+        sessionName
+      );
+      break;
+    }
+
+    case 'native-eval': {
+      exitCode = await nativeEval(
+        rest.join(' '),
+        argv['mode'] === 'full' ? 'full' : 'expr',
+        opts,
+        sessionName
+      );
       break;
     }
 

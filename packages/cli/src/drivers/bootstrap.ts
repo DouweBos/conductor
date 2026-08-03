@@ -217,6 +217,18 @@ async function getDriversDir(): Promise<string> {
   return _driversDirPromise;
 }
 
+/**
+ * Absolute path to the injectable in-process control library
+ * (`<platform>-inproc/Conductor.framework/Conductor`), built by
+ * `packages/ios-inproc/tools/build-inproc-dylib.sh`. Passed to the target app
+ * via SIMCTL_CHILD_DYLD_INSERT_LIBRARIES at launch. iOS and tvOS ship separate
+ * builds (different simulator SDK).
+ */
+export async function getInprocDylibPath(platform: 'ios' | 'tvos' = 'ios'): Promise<string> {
+  const dir = await getDriversDir();
+  return path.join(dir, `${platform}-inproc`, 'Conductor.framework', 'Conductor');
+}
+
 async function ensureDriversCache(pkgRoot: string): Promise<string> {
   const pkgJsonPath = path.join(pkgRoot, 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8')) as { version: string };

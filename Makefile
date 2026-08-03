@@ -1,4 +1,4 @@
-.PHONY: build build-cli build-ios-driver build-tvos-driver build-android-driver package-cli package-drivers-tarball
+.PHONY: build build-cli build-ios-driver build-ios-inproc build-tvos-driver build-android-driver package-cli package-drivers-tarball
 
 DRIVERS_TARBALL_DIR = dist-drivers
 
@@ -9,10 +9,14 @@ IOS_BUILD_PRODUCTS = $(IOS_DERIVED)/Build/Products/Debug-iphonesimulator
 TVOS_DERIVED   = packages/ios-driver/derived-data-tvos
 TVOS_BUILD_PRODUCTS = $(TVOS_DERIVED)/Build/Products/Debug-appletvsimulator
 
-build: build-ios-driver build-tvos-driver build-android-driver package-cli build-cli
+build: build-ios-driver build-ios-inproc build-tvos-driver build-android-driver package-cli build-cli
 
 build-cli:
 	cd packages/cli && pnpm build
+
+# Injectable in-process control library → $(CLI_DRIVERS)/ios-inproc/Conductor.framework
+build-ios-inproc:
+	packages/ios-inproc/tools/build-inproc-dylib.sh
 
 build-ios-driver:
 	xcodebuild build-for-testing \
@@ -31,7 +35,7 @@ build-tvos-driver:
 build-android-driver:
 	cd packages/android-driver && ./gradlew :conductor-android:assembleDebug :conductor-android:assembleAndroidTest
 
-package-cli: build-ios-driver build-tvos-driver build-android-driver
+package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-android-driver
 	mkdir -p $(CLI_DRIVERS)/android $(CLI_DRIVERS)/ios $(CLI_DRIVERS)/tvos
 	cp $(ANDROID_OUT)/debug/conductor-android-debug.apk \
 		$(CLI_DRIVERS)/android/conductor-app.apk
@@ -48,4 +52,4 @@ package-cli: build-ios-driver build-tvos-driver build-android-driver
 
 package-drivers-tarball:
 	mkdir -p $(DRIVERS_TARBALL_DIR)
-	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios tvos
+	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc tvos
