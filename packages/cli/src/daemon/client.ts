@@ -16,6 +16,7 @@ interface DaemonStatus {
   platform?: string;
   driverPort?: number;
   inputPort?: number | null;
+  streamPort?: number | null;
   cdpUrl?: string | null;
   cdpTargetId?: string | null;
 }

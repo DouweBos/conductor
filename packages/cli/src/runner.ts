@@ -322,6 +322,65 @@ export async function inputServerInfo(sessionName = 'default'): Promise<InputSer
   throw new Error(`Input server for ${deviceId} did not come up within timeout.`);
 }
 
+export interface StreamServerInfo {
+  device: string;
+  platform: string;
+  streamPort: number;
+  url: string;
+  codec: string;
+}
+
+/**
+ * Resolve the streaming-video socket for a session's device, starting the
+ * daemon (and its driver + video server) if needed. Returns the loopback
+ * WebSocket URL a viewer subscribes to. Throws if the platform has no live
+ * stream, the capture binary isn't built, or the port never comes up.
+ */
+export async function streamServerInfo(sessionName = 'default'): Promise<StreamServerInfo> {
+  const deviceId = await resolveDeviceId(sessionName);
+  if (!deviceId) {
+    throw new Error('No device found. Connect a device or start a simulator, then run again.');
+  }
+  const platform = await detectPlatform(deviceId);
+  if (platform !== 'ios' && platform !== 'tvos') {
+    throw new Error(`Live video streaming is not yet available for ${platform} devices.`);
+  }
+
+  await startDaemon(deviceId);
+
+  // The video server starts just after the input server — poll status until its port appears.
+  const start = Date.now();
+  const deadline = start + 60_000;
+  while (Date.now() < deadline) {
+    const status = await fetchDaemonStatus(deviceId);
+    if (status && typeof status.streamPort === 'number') {
+      return {
+        device: deviceId,
+        platform,
+        streamPort: status.streamPort,
+        url: `ws://127.0.0.1:${status.streamPort}/stream?device=${encodeURIComponent(deviceId)}&platform=${platform}`,
+        codec: 'h264',
+      };
+    }
+    // A daemon whose input server is up but that still reports no streamPort
+    // after a grace period means the capture binary isn't built/available —
+    // fail fast rather than waiting out the full timeout.
+    if (
+      status &&
+      status.streamPort === null &&
+      typeof status.inputPort === 'number' &&
+      Date.now() - start > 5_000
+    ) {
+      throw new Error(
+        `Video capture backend is not available for ${deviceId} ` +
+          `(the conductor-capture binary is missing from the installed drivers).`
+      );
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`Video server for ${deviceId} did not come up within timeout.`);
+}
+
 /**
  * Execute a function with the driver for the given session.
  * Returns a RunResult for consistent error handling across commands.

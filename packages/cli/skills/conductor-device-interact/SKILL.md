@@ -52,6 +52,7 @@ conductor assert-visible "Dashboard"
 | `conductor clipboard read` / `clipboard write <text>` / `paste` | Clipboard (iOS) |
 | `conductor list-options [command]` | List valid values for enumerated params |
 | `conductor input-server` | Start (if needed) and print the streaming-input WebSocket URL for the device |
+| `conductor stream-server` | Start (if needed) and print the live video-stream WebSocket URL for the device |
 
 ## Streaming input (host IDEs)
 
@@ -64,6 +65,20 @@ accepts normalized (0..1) frames: `pointer{id,phase,x,y}`, `key{code,mods,down}`
 `text{value}`, `button{name}`, `scroll{x,y,dx,dy}`, `tvremote{button}`. Conductor
 owns coord→device translation and keymaps. For scripted, one-off actions use the
 discrete commands above — this is for interactive host UIs.
+
+## Streaming video (host IDEs / device viewers)
+
+For live device mirroring, `conductor stream-server` ensures the daemon + capture
+backend are up and prints the loopback URL
+(`ws://127.0.0.1:<port>/stream?device=<id>&platform=<ios|tvos|android|web>`; also
+in `daemon-status --json` as `streamPort`). One capture fans out to N subscribers.
+On connect the server sends a JSON `config` frame
+(`{t:"config",codec:"h264",width,height,rotation,fps,sps,pps,avcC,codecString}`),
+then **binary** frames — each one H.264 Annex B access unit, keyframe-led; a late
+joiner gets the cached config + a keyframe immediately. iOS/tvOS only for now
+(host-side SimulatorKit → VideoToolbox capture); Android/web are follow-ons.
+This is capture only — input stays on `input-server`. For a still image use
+`screenshot` / `capture-ui`; this socket is for continuous low-latency mirroring.
 
 ## Discovering valid values
 

@@ -76,6 +76,7 @@ const ANDROID_BASE_PORT = 3763;
 const WEB_BASE_PORT = 4075;
 const VEGA_BASE_PORT = 5075;
 const INPUT_BASE_PORT = 7075;
+const STREAM_BASE_PORT = 8075;
 
 const PORT_FILE = path.join(os.homedir(), '.conductor', 'ports.json');
 const PORT_LOCK = PORT_FILE + '.lock';
@@ -91,6 +92,9 @@ interface PortState {
   /** Streaming-input WebSocket ports, keyed by deviceId — separate namespace from driver ports. */
   inputAssignments?: Record<string, number>;
   nextInputPort?: number;
+  /** Streaming-video WebSocket ports, keyed by deviceId — separate namespace again. */
+  streamAssignments?: Record<string, number>;
+  nextStreamPort?: number;
 }
 
 function readPortState(): PortState {
@@ -189,6 +193,26 @@ export async function getInputPort(deviceId: string): Promise<number> {
   });
 }
 
+/**
+ * Assign and persist a streaming-video WebSocket port for a device. Its own
+ * namespace: a device has a driver port (control), an input port (pointer/key
+ * frames), and this stream port (H.264 video fan-out).
+ */
+export async function getStreamPort(deviceId: string): Promise<number> {
+  return withPortLock(() => {
+    const state = readPortState();
+    if (!state.streamAssignments) state.streamAssignments = {};
+    if (state.nextStreamPort === undefined) state.nextStreamPort = STREAM_BASE_PORT;
+    if (state.streamAssignments[deviceId] !== undefined) {
+      return state.streamAssignments[deviceId];
+    }
+    const port = state.nextStreamPort++;
+    state.streamAssignments[deviceId] = port;
+    writePortState(state);
+    return port;
+  });
+}
+
 // ── Driver paths (bundled dev fallback + runtime download cache) ──────────────
 
 /**
@@ -263,6 +287,20 @@ export async function getHidBinaryPath(): Promise<string | null> {
   const dir = await getDriversDir().catch(() => null);
   if (!dir) return null;
   const p = path.join(dir, 'ios-hid', 'conductor-hid');
+  return fs.existsSync(p) ? p : null;
+}
+
+/**
+ * Absolute path to the host-side Simulator video capture binary
+ * (`ios-capture/conductor-capture`), built by
+ * `packages/ios-capture/tools/build-capture.sh`. Captures the framebuffer via
+ * SimulatorKit and serves a VideoToolbox H.264 Annex B stream. Returns null if
+ * it hasn't been built (streaming falls back to unavailable).
+ */
+export async function getCaptureBinaryPath(): Promise<string | null> {
+  const dir = await getDriversDir().catch(() => null);
+  if (!dir) return null;
+  const p = path.join(dir, 'ios-capture', 'conductor-capture');
   return fs.existsSync(p) ? p : null;
 }
 

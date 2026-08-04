@@ -19,7 +19,9 @@ import {
   detectPlatform,
   getDriverPort,
   getInputPort,
+  getStreamPort,
   getHidBinaryPath,
+  getCaptureBinaryPath,
   installDriver,
   startIOSDriver,
   startAndroidDriver,
@@ -39,6 +41,8 @@ import { startInputServer, type InputServerHandle } from './input-server.js';
 import { InputRouter, type LivePointerBackend } from './input-router.js';
 import { iosBackend, androidBackend, type InputBackend } from './input-backends.js';
 import { IOSHidClient } from '../drivers/ios-hid.js';
+import { startVideoServer, type VideoServerHandle } from './video-server.js';
+import { IOSCaptureSource } from './video-source.js';
 import { LogCollector } from './log-collector.js';
 import { getSession } from '../session.js';
 
@@ -104,6 +108,8 @@ let logCollector: LogCollector | null = null;
 let inputServer: InputServerHandle | null = null;
 let inputPort: number | null = null;
 let hidClient: IOSHidClient | null = null;
+let videoServer: VideoServerHandle | null = null;
+let streamPort: number | null = null;
 
 /**
  * Start the streaming-input WebSocket server for the current device, once its
@@ -154,6 +160,34 @@ async function startInputServerForPlatform(): Promise<void> {
   });
   inputPort = port;
   dlog(`input server listening on ${port}`);
+}
+
+/**
+ * Start the streaming-video WebSocket server for the current device, once its
+ * driver is up. iOS/tvOS only for now (host-side SimulatorKit capture); the
+ * binary must be built/downloaded. Capture is lazy: it doesn't spawn until the
+ * first subscriber connects, and stops when the last one leaves.
+ */
+async function startVideoServerForPlatform(): Promise<void> {
+  if (videoServer) return;
+  if (driverPlatform !== 'ios' && driverPlatform !== 'tvos') return;
+
+  const binary = await getCaptureBinaryPath();
+  if (!binary) {
+    dlog('video capture binary not present — stream server disabled for this device');
+    return;
+  }
+
+  const port = await getStreamPort(sessionName);
+  videoServer = await startVideoServer({
+    port,
+    device: sessionName,
+    platform: driverPlatform,
+    makeSource: (hub) => new IOSCaptureSource(binary, sessionName, hub, dlog),
+    dlog,
+  });
+  streamPort = port;
+  dlog(`video server listening on ${port}`);
 }
 
 const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
@@ -256,6 +290,14 @@ async function main(): Promise<void> {
         /* ok */
       }
       inputServer = null;
+    }
+    if (videoServer) {
+      try {
+        await videoServer.close();
+      } catch {
+        /* ok */
+      }
+      videoServer = null;
     }
     if (hidClient) {
       hidClient.stop();
@@ -381,6 +423,7 @@ async function main(): Promise<void> {
         platform: driverPlatform,
         driverPort,
         inputPort,
+        streamPort,
         cdpUrl: cdpUrl ?? null,
         cdpTargetId: cdpTargetId ?? null,
         chromiumCdpPort: driverPlatform === 'web' ? getCdpPort() : null,
@@ -439,6 +482,13 @@ async function main(): Promise<void> {
             } catch (err) {
               dlog(
                 `Input server startup error: ${err instanceof Error ? err.message : String(err)}`
+              );
+            }
+            try {
+              await startVideoServerForPlatform();
+            } catch (err) {
+              dlog(
+                `Video server startup error: ${err instanceof Error ? err.message : String(err)}`
               );
             }
           }

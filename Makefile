@@ -1,4 +1,4 @@
-.PHONY: build build-cli build-ios-driver build-ios-inproc build-tvos-driver build-android-driver package-cli package-drivers-tarball
+.PHONY: build build-cli build-ios-driver build-ios-inproc build-ios-capture build-tvos-driver build-android-driver package-cli package-drivers-tarball
 
 DRIVERS_TARBALL_DIR = dist-drivers
 
@@ -9,7 +9,7 @@ IOS_BUILD_PRODUCTS = $(IOS_DERIVED)/Build/Products/Debug-iphonesimulator
 TVOS_DERIVED   = packages/ios-driver/derived-data-tvos
 TVOS_BUILD_PRODUCTS = $(TVOS_DERIVED)/Build/Products/Debug-appletvsimulator
 
-build: build-ios-driver build-ios-inproc build-tvos-driver build-android-driver package-cli build-cli
+build: build-ios-driver build-ios-inproc build-ios-capture build-tvos-driver build-android-driver package-cli build-cli
 
 build-cli:
 	cd packages/cli && pnpm build
@@ -17,6 +17,10 @@ build-cli:
 # Injectable in-process control library → $(CLI_DRIVERS)/ios-inproc/Conductor.framework
 build-ios-inproc:
 	packages/ios-inproc/tools/build-inproc-dylib.sh
+
+# Host-side Simulator video capture binary → $(CLI_DRIVERS)/ios-capture/conductor-capture
+build-ios-capture:
+	packages/ios-capture/tools/build-capture.sh
 
 build-ios-driver:
 	xcodebuild build-for-testing \
@@ -52,4 +56,4 @@ package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-android-d
 
 package-drivers-tarball:
 	mkdir -p $(DRIVERS_TARBALL_DIR)
-	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc tvos
+	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc ios-capture tvos
