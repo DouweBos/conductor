@@ -18,6 +18,8 @@ import { ensureAndroidEnv } from '../android/sdk.js';
 import {
   detectPlatform,
   getDriverPort,
+  getInputPort,
+  getHidBinaryPath,
   installDriver,
   startIOSDriver,
   startAndroidDriver,
@@ -31,7 +33,12 @@ import {
   ensurePlaywrightBrowser,
 } from '../drivers/bootstrap.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { IOSDriver } from '../drivers/ios.js';
 import { startWebServer, stopWebServer, getCdpPort, getPageTargetId } from './web-server.js';
+import { startInputServer, type InputServerHandle } from './input-server.js';
+import { InputRouter, type LivePointerBackend } from './input-router.js';
+import { iosBackend, androidBackend, type InputBackend } from './input-backends.js';
+import { IOSHidClient } from '../drivers/ios-hid.js';
 import { LogCollector } from './log-collector.js';
 import { getSession } from '../session.js';
 
@@ -94,6 +101,60 @@ function dlog(msg: string): void {
 let driverPort = 1075;
 let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' | 'vega' = 'ios';
 let logCollector: LogCollector | null = null;
+let inputServer: InputServerHandle | null = null;
+let inputPort: number | null = null;
+let hidClient: IOSHidClient | null = null;
+
+/**
+ * Start the streaming-input WebSocket server for the current device, once its
+ * driver is up. iOS/tvOS/Android only — web keeps its per-event REST path.
+ * Each connection gets a fresh router (its own pointer state) over a shared
+ * driver instance.
+ */
+async function startInputServerForPlatform(): Promise<void> {
+  if (inputServer) return;
+  if (driverPlatform !== 'ios' && driverPlatform !== 'tvos' && driverPlatform !== 'android') return;
+
+  let makeBackend: () => InputBackend;
+  let livePointer: LivePointerBackend | undefined;
+  if (driverPlatform === 'android') {
+    const driver = new AndroidDriver(sessionName, driverPort);
+    await driver.connect();
+    makeBackend = () => androidBackend(driver);
+  } else {
+    const driver = new IOSDriver(driverPort, '127.0.0.1', sessionName, driverPlatform);
+    makeBackend = () => iosBackend(driver);
+    // Opt-in native held-touch backend for live drags (iOS only; single-touch).
+    if (driverPlatform === 'ios' && process.env.CONDUCTOR_IOS_HID === '1') {
+      const bin = await getHidBinaryPath();
+      if (bin) {
+        const client = new IOSHidClient(bin, sessionName);
+        client.start();
+        if (await client.ping().catch(() => false)) {
+          hidClient = client;
+          livePointer = client.asLivePointer();
+          dlog('iOS HID injector active — live drags use CoreSimulator HID');
+        } else {
+          client.stop();
+          dlog('iOS HID injector present but not responding — falling back to buffered drag');
+        }
+      } else {
+        dlog('CONDUCTOR_IOS_HID=1 but no HID binary built — falling back to buffered drag');
+      }
+    }
+  }
+
+  const port = await getInputPort(sessionName);
+  inputServer = await startInputServer({
+    port,
+    device: sessionName,
+    platform: driverPlatform,
+    makeRouter: () => new InputRouter(makeBackend(), { livePointer }),
+    dlog,
+  });
+  inputPort = port;
+  dlog(`input server listening on ${port}`);
+}
 
 const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
 
@@ -187,6 +248,18 @@ async function main(): Promise<void> {
     if (logCollector) {
       logCollector.stop();
       logCollector = null;
+    }
+    if (inputServer) {
+      try {
+        await inputServer.close();
+      } catch {
+        /* ok */
+      }
+      inputServer = null;
+    }
+    if (hidClient) {
+      hidClient.stop();
+      hidClient = null;
     }
     try {
       fs.unlinkSync(SOCKET_PATH);
@@ -307,6 +380,7 @@ async function main(): Promise<void> {
         ok: true,
         platform: driverPlatform,
         driverPort,
+        inputPort,
         cdpUrl: cdpUrl ?? null,
         cdpTargetId: cdpTargetId ?? null,
         chromiumCdpPort: driverPlatform === 'web' ? getCdpPort() : null,
@@ -356,6 +430,17 @@ async function main(): Promise<void> {
             dlog('vega: no driver process to start; collecting logs only');
           } else {
             await startDriverForPlatform(platform);
+          }
+
+          // Start the streaming-input socket once the driver is up.
+          if (_driverStarted) {
+            try {
+              await startInputServerForPlatform();
+            } catch (err) {
+              dlog(
+                `Input server startup error: ${err instanceof Error ? err.message : String(err)}`
+              );
+            }
           }
 
           // Start collecting logs once the driver is (or was already) running.

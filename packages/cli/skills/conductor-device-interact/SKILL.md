@@ -51,6 +51,19 @@ conductor assert-visible "Dashboard"
 | `conductor gesture <json\|--file path>` | Play a multi-touch path |
 | `conductor clipboard read` / `clipboard write <text>` / `paste` | Clipboard (iOS) |
 | `conductor list-options [command]` | List valid values for enumerated params |
+| `conductor input-server` | Start (if needed) and print the streaming-input WebSocket URL for the device |
+
+## Streaming input (host IDEs)
+
+For continuous, low-latency input (live drags, fast typing) a host IDE can open
+one persistent WebSocket per device instead of spawning a command per event.
+`conductor input-server` ensures the daemon + driver are up and prints the
+loopback URL (`ws://127.0.0.1:<port>/input`; also in `daemon-status --json` as
+`inputPort`). The server sends a `hello` with per-platform capabilities, then
+accepts normalized (0..1) frames: `pointer{id,phase,x,y}`, `key{code,mods,down}`,
+`text{value}`, `button{name}`, `scroll{x,y,dx,dy}`, `tvremote{button}`. Conductor
+owns coord→device translation and keymaps. For scripted, one-off actions use the
+discrete commands above — this is for interactive host UIs.
 
 ## Discovering valid values
 

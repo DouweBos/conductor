@@ -21,6 +21,7 @@ import {
   findRunningWebSession,
   listDaemonSessions,
   daemonStatus,
+  fetchDaemonStatus,
 } from './daemon/client.js';
 
 /**
@@ -277,6 +278,48 @@ export async function prewarmDriver(deviceId: string): Promise<void> {
   } catch {
     /* best-effort: a later command will report a real failure */
   }
+}
+
+export interface InputServerInfo {
+  device: string;
+  platform: string;
+  inputPort: number;
+  url: string;
+}
+
+/**
+ * Resolve the streaming-input socket for a session's device, starting the
+ * daemon (and its driver + input server) if needed. Returns the loopback
+ * WebSocket URL the host IDE connects to. Throws if the platform has no
+ * streaming input (web/vega) or the port never comes up.
+ */
+export async function inputServerInfo(sessionName = 'default'): Promise<InputServerInfo> {
+  const deviceId = await resolveDeviceId(sessionName);
+  if (!deviceId) {
+    throw new Error('No device found. Connect a device or start a simulator, then run again.');
+  }
+  const platform = await detectPlatform(deviceId);
+  if (platform !== 'ios' && platform !== 'tvos' && platform !== 'android') {
+    throw new Error(`Streaming input is not available for ${platform} devices.`);
+  }
+
+  await startDaemon(deviceId);
+
+  // The input server starts just after the driver — poll status until its port appears.
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const status = await fetchDaemonStatus(deviceId);
+    if (status && typeof status.inputPort === 'number') {
+      return {
+        device: deviceId,
+        platform,
+        inputPort: status.inputPort,
+        url: `ws://127.0.0.1:${status.inputPort}/input`,
+      };
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`Input server for ${deviceId} did not come up within timeout.`);
 }
 
 /**

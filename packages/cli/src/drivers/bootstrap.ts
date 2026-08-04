@@ -75,6 +75,7 @@ const TVOS_BASE_PORT = 2075;
 const ANDROID_BASE_PORT = 3763;
 const WEB_BASE_PORT = 4075;
 const VEGA_BASE_PORT = 5075;
+const INPUT_BASE_PORT = 7075;
 
 const PORT_FILE = path.join(os.homedir(), '.conductor', 'ports.json');
 const PORT_LOCK = PORT_FILE + '.lock';
@@ -87,6 +88,9 @@ interface PortState {
   nextAndroidPort: number;
   nextWebPort: number;
   nextVegaPort: number;
+  /** Streaming-input WebSocket ports, keyed by deviceId — separate namespace from driver ports. */
+  inputAssignments?: Record<string, number>;
+  nextInputPort?: number;
 }
 
 function readPortState(): PortState {
@@ -165,6 +169,26 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
   });
 }
 
+/**
+ * Assign and persist a streaming-input WebSocket port for a device. Kept in a
+ * separate namespace from the driver port (a device has both): the driver port
+ * serves the XCUITest/gRPC HTTP surface, this one the persistent input socket.
+ */
+export async function getInputPort(deviceId: string): Promise<number> {
+  return withPortLock(() => {
+    const state = readPortState();
+    if (!state.inputAssignments) state.inputAssignments = {};
+    if (state.nextInputPort === undefined) state.nextInputPort = INPUT_BASE_PORT;
+    if (state.inputAssignments[deviceId] !== undefined) {
+      return state.inputAssignments[deviceId];
+    }
+    const port = state.nextInputPort++;
+    state.inputAssignments[deviceId] = port;
+    writePortState(state);
+    return port;
+  });
+}
+
 // ── Driver paths (bundled dev fallback + runtime download cache) ──────────────
 
 /**
@@ -227,6 +251,19 @@ async function getDriversDir(): Promise<string> {
 export async function getInprocDylibPath(platform: 'ios' | 'tvos' = 'ios'): Promise<string> {
   const dir = await getDriversDir();
   return path.join(dir, `${platform}-inproc`, 'Conductor.framework', 'Conductor');
+}
+
+/**
+ * Absolute path to the host-side CoreSimulator HID injector (`ios-hid/conductor-hid`),
+ * built by `packages/ios-hid/tools/build-hid.sh`. Optional: only used for live
+ * held-touch drags when CONDUCTOR_IOS_HID=1 and the binary is present. Returns
+ * null if it hasn't been built.
+ */
+export async function getHidBinaryPath(): Promise<string | null> {
+  const dir = await getDriversDir().catch(() => null);
+  if (!dir) return null;
+  const p = path.join(dir, 'ios-hid', 'conductor-hid');
+  return fs.existsSync(p) ? p : null;
 }
 
 async function ensureDriversCache(pkgRoot: string): Promise<string> {

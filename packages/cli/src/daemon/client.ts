@@ -15,8 +15,14 @@ interface DaemonStatus {
   ok?: boolean;
   platform?: string;
   driverPort?: number;
+  inputPort?: number | null;
   cdpUrl?: string | null;
   cdpTargetId?: string | null;
+}
+
+/** Full daemon `/status` body for a session, or null if the daemon isn't reachable. */
+export async function fetchDaemonStatus(sessionName: string): Promise<DaemonStatus | null> {
+  return fetchStatus(sessionName);
 }
 
 async function fetchStatus(sessionName: string): Promise<DaemonStatus | null> {

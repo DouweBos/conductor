@@ -79,6 +79,7 @@ import {
   HELP_DAEMON_STOP as daemonStopHelp,
   HELP_DAEMON_STATUS as daemonStatusHelp,
 } from './commands/daemon.js';
+import { inputServer, HELP as inputServerHelp } from './commands/input-server.js';
 import { installWebCli, HELP_INSTALL_WEB } from './commands/install.js';
 import { init, HELP as initHelp } from './commands/init.js';
 import { devicePool, HELP as devicePoolHelp } from './commands/device-pool.js';
@@ -206,6 +207,7 @@ const COMMAND_HELP: Record<string, string> = {
   'daemon-start': daemonStartHelp,
   'daemon-stop': daemonStopHelp,
   'daemon-status': daemonStatusHelp,
+  'input-server': inputServerHelp,
   'device-pool': devicePoolHelp,
   'run-parallel': runParallelHelp,
   'run-sequence': runSequenceHelp,
@@ -1056,6 +1058,10 @@ async function main(): Promise<void> {
 
     case 'daemon-status':
       exitCode = await daemonStatusCmd(opts, sessionName);
+      break;
+
+    case 'input-server':
+      exitCode = await inputServer(opts, sessionName);
       break;
 
     case 'device-pool': {

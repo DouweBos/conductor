@@ -34,6 +34,7 @@ import { cdpDiscovery } from './cdp-discovery.test.js';
 import { snapshotRef } from './snapshot-ref.test.js';
 import { flowRecorder } from './flow-recorder.test.js';
 import { vega } from './vega.test.js';
+import { inputStreaming } from './input-streaming.test.js';
 import { getDriver } from '../src/runner.js';
 import { IOSDriver } from '../src/drivers/ios.js';
 import { parseFlowFile, executeFlow } from '../src/drivers/flow-runner.js';
@@ -76,7 +77,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, cdpDiscovery, snapshotRef, flowRecorder, vega];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, cdpDiscovery, snapshotRef, flowRecorder, vega, inputStreaming];
 
   if (device) {
     console.log(`\nDevice: ${device}`);
