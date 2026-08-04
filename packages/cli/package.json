@@ -1,6 +1,6 @@
 {
   "name": "@houwert/conductor",
-  "version": "0.24.1",
+  "version": "0.25.0",
   "description": "CLI tool for mobile app interactions — optimized for AI agents",
   "license": "MIT",
   "repository": {
