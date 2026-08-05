@@ -1,6 +1,6 @@
 ---
 name: conductor-device-interact
-description: Drive a running iOS simulator, Android emulator, tvOS simulator, Vega (Amazon Fire TV) virtual device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements, typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys, opening URLs or deep links, navigating back, or verifying an app change in the real running app.
+description: Drive a running iOS simulator, Android emulator, tvOS simulator, Vega (Amazon Fire TV) virtual device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements (by selector or raw coordinate), typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys, opening URLs or deep links, navigating back, granting/denying app permissions, adding media to the gallery, setting GPS location or a travel route, toggling airplane mode, recording a screen video, or verifying an app change in the real running app.
 ---
 
 # Conductor — device interaction
@@ -36,7 +36,9 @@ conductor assert-visible "Dashboard"
 |---|---|
 | `conductor launch-app <appId>` | Launch app (saved to session). `--no-stop-app` resumes; `--argument key=value` passes launch args |
 | `conductor stop-app [<appId>]` | Stop the app |
-| `conductor tap-on <element>` | Tap by text, id, or `@eN`. `--long-press`, `--double-tap`, `--optional`, `--index <n>` |
+| `conductor tap-on <element>` | Tap by text, id, or `@eN`. `--long-press`, `--double-tap`, `--optional`, `--index <n>`, `--repeat <n> --delay <ms>` |
+| `conductor tap-on --at <x,y>` | Tap a raw coordinate (px `100,200`, percent `50%,50%`, or `0-1` fraction) — no element match |
+| `conductor copy-text-from <element>` | Print an element's text (and copy to the iOS clipboard) |
 | `conductor input-text <text>` | Type into the focused field |
 | `conductor erase-text [n]` | Erase n characters (default 50) |
 | `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`) for tvOS / Android TV / vega. `--long-press` / `--duration <seconds>` holds it |
@@ -49,6 +51,11 @@ conductor assert-visible "Dashboard"
 | `conductor pinch [--scale N] [--center x,y]` | Two-finger pinch (scale<1 out, >1 in) |
 | `conductor rotate-gesture [--degrees N] [--center x,y]` | Two-finger rotate |
 | `conductor gesture <json\|--file path>` | Play a multi-touch path |
+| `conductor set-permissions <perm=value>...` | Grant/deny app permissions (`camera=allow photos=deny`, `all=allow`) |
+| `conductor add-media <path>...` | Push image/video files into the device gallery |
+| `conductor set-airplane-mode <on\|off>` / `toggle-airplane-mode` | Airplane mode (Android only) |
+| `conductor travel <lat,lng>... [--speed <m/s>]` | Move GPS through a route of coordinates |
+| `conductor record-video start [--out <path>]` / `record-video stop` | Record a screen **video** (iOS/Android). Distinct from `flow record` (which records a YAML flow) |
 | `conductor clipboard read` / `clipboard write <text>` / `paste` | Clipboard (iOS) |
 | `conductor list-options [command]` | List valid values for enumerated params |
 | `conductor input-server` | Start (if needed) and print the streaming-input WebSocket URL for the device |

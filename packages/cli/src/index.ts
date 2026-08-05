@@ -138,6 +138,18 @@ import {
 } from './commands/clipboard.js';
 import { listOptions, HELP as optionsHelp } from './commands/options.js';
 import { webTargets, HELP as webTargetsHelp } from './commands/web-targets.js';
+import { copyTextFrom, HELP as copyTextFromHelp } from './commands/copy-text-from.js';
+import { assertTrue, HELP as assertTrueHelp } from './commands/assert-true.js';
+import { setPermissions, HELP as setPermissionsHelp } from './commands/set-permissions.js';
+import { addMedia, HELP as addMediaHelp } from './commands/add-media.js';
+import {
+  setAirplaneMode,
+  toggleAirplaneMode,
+  HELP as airplaneModeHelp,
+} from './commands/airplane-mode.js';
+import { travel, HELP as travelHelp } from './commands/travel.js';
+import { recordVideo, HELP as recordVideoHelp } from './commands/record-video.js';
+import { assertScreenshot, HELP as assertScreenshotHelp } from './commands/assert-screenshot.js';
 import { getSession, updateSession } from './session.js';
 import { pickDevice } from './device-picker.js';
 import { parseCdpDeviceId } from './drivers/cdp-discovery.js';
@@ -182,6 +194,7 @@ const COMMAND_HELP: Record<string, string> = {
   'clear-state': clearStateHelp,
   'uninstall-app': uninstallAppHelp,
   'tap-on': tapHelp,
+  'copy-text-from': copyTextFromHelp,
   'input-text': typeHelp,
   'erase-text': eraseTextHelp,
   back: backHelp,
@@ -192,8 +205,15 @@ const COMMAND_HELP: Record<string, string> = {
   'scroll-until-visible': scrollUntilVisibleHelp,
   'assert-visible': assertVisibleHelp,
   'assert-not-visible': assertNotVisibleHelp,
+  'assert-true': assertTrueHelp,
+  'assert-screenshot': assertScreenshotHelp,
   'open-link': openLinkHelp,
   'set-location': setLocationHelp,
+  'set-permissions': setPermissionsHelp,
+  'add-media': addMediaHelp,
+  'set-airplane-mode': airplaneModeHelp,
+  travel: travelHelp,
+  'record-video': recordVideoHelp,
   'set-orientation': setOrientationHelp,
   'set-viewport': setViewportHelp,
   'take-screenshot': screenshotHelp,
@@ -283,6 +303,7 @@ async function main(): Promise<void> {
       'global',
       'force',
       'yes',
+      'update',
     ],
     string: [
       'device',
@@ -347,6 +368,11 @@ async function main(): Promise<void> {
       'react-tag',
       'path',
       'value',
+      'repeat',
+      'delay',
+      'speed',
+      'threshold',
+      'reference',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version', o: 'output', y: 'yes' },
   });
@@ -398,6 +424,8 @@ async function main(): Promise<void> {
     'workspace',
     'list-options',
     'web-targets',
+    // assert-true evaluates a pure JS expression in the flow sandbox — no device involved.
+    'assert-true',
     // `logs --list` and `logs --source metro` only query Metro on localhost — no device needed
     // `logs` always needs a device session — Metro discovery is device-scoped.
     // `daemon-stop --all` stops every daemon — no device needed
@@ -757,6 +785,9 @@ async function main(): Promise<void> {
       exitCode = await tap(element, opts, sessionName, {
         id: argv['id'] as string | undefined,
         text: argv['text'] as string | undefined,
+        at: argv['at'] as string | undefined,
+        repeat: argv['repeat'] !== undefined ? Number(argv['repeat']) : undefined,
+        delay: argv['delay'] !== undefined ? Number(argv['delay']) : undefined,
         index: argv['index'] !== undefined ? Number(argv['index']) : undefined,
         longPress: argv['long-press'] as boolean,
         doubleTap: argv['double-tap'] as boolean,
@@ -886,6 +917,37 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'assert-true': {
+      const expr = rest.join(' ');
+      const env: Record<string, string> = {};
+      const envArgs = ([] as string[]).concat((argv['env'] as string | string[]) ?? []);
+      for (const e of envArgs) {
+        const idx = e.indexOf('=');
+        if (idx > 0) env[e.slice(0, idx)] = e.slice(idx + 1);
+      }
+      exitCode = await assertTrue(expr, opts, env);
+      break;
+    }
+
+    case 'assert-screenshot': {
+      const reference = rest[0] ?? (argv['reference'] as string | undefined) ?? '';
+      exitCode = await assertScreenshot(reference, opts, sessionName, {
+        threshold: argv['threshold'] !== undefined ? Number(argv['threshold']) : undefined,
+        update: argv['update'] as boolean,
+      });
+      break;
+    }
+
+    case 'copy-text-from': {
+      const element = rest.join(' ');
+      exitCode = await copyTextFrom(element, opts, sessionName, {
+        id: argv['id'] as string | undefined,
+        text: argv['text'] as string | undefined,
+        index: argv['index'] !== undefined ? Number(argv['index']) : undefined,
+      });
+      break;
+    }
+
     case 'open-link': {
       const url = rest[0] ?? (argv['url'] as string | undefined) ?? '';
       exitCode = await openLink(url, opts, sessionName);
@@ -901,6 +963,41 @@ async function main(): Promise<void> {
       } else {
         exitCode = await setLocation(lat, lng, opts, sessionName);
       }
+      break;
+    }
+
+    case 'set-permissions': {
+      exitCode = await setPermissions(rest.map(String), opts, sessionName);
+      break;
+    }
+
+    case 'add-media': {
+      exitCode = await addMedia(rest.map(String), opts, sessionName);
+      break;
+    }
+
+    case 'set-airplane-mode': {
+      const value = rest[0] ?? '';
+      exitCode = await setAirplaneMode(value, opts, sessionName);
+      break;
+    }
+
+    case 'toggle-airplane-mode': {
+      exitCode = await toggleAirplaneMode(opts, sessionName);
+      break;
+    }
+
+    case 'travel': {
+      exitCode = await travel(rest.map(String), opts, sessionName, {
+        speed: argv['speed'] !== undefined ? Number(argv['speed']) : undefined,
+      });
+      break;
+    }
+
+    case 'record-video': {
+      exitCode = await recordVideo(rest[0] ?? '', opts, sessionName, {
+        out: argv['out'] as string | undefined,
+      });
       break;
     }
 

@@ -1,6 +1,6 @@
 ---
 name: conductor-inspect
-description: Read the live UI state of a running app with the conductor CLI — view hierarchy, accessibility snapshot, screenshots, focused element, and element refs. Use when you need to see what's on screen, find an element's id/text/coordinates, take a screenshot, check focus, or assert that something is (or isn't) visible before or after acting.
+description: Read the live UI state of a running app with the conductor CLI — view hierarchy, accessibility snapshot, screenshots, focused element, and element refs. Use when you need to see what's on screen, find an element's id/text/coordinates, take a screenshot, check focus, assert that something is (or isn't) visible, assert a JavaScript expression, or do visual-regression screenshot comparison before or after acting.
 ---
 
 # Conductor — inspection & assertions
@@ -78,6 +78,8 @@ conductor native-image 816,286,288,288 --output /tmp/avatar.png
 |---|---|
 | `conductor assert-visible <element> [--timeout ms]` | Assert element is visible (non-zero exit on failure) |
 | `conductor assert-not-visible <element> [--timeout ms]` | Assert element is absent |
+| `conductor assert-true <expr> [--env K=V]` | Assert a JavaScript expression is truthy (no device needed) |
+| `conductor assert-screenshot <reference.png> [--threshold <0-1>] [--update]` | Visual regression vs a baseline image; `--update` (re)writes the baseline. Writes `<ref>.diff.png` on mismatch |
 
 Both take the same selectors as `tap-on`: `--id`, `--text`, `--index`,
 `--below` / `--above` / `--left-of` / `--right-of`, `--focused`, `--enabled`,

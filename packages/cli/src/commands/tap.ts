@@ -1,9 +1,14 @@
-export const HELP = `  tap-on <element>                     Tap element by text, id, or @eN snapshot ref
+export const HELP = `  tap-on [<element>]                   Tap element by text, id, @eN snapshot ref, or coordinate
+    --at <x,y>                        Tap a raw coordinate instead of an element.
+                                      Accepts px ("100,200"), percentages ("50%,50%"),
+                                      or 0-1 fractions ("0.5,0.5"). Skips element matching.
     --id <id>                         Match by accessibility id instead of text
     --text <text>                     Match by text only (not id)
     --index <n>                       Pick the nth match (0-based)
     --long-press                      Hold instead of tap
     --double-tap                      Double-tap the element
+    --repeat <n>                      Tap n times (default 1)
+    --delay <ms>                      Delay between repeated taps (default 100)
     --optional                        Do not fail if element is not found
     --focused                         Match only focused elements
     --enabled / --no-enabled          Match by enabled state
@@ -23,6 +28,7 @@ import { VegaDriver } from '../drivers/vega.js';
 import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../drivers/wait.js';
 import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 import { isRefQuery, loadSnapshot, resolveRef } from '../snapshot-store.js';
+import { resolvePoint } from '../drivers/flow-runner.js';
 import { sleep } from '../utils.js';
 
 export async function tap(
@@ -33,6 +39,9 @@ export async function tap(
     id?: string;
     text?: string;
     index?: number;
+    at?: string;
+    repeat?: number;
+    delay?: number;
     longPress?: boolean;
     doubleTap?: boolean;
     optional?: boolean;
@@ -46,10 +55,13 @@ export async function tap(
     rightOf?: string;
   } = {}
 ): Promise<number> {
-  if (!query && !flags.id && !flags.text) {
-    printError('tap-on requires <element> or --id <id>', opts);
+  if (!query && !flags.id && !flags.text && !flags.at) {
+    printError('tap-on requires <element>, --id <id>, or --at <x,y>', opts);
     return 1;
   }
+
+  const repeat = flags.repeat && flags.repeat > 0 ? flags.repeat : 1;
+  const delay = flags.delay ?? 100;
 
   const sel = {
     ...(flags.text ? { text: flags.text } : flags.id ? { id: flags.id } : { query }),
@@ -67,7 +79,13 @@ export async function tap(
   // A bare `@eN` query taps the cached coordinates from the last `capture-ui`
   // snapshot, skipping fuzzy text/id resolution. Explicit --text/--id win.
   const useRef = isRefQuery(query) && !flags.text && !flags.id;
-  const label = flags.text ? `text="${flags.text}"` : flags.id ? `id="${flags.id}"` : `"${query}"`;
+  const label = flags.at
+    ? `@${flags.at}`
+    : flags.text
+      ? `text="${flags.text}"`
+      : flags.id
+        ? `id="${flags.id}"`
+        : `"${query}"`;
 
   const result = await runDirect(async (driver) => {
     if (driver instanceof IOSDriver && driver.platform === 'tvos') {
@@ -78,7 +96,11 @@ export async function tap(
     }
 
     let el: { centerX: number; centerY: number };
-    if (useRef) {
+    if (flags.at) {
+      // Coordinate tap: skip element resolution entirely.
+      const { x, y } = await resolvePoint(flags.at, driver);
+      el = { centerX: x, centerY: y };
+    } else if (useRef) {
       const { entry, staleReason } = resolveRef(await loadSnapshot(sessionName), query, {
         deviceId: sessionName,
       });
@@ -107,19 +129,22 @@ export async function tap(
       return;
     }
 
-    if (flags.longPress) {
-      if (driver instanceof AndroidDriver) {
-        await driver.swipe(el.centerX, el.centerY, el.centerX, el.centerY, 1500);
+    for (let i = 0; i < repeat; i++) {
+      if (i > 0) await sleep(delay);
+      if (flags.longPress) {
+        if (driver instanceof AndroidDriver) {
+          await driver.swipe(el.centerX, el.centerY, el.centerX, el.centerY, 1500);
+        } else {
+          // iOS, web, and vega express a long press as a held tap.
+          await driver.tap(el.centerX, el.centerY, 1.5);
+        }
+      } else if (flags.doubleTap) {
+        await driver.tap(el.centerX, el.centerY);
+        await sleep(100);
+        await driver.tap(el.centerX, el.centerY);
       } else {
-        // iOS, web, and vega express a long press as a held tap.
-        await driver.tap(el.centerX, el.centerY, 1.5);
+        await driver.tap(el.centerX, el.centerY);
       }
-    } else if (flags.doubleTap) {
-      await driver.tap(el.centerX, el.centerY);
-      await sleep(100);
-      await driver.tap(el.centerX, el.centerY);
-    } else {
-      await driver.tap(el.centerX, el.centerY);
     }
   }, sessionName);
 

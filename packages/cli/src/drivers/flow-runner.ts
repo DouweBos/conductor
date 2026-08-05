@@ -648,7 +648,10 @@ function getConductorObj(
   };
 }
 
-async function resolvePoint(point: string, driver: AnyDriver): Promise<{ x: number; y: number }> {
+export async function resolvePoint(
+  point: string,
+  driver: AnyDriver
+): Promise<{ x: number; y: number }> {
   const [xs, ys] = point.split(',').map((s) => s.trim());
   const xRaw = parseFloat(xs);
   const yRaw = parseFloat(ys);

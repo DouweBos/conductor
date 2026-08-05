@@ -46,6 +46,11 @@ export class AndroidDriver {
     private readonly port = 3763
   ) {}
 
+  /** adb serial of the target device (used by out-of-process helpers like record-video). */
+  get serial(): string {
+    return this.deviceId;
+  }
+
   async connect(): Promise<void> {
     const packageDef = loadPackageDef();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
