@@ -74,7 +74,7 @@ screen recording, clipboard, `clear-state`/`uninstall-app`.
 | Command                                               | Purpose                                                                |
 | ----------------------------------------------------- | ---------------------------------------------------------------------- |
 | `conductor install-app <path>`                        | Install .app / .ipa / .apk                                             |
-| `conductor launch-app <appId>`                        | Launch app (saved to session); `--no-stop-app`, `--argument key=value`, `--inject` |
+| `conductor launch-app <appId>`                        | Launch app (saved to session); `--no-stop-app`, `--argument key=value`, `--inject` (enables the `native-*` in-process instrument — see `conductor-native`) |
 | `conductor stop-app [<appId>]`                        | Stop app                                                               |
 | `conductor uninstall-app <appId>`                     | Uninstall app                                                          |
 | `conductor copy-app <bundleId> --from <id> --to <id>` | Copy an installed app between iOS simulators                           |

@@ -21,7 +21,8 @@ Playwright web.
 | `conductor native-rn-set --react-tag <n> --path <dot.path> --value <json>` | Live-edit an RN component's props via React DevTools `overrideProps` (text via `--path children`, color via `--path style.color`). Dev builds only |
 | `conductor native-rn-props --react-tag <n>` | Raw JSX props (`memoizedProps`) of an RN fiber by reactTag — the JS-side truth for Fabric where native `/props` `rawProps` is null |
 
-`--react-tag` comes from `native-inspect`'s `rn.reactTag`. `--value` is JSON (a bare
+`--react-tag` comes from `native-inspect`'s `rn.reactTag` (see `conductor-native`
+for the native-plane instrument). `--value` is JSON (a bare
 string works for text). `--path` is a dot path into props: `children`, `style.color`,
 `style.fontSize`, `accessibilityLabel`. `style.color` works whether the component's
 `style` is an object or a composed array. These drive React itself over Metro CDP, so
