@@ -37,6 +37,7 @@ import { vega } from './vega.test.js';
 import { inputStreaming } from './input-streaming.test.js';
 import { videoStreaming } from './video-streaming.test.js';
 import { maestroParity } from './maestro-parity.test.js';
+import { pathAliases } from './path-aliases.test.js';
 import { getDriver } from '../src/runner.js';
 import { IOSDriver } from '../src/drivers/ios.js';
 import { parseFlowFile, executeFlow } from '../src/drivers/flow-runner.js';
@@ -79,7 +80,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, cdpDiscovery, snapshotRef, flowRecorder, vega, inputStreaming, videoStreaming, maestroParity];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, cdpDiscovery, snapshotRef, flowRecorder, vega, inputStreaming, videoStreaming, maestroParity, pathAliases];
 
   if (device) {
     console.log(`\nDevice: ${device}`);

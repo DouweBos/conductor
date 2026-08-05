@@ -3,6 +3,7 @@
  * Parses flow YAML files and executes commands directly using IOSDriver / AndroidDriver.
  */
 import fs from 'fs/promises';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'path';
 import vm from 'node:vm';
 import yaml from 'js-yaml';
@@ -1593,8 +1594,81 @@ async function executeCommandBody(
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-function resolvePath(filePath: string, cwd?: string): string {
-  return path.isAbsolute(filePath) ? filePath : path.join(cwd ?? process.cwd(), filePath);
+// Resolve a `file:` reference from within a flow. A path starting with `@` is an
+// alias of the form `@name/rest`, where `name` maps to a directory declared under
+// `paths:` in the nearest `config.yaml`. Everything else keeps the historical
+// behavior: resolved relative to the flow file's directory (`cwd`).
+// Mirrors the plexinc/maestro FlowPathResolver.
+export function resolvePath(filePath: string, cwd?: string): string {
+  const base = cwd ?? process.cwd();
+  if (filePath.startsWith('@')) return resolvePathAlias(filePath, base);
+  return path.isAbsolute(filePath) ? filePath : path.join(base, filePath);
+}
+
+const CONFIG_FILE_NAMES = ['config.yaml', 'config.yml'];
+// Cache discovered config → paths map for the process lifetime (flows are short-lived).
+const configPathsCache = new Map<string, Record<string, string>>();
+
+function resolvePathAlias(requestedPath: string, startDir: string): string {
+  const body = requestedPath.slice(1);
+  const separator = body.indexOf('/');
+  const alias = separator >= 0 ? body.slice(0, separator) : body;
+  const remainder = separator >= 0 ? body.slice(separator + 1) : '';
+
+  const configPath = findWorkspaceConfig(startDir);
+  if (!configPath) {
+    throw new Error(
+      `Path alias '@${alias}' used but no config.yaml was found in any parent directory. ` +
+        'Declare aliases under `paths:` in a workspace config.yaml.'
+    );
+  }
+
+  const paths = readWorkspacePaths(configPath);
+  const target = paths[alias];
+  if (target === undefined) {
+    const known = Object.keys(paths).sort();
+    throw new Error(
+      `Unknown path alias '@${alias}' referenced in a flow. ` +
+        `Known aliases in ${configPath}: [${known.join(', ')}]`
+    );
+  }
+
+  const configDir = path.dirname(path.resolve(configPath));
+  const targetDir = path.normalize(path.resolve(configDir, target));
+  if (!existsSync(targetDir) || !statSync(targetDir).isDirectory()) {
+    throw new Error(
+      `Path alias '@${alias}' points to '${targetDir}', which is not an existing directory.`
+    );
+  }
+
+  return path.normalize(path.resolve(targetDir, remainder));
+}
+
+function findWorkspaceConfig(startDir: string): string | null {
+  let dir: string | null = path.resolve(startDir);
+  while (dir) {
+    for (const name of CONFIG_FILE_NAMES) {
+      const candidate = path.join(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+    const parent = path.dirname(dir);
+    dir = parent === dir ? null : parent;
+  }
+  return null;
+}
+
+function readWorkspacePaths(configPath: string): Record<string, string> {
+  const cached = configPathsCache.get(configPath);
+  if (cached) return cached;
+  let paths: Record<string, string> = {};
+  try {
+    const doc = yaml.load(readFileSync(configPath, 'utf-8')) as { paths?: Record<string, string> };
+    if (doc && typeof doc.paths === 'object' && doc.paths) paths = doc.paths;
+  } catch {
+    // A malformed config leaves aliases unresolved; the unknown-alias error below is clearer.
+  }
+  configPathsCache.set(configPath, paths);
+  return paths;
 }
 
 function resolveAppId(val: unknown, cmdName: string): string {
