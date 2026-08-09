@@ -81,7 +81,7 @@ function connect(session: DeviceStreamSession): void {
     }
     const bytes = new Uint8Array(data);
     broadcastToRenderers(`device_video_frame:${session.deviceId}`, {
-      data: bytes,
+      data: annexBToAvcc(bytes),
       keyFrame: isAnnexBKeyframe(bytes),
       timestamp: Date.now(),
     });
@@ -117,6 +117,37 @@ function handleConfig(session: DeviceStreamSession, text: string): void {
   } catch {
     // ignore malformed config
   }
+}
+
+/**
+ * Rewrite an Annex B access unit as AVCC: each NAL prefixed with its 4-byte
+ * big-endian length. WebCodecs needs this when the decoder is configured with an
+ * avcC `description`, which is how the parameter sets reach it — the daemon
+ * sends bare IDRs with no in-band SPS/PPS.
+ */
+function annexBToAvcc(bytes: Uint8Array): Uint8Array {
+  const starts: { at: number; len: number }[] = [];
+  for (let i = 0; i + 3 < bytes.length; i++) {
+    if (bytes[i] !== 0 || bytes[i + 1] !== 0) continue;
+    if (bytes[i + 2] === 1) starts.push({ at: i, len: 3 });
+    else if (bytes[i + 2] === 0 && bytes[i + 3] === 1) starts.push({ at: i, len: 4 });
+    else continue;
+    i += 2;
+  }
+  if (starts.length === 0) return bytes;
+
+  const out = new Uint8Array(bytes.length + starts.length); // ≤4-byte prefix per NAL
+  const view = new DataView(out.buffer);
+  let at = 0;
+  for (let n = 0; n < starts.length; n++) {
+    const from = starts[n].at + starts[n].len;
+    const to = n + 1 < starts.length ? starts[n + 1].at : bytes.length;
+    const nal = bytes.subarray(from, to);
+    view.setUint32(at, nal.length);
+    out.set(nal, at + 4);
+    at += 4 + nal.length;
+  }
+  return out.subarray(0, at);
 }
 
 /** Detect an IDR (type 5) NAL in an Annex B access unit. */

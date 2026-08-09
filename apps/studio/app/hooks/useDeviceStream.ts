@@ -12,14 +12,12 @@ export interface DeviceStreamState {
 }
 
 /**
- * Decode the conductor daemon's H.264 Annex B feed onto a canvas via WebCodecs.
- * The main process forwards `device_video_config:{id}` (once) and
- * `device_video_frame:{id}` (per access unit). The daemon sends bare IDR access
- * units — the parameter sets arrive only in the config frame — so we re-attach
- * SPS/PPS to every keyframe and decode in Annex B mode (no `description`).
+ * Decode the conductor daemon's H.264 feed onto a canvas via WebCodecs. The
+ * main process forwards `device_video_config:{id}` (once) and
+ * `device_video_frame:{id}` (per access unit, rewritten to AVCC). The daemon
+ * sends bare IDRs, so the parameter sets reach the decoder only through the
+ * avcC `description` — same configuration Argus's device streams use.
  */
-
-const START_CODE = new Uint8Array([0, 0, 0, 1]);
 
 function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);
@@ -28,27 +26,12 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-/** SPS/PPS as an Annex B prefix, to lead every keyframe. */
-function parameterSets(config: VideoConfig): Uint8Array | null {
-  if (!config.sps || !config.pps) return null;
-  const sps = base64ToBytes(config.sps);
-  const pps = base64ToBytes(config.pps);
-  const out = new Uint8Array(START_CODE.length * 2 + sps.length + pps.length);
-  let at = 0;
-  for (const part of [START_CODE, sps, START_CODE, pps]) {
-    out.set(part, at);
-    at += part.length;
-  }
-  return out;
+/** Frame bytes survive IPC as a Uint8Array or, sometimes, a plain object. */
+function toBytes(data: Uint8Array): Uint8Array {
+  if (data instanceof Uint8Array) return data;
+  return new Uint8Array(Object.values(data as unknown as Record<string, number>));
 }
 
-function withPrefix(prefix: Uint8Array | null, bytes: Uint8Array): Uint8Array {
-  if (!prefix) return bytes;
-  const out = new Uint8Array(prefix.length + bytes.length);
-  out.set(prefix, 0);
-  out.set(bytes, prefix.length);
-  return out;
-}
 export function useDeviceStream(
   deviceId: string | null,
   canvasRef: RefObject<HTMLCanvasElement | null>,
@@ -60,12 +43,12 @@ export function useDeviceStream(
     error: null,
   });
   const decoderRef = useRef<VideoDecoder | null>(null);
-  const sawKeyRef = useRef(false);
-  const paramSetsRef = useRef<Uint8Array | null>(null);
+  // A decoder can only start — or resync after an error — on a keyframe.
+  const awaitingKeyRef = useRef(true);
 
   useEffect(() => {
     if (!deviceId) return;
-    sawKeyRef.current = false;
+    awaitingKeyRef.current = true;
 
     if (typeof VideoDecoder === "undefined") {
       setState((s) => ({ ...s, error: "WebCodecs is unavailable in this runtime." }));
@@ -75,8 +58,14 @@ export function useDeviceStream(
     const drawFrame = (frame: VideoFrame) => {
       const canvas = canvasRef.current;
       if (canvas) {
+        // The decoded size wins — it follows device rotation.
+        if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+          canvas.width = frame.displayWidth;
+          canvas.height = frame.displayHeight;
+          setState((s) => ({ ...s, width: frame.displayWidth, height: frame.displayHeight }));
+        }
         const ctx = canvas.getContext("2d");
-        if (ctx) ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+        if (ctx) ctx.drawImage(frame, 0, 0);
       }
       frame.close();
     };
@@ -89,11 +78,13 @@ export function useDeviceStream(
       });
       decoder.configure({
         codec: config.codecString || "avc1.640028",
+        codedWidth: config.width,
+        codedHeight: config.height,
+        description: config.avcC ? base64ToBytes(config.avcC) : undefined,
         optimizeForLatency: true,
       });
       decoderRef.current = decoder;
-      paramSetsRef.current = parameterSets(config);
-      sawKeyRef.current = false;
+      awaitingKeyRef.current = true;
       const canvas = canvasRef.current;
       if (canvas) {
         canvas.width = config.width;
@@ -105,23 +96,23 @@ export function useDeviceStream(
     const onFrame = (payload: FramePayload) => {
       const decoder = decoderRef.current;
       if (!decoder || decoder.state !== "configured") return;
-      if (payload.keyFrame) sawKeyRef.current = true;
-      if (!sawKeyRef.current) return; // wait for the first IDR
+      if (awaitingKeyRef.current) {
+        if (!payload.keyFrame) return;
+        awaitingKeyRef.current = false;
+      }
       // Drop deltas when the decoder falls behind — an unbounded queue is how
       // the renderer runs out of memory on a fast stream.
       if (!payload.keyFrame && decoder.decodeQueueSize > 8) return;
       try {
-        const raw = payload.data instanceof Uint8Array ? payload.data : new Uint8Array(payload.data);
-        const bytes = payload.keyFrame ? withPrefix(paramSetsRef.current, raw) : raw;
         decoder.decode(
           new EncodedVideoChunk({
             type: payload.keyFrame ? "key" : "delta",
             timestamp: payload.timestamp * 1000, // the field is microseconds
-            data: bytes,
+            data: toBytes(payload.data),
           }),
         );
-      } catch (err) {
-        setState((s) => ({ ...s, error: err instanceof Error ? err.message : String(err) }));
+      } catch {
+        awaitingKeyRef.current = true; // resync on the next keyframe
       }
     };
 
