@@ -24,8 +24,14 @@ export function LogView({ lines, follow = true, emptyLabel = "No output yet." }:
     if (follow) endRef.current?.scrollIntoView({ block: "end" });
   }, [lines, follow]);
 
+  // Keep the empty label inside the log surface so it sits on the same
+  // baseline and grid as the output it stands in for.
   if (lines.length === 0) {
-    return <div className={styles.empty}>{emptyLabel}</div>;
+    return (
+      <div className={styles.log}>
+        <div className={styles.empty}>{emptyLabel}</div>
+      </div>
+    );
   }
 
   return (

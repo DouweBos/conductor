@@ -73,10 +73,13 @@
   padding: var(--space-2) 0;
 }
 
+/* Matches LogView's empty label so all three tabs read identically. */
 .emptyHint {
-  padding: var(--space-3);
+  padding: 0 var(--space-3);
   color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: var(--text-sm);
+  line-height: 1.5;
   font-style: italic;
 }
 
