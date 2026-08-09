@@ -119,6 +119,9 @@ export const stopLogs = (deviceId: string) => invoke<void>("logs_stop", { device
 export const listCases = () => invoke<TestCase[]>("cases_list");
 export const casesMatrix = (dimension?: string) =>
   invoke<CaseMatrix>("cases_matrix", { dimension });
+export const listWorkflows = () => invoke<string[]>("ci_workflows");
+export const triggerWorkflow = (workflow: string, ref?: string) =>
+  invoke<void>("ci_trigger", { workflow, ref });
 export const syncCasesCi = (dimension?: string) =>
   invoke<CaseMatrix>("cases_sync_ci", { dimension });
 

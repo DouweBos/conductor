@@ -21,6 +21,7 @@ import {
   useSelectedDeviceId,
 } from "../../stores/deviceStore";
 import { installApp, startDevice } from "../../lib/ipc";
+import { recordAssertion } from "../../lib/recorder";
 import {
   refreshCapture,
   setMode,
@@ -161,6 +162,14 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
             label={recording ? "Stop recording" : "Record gestures into the open flow"}
             active={recording}
             onClick={toggleRecording}
+          />
+        ) : null}
+        {recording && showRecord ? (
+          <IconButton
+            icon="check"
+            label="Record an assertion for this screen"
+            disabled={!selectedId}
+            onClick={() => selectedId && void recordAssertion(selectedId)}
           />
         ) : null}
         {recording && showRecord ? <StatusPill tone="error" pulse>REC</StatusPill> : null}

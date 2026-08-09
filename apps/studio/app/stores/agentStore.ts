@@ -9,16 +9,26 @@ interface AgentState {
   permission: AgentPermissionRequest | null;
   error: string | null;
   eventSeq: number;
+  /** A prompt handed over from elsewhere, e.g. a failed run to fix. */
+  pendingPrompt: string | null;
 }
 
 const store = create<AgentState>(() => ({
   agentId: null,
   status: "idle",
+  pendingPrompt: null,
   items: [],
   permission: null,
   error: null,
   eventSeq: 0,
 }));
+
+export const usePendingPrompt = () => store((s) => s.pendingPrompt);
+
+/** A prompt composed elsewhere (e.g. "fix this failed run") for the agent view. */
+export function setPendingPrompt(prompt: string | null): void {
+  store.setState({ pendingPrompt: prompt });
+}
 
 export const useAgentId = () => store((s) => s.agentId);
 export const useAgentStatus = () => store((s) => s.status);

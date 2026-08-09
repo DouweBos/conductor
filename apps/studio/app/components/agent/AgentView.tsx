@@ -25,6 +25,8 @@ import {
   useAgentItems,
   useAgentPermission,
   useAgentStatus,
+  usePendingPrompt,
+  setPendingPrompt,
 } from "../../stores/agentStore";
 import { getSelectedDevice, refreshDevices } from "../../stores/deviceStore";
 import { DevicePanel } from "../flows/DevicePanel";
@@ -46,6 +48,7 @@ export function AgentView() {
   const permission = useAgentPermission();
   const [available, setAvailable] = useState<boolean | null>(null);
   const [draft, setDraft] = useState("");
+  const pending = usePendingPrompt();
   const [startError, setStartError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +62,14 @@ export function AgentView() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [items, permission]);
+
+  // A failed run handed over from the workbench: load it, don't send it — the
+  // engineer gets to read and edit before the agent starts touching the app.
+  useEffect(() => {
+    if (!pending) return;
+    setDraft(pending);
+    setPendingPrompt(null);
+  }, [pending]);
 
   const begin = async (prompt: string) => {
     const device = getSelectedDevice();

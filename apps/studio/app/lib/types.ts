@@ -196,7 +196,11 @@ export interface CiSync {
   total: number;
   /** True when the run had no job detail, so every case shows the run's result. */
   fallbackToRunStatus: boolean;
+  /** How many per-flow results came from the run's JUnit report. */
+  fromReport: number;
   statuses: Record<string, FlowRunStatus>;
+  /** Failure text per case, when the report carried one. */
+  details: Record<string, string>;
 }
 
 export interface CaseMatrix {

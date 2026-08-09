@@ -2,6 +2,7 @@ import type { CiSync, FlowRunStatus } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { getProjectInfo } from "../file/fileService";
 import { run, which } from "../util/exec";
+import { junitForRun, matchesFlow } from "./junit";
 
 /**
  * CI status for test cases, read from GitHub Actions via the `gh` CLI (which
@@ -37,6 +38,31 @@ interface GhJob {
   conclusion?: string;
 }
 
+/** Start a workflow run from Studio, so a green local suite can be pushed at CI. */
+export async function triggerWorkflow(workflow: string, ref?: string): Promise<void> {
+  const project = getProjectInfo();
+  if (!project) throw new Error("No project is open.");
+  const args = ["workflow", "run", workflow, ...(ref ? ["--ref", ref] : [])];
+  const res = await run("gh", args, { cwd: project.root, timeout: 60_000 });
+  if (res.code !== 0) throw new Error(res.stderr.trim() || `gh workflow run ${workflow} failed`);
+}
+
+/** Workflows this repo defines, for the trigger picker. */
+export async function listWorkflows(): Promise<string[]> {
+  const project = getProjectInfo();
+  if (!project) return [];
+  const res = await run("gh", ["workflow", "list", "--json", "name"], {
+    cwd: project.root,
+    timeout: 30_000,
+  });
+  if (res.code !== 0) return [];
+  try {
+    return (JSON.parse(res.stdout) as { name: string }[]).map((w) => w.name);
+  } catch {
+    return [];
+  }
+}
+
 export async function syncCi(cases: { id: string; flow?: string }[]): Promise<CiSync> {
   const project = getProjectInfo();
   if (!project) throw new Error("No project is open.");
@@ -47,12 +73,21 @@ export async function syncCi(cases: { id: string; flow?: string }[]): Promise<Ci
   const latest = await latestRun(project.root);
   if (!latest) throw new Error("No GitHub Actions runs found for this repository.");
   const jobs = await runJobs(project.root, latest.databaseId);
+  // The JUnit report names every flow, so prefer it over coarse job matching.
+  const junit = await junitForRun(project.root, latest.databaseId);
 
   // With no job-level detail to match against, the run's own result is the best
   // signal we have — flagged so the UI can say the status isn't per-case.
   const fallback = jobs.length === 0;
   const statuses: Record<string, FlowRunStatus> = {};
+  const details: Record<string, string> = {};
   for (const c of cases) {
+    const reported = c.flow ? junit.find((j) => matchesFlow(j.name, c.flow!)) : undefined;
+    if (reported) {
+      statuses[c.id] = reported.status;
+      if (reported.detail) details[c.id] = reported.detail;
+      continue;
+    }
     const job = jobs.find((j) => jobMatchesCase(j.name, c.id, c.flow));
     const source = job ?? (fallback ? latest : null);
     if (source) statuses[c.id] = toStatus(source.status, source.conclusion);
@@ -67,7 +102,9 @@ export async function syncCi(cases: { id: string; flow?: string }[]): Promise<Ci
     matched: Object.keys(statuses).length,
     total: cases.length,
     fallbackToRunStatus: fallback,
+    fromReport: junit.length,
     statuses,
+    details,
   };
   broadcastToRenderers("cases:ci-synced", cache);
   return cache;

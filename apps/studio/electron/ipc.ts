@@ -39,6 +39,7 @@ import {
   stopAgent,
 } from "./services/agent/agentService";
 import { buildMatrix, listCases, syncCases } from "./services/cases/casesService";
+import { listWorkflows, triggerWorkflow } from "./services/cases/ciService";
 import {
   appFingerprint,
   captureUi,
@@ -217,6 +218,10 @@ export function registerIpcHandlers(): void {
   handle<void, TestCase[]>("cases_list", () => listCases());
   handle<{ dimension?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.dimension));
   handle<{ dimension?: string }, CaseMatrix>("cases_sync_ci", (a) => syncCases(a?.dimension));
+  handle<void, string[]>("ci_workflows", () => listWorkflows());
+  handle<{ workflow: string; ref?: string }, void>("ci_trigger", (a) =>
+    triggerWorkflow(a.workflow, a.ref),
+  );
 
   // ── Agentic writer ──
   handle<void, { available: boolean }>("agent_status", () => getAgentStatus());

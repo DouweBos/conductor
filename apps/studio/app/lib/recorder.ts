@@ -14,16 +14,17 @@ function appendStep(step: string): void {
 }
 
 function area(el: CaptureElement): number {
-  return el.bounds ? el.bounds.width * el.bounds.height : Number.POSITIVE_INFINITY;
+  return el.bounds ? el.bounds.width * el.bounds.height : 0;
 }
 
 /** Smallest element whose bounds contain the point, anywhere in the tree. */
 function findElementAtPoint(cap: CaptureUiResult, px: number, py: number): CaptureElement | null {
   let best: CaptureElement | null = null;
+  const smaller = (a: CaptureElement, b: CaptureElement) => area(a) < area(b);
   const visit = (el: CaptureElement) => {
     const b = el.bounds;
     if (b && px >= b.x && px <= b.x + b.width && py >= b.y && py <= b.y + b.height) {
-      if (el.text && (!best || area(el) < area(best))) best = el;
+      if (el.text && (!best || smaller(el, best))) best = el;
     }
     for (const child of el.children ?? []) visit(child);
   };
@@ -42,6 +43,31 @@ export async function recordTap(deviceId: string, xN: number, yN: number): Promi
     // fall back to the point-based step
   }
   appendStep(step);
+}
+
+/**
+ * Record an assertion for what's on screen now. A recording made only of taps
+ * asserts nothing, so it can pass against a completely broken screen.
+ */
+export async function recordAssertion(deviceId: string): Promise<void> {
+  try {
+    const cap = await captureUi(deviceId);
+    const el = largestLabelled(cap.root);
+    if (el) appendStep(commandFor(el, "assertVisible"));
+  } catch {
+    // nothing to assert on
+  }
+}
+
+/** The most prominent labelled element — the one worth asserting on. */
+function largestLabelled(root: CaptureElement): CaptureElement | null {
+  let best: CaptureElement | null = null;
+  const visit = (el: CaptureElement) => {
+    if (el.text && el.bounds && (!best || area(el) > area(best))) best = el;
+    for (const child of el.children ?? []) visit(child);
+  };
+  visit(root);
+  return best;
 }
 
 export function recordSwipe(x1: number, y1: number, x2: number, y2: number): void {

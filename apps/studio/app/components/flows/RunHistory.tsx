@@ -2,6 +2,7 @@ import { Button, EmptyState, Spinner, StatusPill, type StatusTone } from "@condu
 import { useEffect, useState } from "react";
 
 import { useIpcEvent } from "../../hooks/useIpcEvent";
+import { askAgentToFix } from "../../lib/agentHandoff";
 import { clearRunHistory, runArtifacts, runHistory } from "../../lib/ipc";
 import { selectFlow } from "../../lib/router";
 import type { FlowRunStatus, RunArtifacts, RunRecord } from "../../lib/types";
@@ -76,6 +77,11 @@ export function RunHistory() {
           <span className={styles.meta}>
             {when(selected.startedAt)} · {duration(selected)} · {selected.engine}
           </span>
+          {selected.status === "failed" || selected.status === "error" ? (
+            <Button size="sm" variant="secondary" icon="agent" onClick={() => void askAgentToFix(selected)}>
+              Ask the agent to fix it
+            </Button>
+          ) : null}
         </header>
         {loading ? (
           <div className={styles.center}>
