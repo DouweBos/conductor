@@ -22,14 +22,14 @@
   ],
   "run": [
     {
-      "title": "Test",
-      "command": "pnpm run test",
-      "restartOnRerun": false
-    },
-    {
       "title": "Studio",
       "command": "pnpm run dev:studio",
       "restartOnRerun": true
+    },
+    {
+      "title": "Test",
+      "command": "pnpm run test",
+      "restartOnRerun": false
     },
     {
       "title": "Storybook",
