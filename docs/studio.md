@@ -21,9 +21,22 @@ A Maestro-Studio-style workbench:
 The device mirror and inspector always use conductor: the daemon's H.264 video
 WebSocket (`conductor stream-server`) is decoded in the renderer via WebCodecs,
 taps/swipes go through conductor's input commands, and the inspector reads
-`conductor capture-ui`. Selecting an element generates a command — **tapOn /
-assertVisible / inputText / longPressOn / copyTextFrom** — that you insert into
-the editor.
+`conductor capture-ui`.
+
+The panel has two modes:
+
+- **Interact** — your taps and swipes drive the device.
+- **Inspect** — Maestro-Studio-style element picking. Every captured element is
+  outlined over the stream; hovering highlights the smallest one under the
+  cursor, and clicking it lists the commands that fit it — **tapOn / longPressOn
+  / inputText / assertVisible / copyTextFrom / runFlow-when-visible** — each
+  rendered as ready-to-paste YAML with an Insert button. Selectors are offered
+  best-first: accessibility id, then text (indexed when the text isn't unique),
+  then a percentage coordinate. Coordinates are offered only for tap-like
+  commands, since an assertion can't match a point. On tvOS you get the remote
+  keys instead of taps, because focus navigation is the only thing that works
+  there. Picking in the inspector tree and picking on the stream are the same
+  selection.
 
 **Running flows** prefers the **system-installed `maestro`** binary
 (`maestro test`) and falls back to **`conductor run-flow`** when maestro is not on

@@ -4,7 +4,9 @@ import { useRef } from "react";
 import { useDeviceStream } from "../../hooks/useDeviceStream";
 import { deviceSwipe, deviceTap } from "../../lib/ipc";
 import { recordSwipe, recordTap } from "../../lib/recorder";
+import { useCapture, useDeviceMode } from "../../stores/inspectStore";
 import { isRecording } from "../../stores/recorderStore";
+import { ElementAnnotations } from "./ElementAnnotations";
 import styles from "./DeviceStream.module.css";
 
 interface Point {
@@ -17,6 +19,9 @@ export function DeviceStream({ deviceId }: { deviceId: string | null }) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const downRef = useRef<{ point: Point; t: number } | null>(null);
   const stream = useDeviceStream(deviceId, canvasRef);
+  const mode = useDeviceMode();
+  const capture = useCapture();
+  const inspecting = mode === "inspect";
 
   const toNormalized = (clientX: number, clientY: number): Point | null => {
     const el = overlayRef.current;
@@ -71,12 +76,16 @@ export function DeviceStream({ deviceId }: { deviceId: string | null }) {
         )
       }
       overlay={
-        <div
-          ref={overlayRef}
-          className={styles.overlay}
-          onPointerDown={onPointerDown}
-          onPointerUp={onPointerUp}
-        />
+        inspecting ? (
+          capture ? <ElementAnnotations capture={capture} /> : null
+        ) : (
+          <div
+            ref={overlayRef}
+            className={styles.overlay}
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+          />
+        )
       }
     >
       <canvas ref={canvasRef} className={styles.canvas} />

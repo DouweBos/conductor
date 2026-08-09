@@ -64,6 +64,14 @@ export function setBufferContent(path: string, content: string): void {
   });
 }
 
+/** Append a snippet as a new step at the end of the buffer. */
+export function appendToBuffer(path: string, snippet: string): void {
+  const buf = store.getState().buffers[path];
+  if (!buf) return;
+  const sep = buf.content.endsWith("\n") || buf.content === "" ? "" : "\n";
+  setBufferContent(path, `${buf.content}${sep}${snippet}\n`);
+}
+
 export async function saveFile(path: string): Promise<void> {
   const buf = store.getState().buffers[path];
   if (!buf) return;

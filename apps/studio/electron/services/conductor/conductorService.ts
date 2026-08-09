@@ -1,3 +1,8 @@
+import { randomUUID } from "node:crypto";
+import { readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import type {
   CaptureElement,
   CaptureUiResult,
@@ -17,7 +22,7 @@ async function runConductor(args: string[], timeout = 60_000) {
       "Conductor CLI not found. Install it globally, set CONDUCTOR_BIN, or build packages/cli.",
     );
   }
-  return run(resolved.bin, [...resolved.prefixArgs, ...args], { timeout });
+  return run(resolved.bin, [...resolved.prefixArgs, ...args], { timeout, env: resolved.env });
 }
 
 /** Argument that targets a specific device (also keys the conductor session). */
@@ -74,11 +79,22 @@ function normalizePlatform(value: string): Platform {
 }
 
 export async function captureUi(deviceId: string): Promise<CaptureUiResult> {
-  const res = await runConductor(["capture-ui", ...deviceArgs(deviceId), "--json"], 45_000);
-  if (res.code !== 0) {
-    throw new Error(res.stderr.trim() || "conductor capture-ui failed");
+  // Route the bundle through a file: it embeds a base64 screenshot, so on stdout
+  // any driver log line lands in the middle of multi-MB JSON and breaks parsing.
+  const out = path.join(tmpdir(), `conductor-capture-${randomUUID()}.json`);
+  let bundle: CaptureBundle | null = null;
+  try {
+    const res = await runConductor(
+      ["capture-ui", "--output", out, ...deviceArgs(deviceId), "--json"],
+      45_000,
+    );
+    if (res.code !== 0) {
+      throw new Error(res.stderr.trim() || res.stdout.trim() || "conductor capture-ui failed");
+    }
+    bundle = safeJson<CaptureBundle>(await readFile(out, "utf8"));
+  } finally {
+    await rm(out, { force: true });
   }
-  const bundle = safeJson<CaptureBundle>(res.stdout);
   if (!bundle) throw new Error("capture-ui returned no parseable bundle");
   const result = mapBundle(deviceId, bundle);
   // Grow the scene graph from what we observe; consume the pending action so it
@@ -93,6 +109,7 @@ interface CaptureBundle {
   device?: { width?: number; height?: number };
   screenshot?: { encoding?: string; data?: string };
   a11ySnapshot?: A11yEntry[];
+  hierarchy?: { axElement?: unknown };
 }
 
 interface A11yEntry {
@@ -113,7 +130,14 @@ function mapBundle(deviceId: string, bundle: CaptureBundle): CaptureUiResult {
     ? `data:image/${bundle.screenshot.encoding ?? "png"};base64,${bundle.screenshot.data}`
     : undefined;
   const root: CaptureElement = { ref: "root", role: "Screen", text: "Screen", children: [] };
-  nest(root, (bundle.a11ySnapshot ?? []).map(toElement));
+  const ids = indexIdentifiers(bundle.hierarchy?.axElement);
+  const elements = (bundle.a11ySnapshot ?? []).map(toElement);
+  // The flat snapshot carries no accessibility id, so borrow it from the full
+  // hierarchy by frame — it's what selectors should prefer over text.
+  for (const el of elements) {
+    if (el.bounds) el.identifier = ids.get(frameKey(el.bounds)) || undefined;
+  }
+  nest(root, elements);
   return { deviceId, width, height, screenshot, root };
 }
 
@@ -128,6 +152,28 @@ function toElement(e: A11yEntry): CaptureElement & { nodeId: string } {
       : undefined,
     children: [],
   };
+}
+
+function frameKey(b: { x: number; y: number; width: number; height: number }): string {
+  return `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.width)},${Math.round(b.height)}`;
+}
+
+/** Map frame -> accessibility identifier, walking the platform view hierarchy. */
+function indexIdentifiers(node: unknown, into = new Map<string, string>()): Map<string, string> {
+  if (!node || typeof node !== "object") return into;
+  const n = node as Record<string, unknown>;
+  const id = String(n.identifier ?? n.resourceId ?? n["resource-id"] ?? "").trim();
+  const frame = n.frame as Record<string, number> | undefined;
+  if (id && frame) {
+    const x = frame.X ?? frame.x ?? 0;
+    const y = frame.Y ?? frame.y ?? 0;
+    const width = frame.Width ?? frame.width ?? 0;
+    const height = frame.Height ?? frame.height ?? 0;
+    const key = frameKey({ x, y, width, height });
+    if (!into.has(key)) into.set(key, id);
+  }
+  for (const child of (n.children as unknown[]) ?? []) indexIdentifiers(child, into);
+  return into;
 }
 
 /**
@@ -209,19 +255,19 @@ function tokenize(input: string): string[] {
 }
 
 function safeJson<T>(text: string): T | null {
-  // Tolerate leading log chatter by parsing the last JSON-looking chunk.
   const trimmed = text.trim();
   try {
     return JSON.parse(trimmed) as T;
   } catch {
+    // Tolerate log chatter around the payload: parse the widest brace-delimited
+    // span instead of giving up on the whole string.
     const start = trimmed.search(/[[{]/);
-    if (start > 0) {
-      try {
-        return JSON.parse(trimmed.slice(start)) as T;
-      } catch {
-        return null;
-      }
+    const end = Math.max(trimmed.lastIndexOf("}"), trimmed.lastIndexOf("]"));
+    if (start < 0 || end <= start) return null;
+    try {
+      return JSON.parse(trimmed.slice(start, end + 1)) as T;
+    } catch {
+      return null;
     }
-    return null;
   }
 }

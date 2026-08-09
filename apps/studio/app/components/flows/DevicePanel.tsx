@@ -1,4 +1,12 @@
-import { Button, IconButton, Select, StatusPill, Toolbar, ToolbarSpacer } from "@conductor/studio-ui";
+import {
+  Button,
+  IconButton,
+  SegmentedControl,
+  Select,
+  StatusPill,
+  Toolbar,
+  ToolbarSpacer,
+} from "@conductor/studio-ui";
 
 import {
   connectSelectedDevice,
@@ -11,7 +19,15 @@ import {
   useDeviceStreaming,
   useSelectedDeviceId,
 } from "../../stores/deviceStore";
+import {
+  refreshCapture,
+  setMode,
+  useCapture,
+  useCaptureLoading,
+  useDeviceMode,
+} from "../../stores/inspectStore";
 import { toggleRecording, useRecording } from "../../stores/recorderStore";
+import { CommandSuggestions } from "./CommandSuggestions";
 import { DeviceStream } from "./DeviceStream";
 import { Inspector } from "./Inspector";
 import styles from "./DevicePanel.module.css";
@@ -29,6 +45,16 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
   const connecting = useDeviceConnecting();
   const error = useDeviceError();
   const recording = useRecording();
+  const mode = useDeviceMode();
+  const capturing = useCaptureLoading();
+  const capture = useCapture();
+  const device = devices.find((d) => d.id === selectedId) ?? null;
+
+  // Inspect mode is only useful with a fresh snapshot, so take one on entry.
+  const changeMode = (next: "interact" | "inspect") => {
+    setMode(next);
+    if (next === "inspect" && selectedId) void refreshCapture(selectedId);
+  };
 
   const options = devices.map((d) => ({
     value: d.id,
@@ -47,6 +73,22 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
         />
         <IconButton icon="refresh" label="Refresh devices" onClick={() => void refreshDevices()} />
         <ToolbarSpacer />
+        <SegmentedControl
+          options={[
+            { value: "interact", label: "Interact" },
+            { value: "inspect", label: "Inspect" },
+          ]}
+          value={mode}
+          onChange={(v) => changeMode(v as "interact" | "inspect")}
+        />
+        {mode === "inspect" ? (
+          <IconButton
+            icon="search"
+            label="Re-capture elements"
+            disabled={!selectedId || capturing}
+            onClick={() => selectedId && void refreshCapture(selectedId)}
+          />
+        ) : null}
         {streaming && showRecord ? (
           <IconButton
             icon="dot"
@@ -78,7 +120,11 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
       </div>
       {showInspector ? (
         <div className={styles.inspector}>
-          <Inspector deviceId={selectedId} />
+          {mode === "inspect" && capture ? (
+            <CommandSuggestions capture={capture} platform={device?.platform ?? "ios"} />
+          ) : (
+            <Inspector deviceId={selectedId} />
+          )}
         </div>
       ) : null}
     </div>

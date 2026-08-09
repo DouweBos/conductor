@@ -15,6 +15,11 @@ export { StatusPill, type StatusPillProps, type StatusTone } from "./components/
 export { Tag, type TagProps } from "./components/Tag/Tag";
 export { TextField, type TextFieldProps } from "./components/TextField/TextField";
 export { Select, type SelectProps, type SelectOption } from "./components/Select/Select";
+export {
+  SegmentedControl,
+  type SegmentedControlProps,
+  type SegmentedOption,
+} from "./components/SegmentedControl/SegmentedControl";
 export { Dialog, type DialogProps } from "./components/Dialog/Dialog";
 export { EmptyState, type EmptyStateProps } from "./components/EmptyState/EmptyState";
 export { Spinner, type SpinnerProps } from "./components/Spinner/Spinner";

@@ -1,0 +1,30 @@
+.layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+}
+
+.box {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 1px dashed var(--accent-subtle-strong);
+  background: transparent;
+  cursor: pointer;
+}
+
+.box:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.hovered,
+.selected {
+  border: 2px solid var(--accent);
+  /* Dim everything outside the element, the way Maestro Studio does. */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  z-index: 1;
+}
+
+.selected {
+  background: var(--accent-subtle);
+}

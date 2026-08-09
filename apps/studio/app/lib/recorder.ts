@@ -2,7 +2,7 @@ import { commandFor } from "../components/flows/Inspector";
 import { getCurrentRoute } from "./router";
 import { captureUi } from "./ipc";
 import type { CaptureElement, CaptureUiResult } from "./types";
-import { getBuffer, setBufferContent } from "../stores/flowStore";
+import { appendToBuffer } from "../stores/flowStore";
 
 // Record mode: translate live device gestures into Maestro steps appended to the
 // currently-open flow. Taps resolve the tapped element via capture-ui so the
@@ -10,11 +10,7 @@ import { getBuffer, setBufferContent } from "../stores/flowStore";
 
 function appendStep(step: string): void {
   const path = getCurrentRoute().flowPath;
-  if (!path) return;
-  const buf = getBuffer(path);
-  if (!buf) return;
-  const sep = buf.content.endsWith("\n") || buf.content === "" ? "" : "\n";
-  setBufferContent(path, `${buf.content}${sep}${step}\n`);
+  if (path) appendToBuffer(path, step);
 }
 
 function area(el: CaptureElement): number {
