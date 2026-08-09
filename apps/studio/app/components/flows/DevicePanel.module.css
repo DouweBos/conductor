@@ -1,0 +1,27 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-secondary);
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+}
+
+.stream {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.inspector {
+  height: 260px;
+  flex-shrink: 0;
+  min-height: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}

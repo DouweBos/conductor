@@ -1,0 +1,12 @@
+appId: com.example.app
+---
+- launchApp
+- runFlow:
+    file: components/sign-in.yaml
+    env:
+      USERNAME: "shopper@example.com"
+      PASSWORD: "hunter2"
+- tapOn: "Cart"
+- tapOn: "Checkout"
+- tapOn: "Pay now"
+- assertVisible: "Order confirmed"

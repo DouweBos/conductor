@@ -1,0 +1,131 @@
+import { ipcMain } from "electron";
+
+import type {
+  CaseMatrix,
+  CaptureUiResult,
+  CommandResult,
+  DeviceInfo,
+  DeviceStreamInfo,
+  FileEntry,
+  MaestroStatus,
+  PomEntry,
+  ProjectInfo,
+  SceneGraph,
+  TestCase,
+  ThemePreference,
+  UpdaterState,
+} from "../app/lib/types";
+import { getAgentStatus } from "./services/agent/agentService";
+import { buildMatrix, listCases } from "./services/cases/casesService";
+import {
+  captureUi,
+  inputText,
+  listDevices,
+  swipe,
+  tap,
+} from "./services/conductor/conductorService";
+import {
+  startDeviceStream,
+  stopDeviceStream,
+} from "./services/device/deviceService";
+import {
+  createFlow,
+  deleteFlow,
+  getProjectInfo,
+  listFlows,
+  openProject,
+  readFlow,
+  renameFlow,
+  writeFlow,
+} from "./services/file/fileService";
+import {
+  cancelRun,
+  getMaestroStatus,
+  runCommand,
+  runFlow,
+} from "./services/flow/flowRunner";
+import { listPoms } from "./services/pom/pomService";
+import { loadSceneGraph } from "./services/scenegraph/sceneGraphService";
+import { getTheme, setTheme } from "./services/settings/settingsService";
+import {
+  checkForUpdates,
+  downloadUpdate,
+  getUpdaterState,
+  quitAndInstallUpdate,
+} from "./services/updater/updaterService";
+
+// Wrap ipcMain.handle: unwrap the single args object and re-throw as a plain
+// string so the renderer promise rejects with a readable message.
+function handle<A, R>(channel: string, fn: (args: A) => Promise<R> | R): void {
+  ipcMain.handle(channel, async (_event, args: A) => {
+    try {
+      return await fn(args);
+    } catch (err) {
+      throw err instanceof Error ? err.message : String(err);
+    }
+  });
+}
+
+export function registerIpcHandlers(): void {
+  // ── Project / files ──
+  handle<{ root?: string }, ProjectInfo>("project_open", (a) => openProject(a?.root));
+  handle<void, ProjectInfo | null>("project_info", () => getProjectInfo());
+  handle<void, FileEntry[]>("flows_list", () => listFlows());
+  handle<{ path: string }, string>("flow_read", (a) => readFlow(a.path));
+  handle<{ path: string; content: string }, void>("flow_write", (a) =>
+    writeFlow(a.path, a.content),
+  );
+  handle<{ path: string; content?: string }, void>("flow_create", (a) =>
+    createFlow(a.path, a.content),
+  );
+  handle<{ path: string }, void>("flow_delete", (a) => deleteFlow(a.path));
+  handle<{ from: string; to: string }, void>("flow_rename", (a) => renameFlow(a.from, a.to));
+
+  // ── Devices ──
+  handle<void, DeviceInfo[]>("devices_list", () => listDevices());
+  handle<{ deviceId: string; platform: string }, DeviceStreamInfo>(
+    "device_stream_start",
+    (a) => startDeviceStream(a.deviceId, a.platform as DeviceStreamInfo["platform"]),
+  );
+  handle<{ deviceId: string }, void>("device_stream_stop", (a) => stopDeviceStream(a.deviceId));
+  handle<{ deviceId: string; x: number; y: number }, void>("device_tap", (a) =>
+    tap(a.deviceId, a.x, a.y),
+  );
+  handle<
+    { deviceId: string; x1: number; y1: number; x2: number; y2: number },
+    void
+  >("device_swipe", (a) => swipe(a.deviceId, a.x1, a.y1, a.x2, a.y2));
+  handle<{ deviceId: string; text: string }, void>("device_input_text", (a) =>
+    inputText(a.deviceId, a.text),
+  );
+  handle<{ deviceId: string }, CaptureUiResult>("capture_ui", (a) => captureUi(a.deviceId));
+
+  // ── Flow running ──
+  handle<void, MaestroStatus>("maestro_status", () => getMaestroStatus());
+  handle<{ path: string; deviceId?: string }, { runId: string }>("flow_run", (a) =>
+    runFlow(a.path, a.deviceId),
+  );
+  handle<{ runId: string }, void>("flow_run_cancel", (a) => cancelRun(a.runId));
+  handle<{ command: string; deviceId: string }, CommandResult>("flow_run_command", (a) =>
+    runCommand(a.command, a.deviceId),
+  );
+
+  // ── Test case management ──
+  handle<void, TestCase[]>("cases_list", () => listCases());
+  handle<{ dimension?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.dimension));
+
+  // ── Agentic writer (scaffolded) ──
+  handle<void, { available: boolean }>("agent_status", () => getAgentStatus());
+  handle<void, PomEntry[]>("pom_list", () => listPoms());
+  handle<void, SceneGraph>("scenegraph_load", () => loadSceneGraph());
+
+  // ── Settings / theme ──
+  handle<void, ThemePreference>("theme_get", () => getTheme());
+  handle<{ theme: ThemePreference }, void>("theme_set", (a) => setTheme(a.theme));
+
+  // ── Updater ──
+  handle<void, UpdaterState>("updater_state", () => getUpdaterState());
+  handle<void, void>("updater_check", () => checkForUpdates());
+  handle<void, void>("updater_download", () => downloadUpdate());
+  handle<void, void>("updater_install", () => quitAndInstallUpdate());
+}

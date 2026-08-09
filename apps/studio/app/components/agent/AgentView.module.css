@@ -1,0 +1,134 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  overflow: auto;
+  height: 100%;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.heroIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 640px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.status {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  min-height: 260px;
+}
+
+.muted {
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.muted code,
+.ctaNote code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-overlay);
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+}
+
+.pomList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pomItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.pomName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 550;
+  color: var(--text-primary);
+}
+
+.pomTags {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.graphStat {
+  display: flex;
+  gap: var(--space-6);
+  margin-bottom: var(--space-3);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.statValue {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.statLabel {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.cta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.ctaNote {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  max-width: 520px;
+  line-height: 1.5;
+}

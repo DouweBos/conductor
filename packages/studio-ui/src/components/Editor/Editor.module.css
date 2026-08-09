@@ -1,0 +1,19 @@
+.editor {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-size: var(--text-base);
+}
+
+.editor :global(.cm-editor) {
+  height: 100%;
+}
+
+.editor :global(.cm-scroller) {
+  font-family: var(--font-mono);
+  line-height: 1.55;
+}
+
+.editor :global(.cm-editor.cm-focused) {
+  outline: none;
+}

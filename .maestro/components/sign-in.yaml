@@ -1,0 +1,12 @@
+# Reusable Page-Object-Model subflow: signs a user in. Parameterized via env so
+# the agentic writer can compose it with runFlow instead of re-deriving selectors.
+env:
+  USERNAME: ""
+  PASSWORD: ""
+---
+- tapOn: "Log in"
+- tapOn: "Email"
+- inputText: ${USERNAME}
+- tapOn: "Password"
+- inputText: ${PASSWORD}
+- tapOn: "Continue"

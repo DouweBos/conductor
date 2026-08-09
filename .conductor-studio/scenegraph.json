@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "nodes": [
+    { "id": "launch", "label": "Launch", "signature": "Button:Log in|Text:Welcome back" },
+    { "id": "login", "label": "Login", "signature": "Field:Email|Field:Password|Button:Continue" },
+    { "id": "home", "label": "Home", "signature": "TabBar:Home|Text:Welcome" }
+  ],
+  "edges": [
+    { "from": "launch", "to": "login", "action": "tapOn: \"Log in\"" },
+    { "from": "login", "to": "home", "action": "tapOn: \"Continue\"" }
+  ]
+}

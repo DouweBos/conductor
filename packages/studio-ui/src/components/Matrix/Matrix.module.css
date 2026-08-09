@@ -1,0 +1,79 @@
+.scroll {
+  overflow: auto;
+  height: 100%;
+  width: 100%;
+}
+
+.matrix {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: var(--text-base);
+}
+
+.corner,
+.colHead,
+.rowHead,
+.cell {
+  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.corner,
+.colHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.corner {
+  left: 0;
+  z-index: 3;
+}
+
+.rowHead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg-secondary);
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.rowLabel {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.rowSub {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin-top: 2px;
+}
+
+.cell {
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.blank {
+  color: var(--text-muted);
+}
+
+.clickable {
+  cursor: pointer;
+}
+.clickable:hover .rowHead,
+.clickable:hover .cell {
+  background: var(--surface-overlay);
+}

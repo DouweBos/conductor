@@ -1,0 +1,40 @@
+.log {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  padding: var(--space-2) var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+
+.empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.line {
+  min-height: 1.2em;
+}
+
+.default {
+  color: var(--text-secondary);
+}
+.muted {
+  color: var(--text-muted);
+}
+.success {
+  color: var(--success);
+}
+.error {
+  color: var(--error);
+}
+.warning {
+  color: var(--warning);
+}
+.command {
+  color: var(--accent);
+  font-weight: 600;
+}

@@ -1,0 +1,43 @@
+name: Studio CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/studio/**"
+      - "packages/studio-ui/**"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/studio-ci.yml"
+  pull_request:
+    paths:
+      - "apps/studio/**"
+      - "packages/studio-ui/**"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/studio-ci.yml"
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check design system
+        run: pnpm --filter @conductor/studio-ui typecheck
+
+      - name: Build Studio
+        run: pnpm --filter conductor-studio build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144

@@ -1,0 +1,3 @@
+/* Conductor Studio uses the system font stack (see --font-sans / --font-mono in
+   tokens.css). This file is a placeholder for future bundled @font-face rules so
+   the app's `@import "@conductor/studio-ui/fonts.css"` never breaks. */

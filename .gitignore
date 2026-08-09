@@ -14,3 +14,13 @@ packages/cli/drivers/
 .claude/settings.local.json
 *.profraw
 *.profdata
+
+# Conductor Studio build artifacts
+apps/studio/dist/
+apps/studio/dist-electron/
+apps/studio/release/
+packages/studio-ui/storybook-static/
+
+# Keep Studio's signing entitlements (the global `build/` rule would hide them)
+!apps/studio/build/
+!apps/studio/build/**
