@@ -5,6 +5,8 @@ import {
   disconnectSelectedDevice,
   refreshDevices,
   selectDevice,
+  useDeviceConnecting,
+  useDeviceError,
   useDevices,
   useDeviceStreaming,
   useSelectedDeviceId,
@@ -24,6 +26,8 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
   const devices = useDevices();
   const selectedId = useSelectedDeviceId();
   const streaming = useDeviceStreaming();
+  const connecting = useDeviceConnecting();
+  const error = useDeviceError();
   const recording = useRecording();
 
   const options = devices.map((d) => ({
@@ -61,13 +65,14 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
             size="sm"
             variant="primary"
             icon="play"
-            disabled={!selectedId}
+            disabled={!selectedId || connecting}
             onClick={() => void connectSelectedDevice()}
           >
-            Connect
+            {connecting ? "Connecting…" : "Connect"}
           </Button>
         )}
       </Toolbar>
+      {error && !streaming ? <div className={styles.error}>{error}</div> : null}
       <div className={styles.stream}>
         <DeviceStream deviceId={streaming ? selectedId : null} />
       </div>

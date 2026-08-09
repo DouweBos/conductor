@@ -7,6 +7,8 @@ interface DeviceState {
   devices: DeviceInfo[];
   selectedId: string | null;
   streaming: boolean;
+  /** True while the daemon boots and the stream socket opens. */
+  connecting: boolean;
   error: string | null;
 }
 
@@ -14,12 +16,14 @@ const store = create<DeviceState>(() => ({
   devices: [],
   selectedId: null,
   streaming: false,
+  connecting: false,
   error: null,
 }));
 
 export const useDevices = () => store((s) => s.devices);
 export const useSelectedDeviceId = () => store((s) => s.selectedId);
 export const useDeviceStreaming = () => store((s) => s.streaming);
+export const useDeviceConnecting = () => store((s) => s.connecting);
 export const useDeviceError = () => store((s) => s.error);
 
 export function getSelectedDevice(): DeviceInfo | null {
@@ -50,12 +54,14 @@ export function selectDevice(id: string): void {
 export async function connectSelectedDevice(): Promise<void> {
   const device = getSelectedDevice();
   if (!device) return;
-  store.setState({ error: null });
+  store.setState({ error: null, connecting: true });
   try {
     await startDeviceStream(device.id, device.platform);
     store.setState({ streaming: true });
   } catch (err) {
     store.setState({ error: String(err), streaming: false });
+  } finally {
+    store.setState({ connecting: false });
   }
 }
 

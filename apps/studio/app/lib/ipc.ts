@@ -27,6 +27,7 @@ function invoke<T>(channel: string, args?: unknown): Promise<T> {
 // ── Project / files ──
 export const openProject = (root?: string) => invoke<ProjectInfo>("project_open", { root });
 export const getProjectInfo = () => invoke<ProjectInfo | null>("project_info");
+export const pickProject = () => invoke<ProjectInfo | null>("project_pick");
 export const listFlows = () => invoke<FileEntry[]>("flows_list");
 export const readFlow = (path: string) => invoke<string>("flow_read", { path });
 export const writeFlow = (path: string, content: string) =>

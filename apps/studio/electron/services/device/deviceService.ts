@@ -43,7 +43,8 @@ export async function startDeviceStream(
   const res = await run(
     resolved.bin,
     [...resolved.prefixArgs, "stream-server", "--device", deviceId, "--json"],
-    { timeout: 30_000 },
+    // A cold daemon has to boot the driver first, which outlasts a short timeout.
+    { timeout: 180_000 },
   );
   if (res.code !== 0) {
     throw new Error(res.stderr.trim() || "conductor stream-server failed");
@@ -88,9 +89,10 @@ function connect(session: DeviceStreamSession): void {
 
   ws.on("close", () => {
     if (session.ws === ws) session.ws = null;
+    broadcastToRenderers(`device_video_error:${session.deviceId}`, "Video stream closed.");
   });
-  ws.on("error", () => {
-    // Surface via a config broadcast so the renderer can show a notice.
+  ws.on("error", (err: Error) => {
+    broadcastToRenderers(`device_video_error:${session.deviceId}`, err.message);
   });
 }
 

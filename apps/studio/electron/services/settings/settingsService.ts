@@ -7,9 +7,11 @@ import type { ThemePreference } from "../../../app/lib/types";
 interface Settings {
   theme: ThemePreference;
   updaterChannel: string;
+  /** Last project root the user opened, reopened on the next launch. */
+  projectRoot: string | null;
 }
 
-const DEFAULTS: Settings = { theme: "system", updaterChannel: "latest" };
+const DEFAULTS: Settings = { theme: "system", updaterChannel: "latest", projectRoot: null };
 
 function settingsPath(): string {
   return path.join(app.getPath("userData"), "settings.json");
@@ -42,4 +44,12 @@ export function setTheme(theme: ThemePreference): void {
 
 export function getUpdaterChannel(): string {
   return load().updaterChannel;
+}
+
+export function getSavedProjectRoot(): string | null {
+  return load().projectRoot;
+}
+
+export function setSavedProjectRoot(projectRoot: string | null): void {
+  save({ ...load(), projectRoot });
 }

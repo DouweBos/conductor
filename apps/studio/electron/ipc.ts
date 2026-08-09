@@ -47,6 +47,7 @@ import {
   getProjectInfo,
   listFlows,
   openProject,
+  pickProject,
   readFlow,
   renameFlow,
   writeFlow,
@@ -86,6 +87,7 @@ export function registerIpcHandlers(): void {
   // ── Project / files ──
   handle<{ root?: string }, ProjectInfo>("project_open", (a) => openProject(a?.root));
   handle<void, ProjectInfo | null>("project_info", () => getProjectInfo());
+  handle<void, ProjectInfo | null>("project_pick", () => pickProject());
   handle<void, FileEntry[]>("flows_list", () => listFlows());
   handle<{ path: string }, string>("flow_read", (a) => readFlow(a.path));
   handle<{ path: string; content: string }, void>("flow_write", (a) =>

@@ -1,9 +1,11 @@
+import { dialog } from "electron";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { FileEntry, ProjectInfo } from "../../../app/lib/types";
 import { appState } from "../../state";
+import { getSavedProjectRoot, setSavedProjectRoot } from "../settings/settingsService";
 
 const FLOW_DIR_CANDIDATES = [".maestro", "maestro", "flows", ".conductor/flows"];
 const FLOW_EXTENSIONS = new Set([".yaml", ".yml", ".js", ".ts"]);
@@ -32,10 +34,14 @@ function findRepoRoot(start: string): string {
   return start;
 }
 
+function defaultRoot(): string {
+  const saved = getSavedProjectRoot();
+  if (saved && existsSync(saved)) return saved;
+  return findRepoRoot(process.env.STUDIO_PROJECT_ROOT ?? process.cwd());
+}
+
 export async function openProject(root?: string): Promise<ProjectInfo> {
-  const resolved = root
-    ? path.resolve(root)
-    : findRepoRoot(process.env.STUDIO_PROJECT_ROOT ?? process.cwd());
+  const resolved = root ? path.resolve(root) : defaultRoot();
   if (!existsSync(resolved)) {
     throw new Error(`Project path does not exist: ${resolved}`);
   }
@@ -46,7 +52,21 @@ export async function openProject(root?: string): Promise<ProjectInfo> {
     flowsDir,
   };
   appState.projectRoot = resolved;
+  setSavedProjectRoot(resolved);
   return projectInfo;
+}
+
+/** Native folder picker → open. Returns null when the user cancels. */
+export async function pickProject(): Promise<ProjectInfo | null> {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: "Open project",
+    message: "Choose the repo that holds your app's Maestro flows",
+    properties: ["openDirectory", "createDirectory"],
+    defaultPath: projectInfo?.root,
+    buttonLabel: "Open",
+  });
+  if (canceled || !filePaths[0]) return null;
+  return openProject(filePaths[0]);
 }
 
 export function getProjectInfo(): ProjectInfo | null {

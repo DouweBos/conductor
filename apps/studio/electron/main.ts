@@ -2,6 +2,7 @@ import { app, BrowserWindow, nativeTheme, shell } from "electron";
 import path from "node:path";
 
 import { registerIpcHandlers } from "./ipc";
+import { installOpenProjectMenuItem } from "./menu";
 import { getMainWindow, setMainWindow } from "./mainWindow";
 import { disposeAllDeviceStreams } from "./services/device/deviceService";
 import { stopAllLogs } from "./services/logs/logsService";
@@ -68,6 +69,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     await fixProcessPath();
     registerIpcHandlers();
+    installOpenProjectMenuItem();
     createWindow();
     if (!isDev) initUpdater();
 
