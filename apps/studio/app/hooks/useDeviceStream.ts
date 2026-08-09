@@ -74,6 +74,9 @@ export function useDeviceStream(
       if (!decoder || decoder.state !== "configured") return;
       if (payload.keyFrame) sawKeyRef.current = true;
       if (!sawKeyRef.current) return; // wait for the first IDR
+      // Drop deltas when the decoder falls behind — an unbounded queue is how
+      // the renderer runs out of memory on a fast stream.
+      if (!payload.keyFrame && decoder.decodeQueueSize > 8) return;
       try {
         const bytes = payload.data instanceof Uint8Array ? payload.data : new Uint8Array(payload.data);
         decoder.decode(
@@ -94,9 +97,15 @@ export function useDeviceStream(
     // The stream's single config frame arrives before this hook mounts whenever
     // the daemon is already up, so pull the cached one instead of waiting.
     let cancelled = false;
-    void getDeviceStreamConfig(deviceId).then((config) => {
-      if (config && !cancelled && !decoderRef.current) setupDecoder(config);
-    });
+    void getDeviceStreamConfig(deviceId)
+      .then((config) => {
+        if (config && !cancelled && !decoderRef.current) setupDecoder(config);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setState((s) => ({ ...s, error: err instanceof Error ? err.message : String(err) }));
+        }
+      });
 
     return () => {
       cancelled = true;

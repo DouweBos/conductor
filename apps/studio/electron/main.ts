@@ -31,6 +31,11 @@ function createWindow(): void {
 
   win.once("ready-to-show", () => win.show());
 
+  // Renderer/GPU deaths are silent otherwise — the window just goes blank.
+  win.webContents.on("render-process-gone", (_e, details) => {
+    console.error("[studio] renderer gone:", details.reason, details.exitCode);
+  });
+
   // Open external links in the user's browser, never in-app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http")) shell.openExternal(url);
@@ -75,6 +80,13 @@ if (!app.requestSingleInstanceLock()) {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+app.on("child-process-gone", (_e, details) => {
+  console.error("[studio] child process gone:", details.type, details.reason, details.exitCode);
+});
+
+process.on("uncaughtException", (err) => console.error("[studio] uncaught exception:", err));
+process.on("unhandledRejection", (err) => console.error("[studio] unhandled rejection:", err));
 
 app.on("before-quit", () => {
   disposeAllDeviceStreams();

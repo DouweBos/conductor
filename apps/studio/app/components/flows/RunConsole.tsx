@@ -174,21 +174,24 @@ export function RunConsole() {
           <option value="cmd">conductor</option>
           <option value="maestro">maestro</option>
         </select>
-        <Icon name="terminal" size={14} className={styles.prompt} />
-        <input
-          className={styles.input}
-          placeholder={
-            !deviceId
-              ? "Connect a device to use the REPL"
-              : mode === "maestro"
-                ? 'Maestro step, e.g. - tapOn: "Login"'
-                : 'conductor command, e.g. tap-on "Login"'
-          }
-          value={command}
-          disabled={!deviceId}
-          onChange={(e) => setCommand(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void submit()}
-        />
+        <div className={styles.inputWrap}>
+          <Icon name="terminal" size={14} className={styles.prompt} />
+          <input
+            className={styles.input}
+            aria-label={mode === "maestro" ? "Run a Maestro step" : "Run a conductor command"}
+            placeholder={
+              !deviceId
+                ? "Connect a device to use the REPL"
+                : mode === "maestro"
+                  ? 'Run a Maestro step — e.g. - tapOn: "Login"'
+                  : 'Run a conductor command — e.g. tap-on "Login"'
+            }
+            value={command}
+            disabled={!deviceId}
+            onChange={(e) => setCommand(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void submit()}
+          />
+        </div>
       </div>
     </div>
   );

@@ -104,7 +104,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-3);
-  height: 36px;
+  height: 40px;
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
@@ -120,6 +120,24 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   cursor: pointer;
+}
+
+/* Reads as a text field, not a caption next to the mode picker. */
+.inputWrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+
+.inputWrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 
 .prompt {
@@ -139,6 +157,10 @@
 
 .input:focus {
   outline: none;
+}
+
+.input:disabled {
+  cursor: not-allowed;
 }
 
 .input::placeholder {
