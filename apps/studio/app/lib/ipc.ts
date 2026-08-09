@@ -7,6 +7,7 @@ import type {
   CommandResult,
   DeviceInfo,
   DeviceStreamInfo,
+  EnvProfile,
   FileEntry,
   FlowCatalog,
   FlowReference,
@@ -76,6 +77,10 @@ export const deviceSwipe = (
   x2: number,
   y2: number,
 ) => invoke<void>("device_swipe", { deviceId, x1, y1, x2, y2 });
+export const startDevice = (platform: Platform, deviceId?: string) =>
+  invoke<string>("device_start", { platform, deviceId });
+export const installApp = (deviceId: string, appPath: string) =>
+  invoke<string>("device_install_app", { deviceId, appPath });
 export const deviceInputText = (deviceId: string, text: string) =>
   invoke<void>("device_input_text", { deviceId, text });
 export const captureUi = (deviceId: string) => invoke<CaptureUiResult>("capture_ui", { deviceId });
@@ -95,6 +100,13 @@ export const runFlowInline = (
 export const runRepeat = (path: string, times: number, deviceId?: string, options?: RunOptions) =>
   invoke<{ runIds: string[] }>("flow_run_repeat", { path, times, deviceId, options });
 export const cancelRun = (runId: string) => invoke<void>("flow_run_cancel", { runId });
+export const listTags = () => invoke<{ tag: string; count: number }[]>("flows_tags");
+export const changedFlows = (base?: string) => invoke<string[]>("flows_changed", { base });
+export const envProfiles = () => invoke<EnvProfile[]>("env_profiles");
+export const saveEnvProfile = (profile: EnvProfile) =>
+  invoke<EnvProfile[]>("env_profile_save", { profile });
+export const deleteEnvProfile = (name: string) =>
+  invoke<EnvProfile[]>("env_profile_delete", { name });
 export const runHistory = () => invoke<RunRecord[]>("runs_history");
 export const clearRunHistory = () => invoke<void>("runs_clear");
 export const runArtifacts = (runId: string) => invoke<RunArtifacts | null>("runs_artifacts", { runId });

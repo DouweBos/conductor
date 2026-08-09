@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type {
+  AppFingerprint,
   CaptureElement,
   CaptureUiResult,
   CommandResult,
@@ -78,6 +79,76 @@ function normalizePlatform(value: string): Platform {
   return "ios";
 }
 
+/** Display names are only worth one lookup per device — they don't change. */
+const appNameCache = new Map<string, Record<string, string>>();
+
+function deriveAppName(appId: string): string {
+  // com.plexapp.plex → Plex; https://app.plex.tv/ → app.plex.tv
+  if (/^https?:\/\//i.test(appId)) {
+    try {
+      return new URL(appId).host;
+    } catch {
+      return appId;
+    }
+  }
+  const last = appId.split(".").filter(Boolean).pop() ?? appId;
+  return last.charAt(0).toUpperCase() + last.slice(1);
+}
+
+async function appNamesFor(deviceId: string): Promise<Record<string, string>> {
+  const cached = appNameCache.get(deviceId);
+  if (cached) return cached;
+  let names: Record<string, string> = {};
+  try {
+    const res = await runConductor(["list-apps", ...deviceArgs(deviceId), "--json"], 30_000);
+    if (res.code === 0) {
+      const parsed = safeJson<{ appNames?: Record<string, string> }>(res.stdout);
+      names = parsed?.appNames ?? {};
+    }
+  } catch {
+    // names are cosmetic — fall back to deriving one from the id
+  }
+  appNameCache.set(deviceId, names);
+  return names;
+}
+
+/** Identify the app in the foreground: bundle/package id, name, and platform. */
+export async function appFingerprint(
+  deviceId: string,
+  platform?: Platform,
+): Promise<AppFingerprint | null> {
+  const res = await runConductor(["foreground-app", ...deviceArgs(deviceId), "--json"], 20_000);
+  if (res.code !== 0) return null;
+  const parsed = safeJson<{ status?: string; message?: string }>(res.stdout);
+  const appId = parsed?.status === "ok" ? (parsed.message ?? "").trim() : "";
+  if (!appId) return null;
+
+  const resolvedPlatform =
+    platform ?? (await listDevices().catch(() => [])).find((d) => d.id === deviceId)?.platform ?? "ios";
+  const appName = (await appNamesFor(deviceId))[appId] ?? deriveAppName(appId);
+  return {
+    appId,
+    appName,
+    platform: resolvedPlatform,
+    key: `${resolvedPlatform}-${appId}`.replace(/[^A-Za-z0-9._-]+/g, "_"),
+  };
+}
+
+/** Boot a simulator/emulator so you don't have to leave Studio to get a device. */
+export async function startDevice(platform: Platform, deviceId?: string): Promise<string> {
+  const args = ["start-device", "--platform", platform, ...(deviceId ? ["--device", deviceId] : [])];
+  const res = await runConductor(args, 300_000);
+  if (res.code !== 0) throw new Error(res.stderr.trim() || "conductor start-device failed");
+  return res.stdout.trim();
+}
+
+/** Install a local build (.app/.ipa/.apk) on the device. */
+export async function installApp(deviceId: string, appPath: string): Promise<string> {
+  const res = await runConductor(["install-app", appPath, ...deviceArgs(deviceId)], 300_000);
+  if (res.code !== 0) throw new Error(res.stderr.trim() || "conductor install-app failed");
+  return res.stdout.trim();
+}
+
 export async function captureUi(deviceId: string): Promise<CaptureUiResult> {
   // Route the bundle through a file: it embeds a base64 screenshot, so on stdout
   // any driver log line lands in the middle of multi-MB JSON and breaks parsing.
@@ -101,12 +172,14 @@ export async function captureUi(deviceId: string): Promise<CaptureUiResult> {
   // labels the transition edge into this screen.
   const action = appState.lastAction;
   appState.lastAction = null;
-  void recordCapture(result, action);
+  const app = await appFingerprint(deviceId, bundle.device?.platform).catch(() => null);
+  if (app) appState.currentApp = app;
+  void recordCapture(result, action, app);
   return result;
 }
 
 interface CaptureBundle {
-  device?: { width?: number; height?: number };
+  device?: { width?: number; height?: number; platform?: Platform };
   screenshot?: { encoding?: string; data?: string };
   a11ySnapshot?: A11yEntry[];
   hierarchy?: { axElement?: unknown };

@@ -57,10 +57,11 @@ function optionArgs(engine: FlowEngine, options?: RunOptions): string[] {
       args.push("--env", `${k}=${v}`);
     }
   }
-  // Tag filtering is a maestro feature; conductor ignores it.
+  // Tag filtering and sharding are maestro features; conductor ignores them.
   if (engine === "maestro") {
     if (options?.includeTags) args.push("--include-tags", options.includeTags);
     if (options?.excludeTags) args.push("--exclude-tags", options.excludeTags);
+    if (options?.shards && options.shards > 1) args.push("--shard-split", String(options.shards));
   }
   return args;
 }
@@ -119,6 +120,19 @@ export async function runFolder(
   const engine = status.activeEngine;
   // maestro runs a whole directory; conductor only takes one flow file, so we
   // expand the folder and run the flows in sequence under a single run.
+  // conductor has its own parallel runner; maestro shards in-process.
+  if (engine === "conductor" && options?.shards && options.shards > 1) {
+    const resolved = await resolveConductor();
+    if (!resolved) throw new Error("Conductor CLI is not available.");
+    return launch({
+      engine,
+      bin: "__conductor__",
+      args: ["run-parallel", "--flows-dir", absDir],
+      flowPath: relDir ?? ".",
+      deviceId,
+      steps: [],
+    });
+  }
   const targets = engine === "maestro" ? [absDir] : flowFilesIn(absDir);
   if (!targets.length) throw new Error(`No flows found in ${absDir}`);
   const first = buildFlowArgs(engine, targets[0], deviceId, options);

@@ -7,6 +7,7 @@ import {
   Toolbar,
   ToolbarSpacer,
 } from "@conductor/studio-ui";
+import { useState } from "react";
 
 import {
   connectSelectedDevice,
@@ -19,6 +20,7 @@ import {
   useDeviceStreaming,
   useSelectedDeviceId,
 } from "../../stores/deviceStore";
+import { installApp, startDevice } from "../../lib/ipc";
 import {
   refreshCapture,
   setMode,
@@ -51,6 +53,33 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
   const device = devices.find((d) => d.id === selectedId) ?? null;
 
   // Inspect mode is only useful with a fresh snapshot, so take one on entry.
+  const [busy, setBusy] = useState<string | null>(null);
+
+  // Booting a sim and installing a build are part of the loop; conductor can do
+  // both, so there's no reason to leave Studio for them.
+  const boot = async () => {
+    if (!device) return;
+    setBusy("Booting…");
+    try {
+      await startDevice(device.platform, device.id);
+      await refreshDevices();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const install = async () => {
+    if (!selectedId) return;
+    const appPath = window.prompt("Path to the .app / .ipa / .apk to install");
+    if (!appPath) return;
+    setBusy("Installing…");
+    try {
+      await installApp(selectedId, appPath);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const changeMode = (next: "interact" | "inspect") => {
     setMode(next);
     if (next === "inspect" && selectedId) void refreshCapture(selectedId);
@@ -73,6 +102,18 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
         />
         <IconButton icon="refresh" label="Refresh devices" onClick={() => void refreshDevices()} />
         <ToolbarSpacer />
+        {busy ? <StatusPill tone="running">{busy}</StatusPill> : null}
+        {device && device.state !== "booted" ? (
+          <Button size="sm" variant="secondary" icon="device" disabled={!!busy} onClick={() => void boot()}>
+            Boot
+          </Button>
+        ) : null}
+        <IconButton
+          icon="plus"
+          label="Install a build on this device"
+          disabled={!selectedId || !!busy}
+          onClick={() => void install()}
+        />
         {streaming ? (
           <Button size="sm" variant="secondary" icon="stop" onClick={() => void disconnectSelectedDevice()}>
             Disconnect

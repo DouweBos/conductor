@@ -88,6 +88,16 @@ export interface RunOptions {
   env?: Record<string, string>;
   includeTags?: string;
   excludeTags?: string;
+  /** Split the run across N devices, the way CI shards it. */
+  shards?: number;
+}
+
+/** A saved set of run options — the env a suite always needs, named. */
+export interface EnvProfile {
+  name: string;
+  env: Record<string, string>;
+  includeTags?: string;
+  excludeTags?: string;
 }
 
 export type FlowStepStatus = "pending" | "running" | "passed" | "failed";

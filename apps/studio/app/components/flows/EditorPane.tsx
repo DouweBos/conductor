@@ -5,6 +5,7 @@ import {
   Editor,
   EmptyState,
   IconButton,
+  Select,
   Spinner,
   StatusPill,
   Tabs,
@@ -18,9 +19,15 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  changedFlows,
+  deleteEnvProfile,
+  envProfiles,
   getMaestroStatus,
   lintFlowContent,
   listEnvNames,
+  listTags,
+  runRepeat,
+  saveEnvProfile,
   loadFlowCatalog,
   runFlow,
   runFlowInline,
@@ -30,7 +37,13 @@ import { referenceOnLine, resolveReference } from "../../lib/flowRefs";
 import { flowForSteps, parseSteps, stepAt, stepsUntil } from "../../lib/flowSteps";
 import { maestroCompletion } from "../../lib/maestroCompletion";
 import { selectFlow } from "../../lib/router";
-import type { FlowCatalog, LintProblem, MaestroStatus, RunOptions } from "../../lib/types";
+import type {
+  EnvProfile,
+  FlowCatalog,
+  LintProblem,
+  MaestroStatus,
+  RunOptions,
+} from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
 import {
   closeFile,
@@ -69,6 +82,10 @@ export function EditorPane({ activePath }: { activePath?: string }) {
   const editorApi = useRef<EditorApi | null>(null);
   const [stepMenu, setStepMenu] = useState<{ line: number; x: number; y: number } | null>(null);
   const [problems, setProblems] = useState<LintProblem[]>([]);
+  const [profiles, setProfiles] = useState<EnvProfile[]>([]);
+  const [profileName, setProfileName] = useState("");
+  const [tags, setTags] = useState<{ tag: string; count: number }[]>([]);
+  const [repeatTimes, setRepeatTimes] = useState("1");
   // The project's env vocabulary, read through a ref so the completion source
   // stays stable while the names refresh underneath it.
   const envNames = useRef<string[]>([]);
@@ -141,6 +158,48 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     }
   };
 
+  useEffect(() => {
+    void envProfiles().then(setProfiles).catch(() => {});
+    void listTags().then(setTags).catch(() => {});
+  }, []);
+
+  const applyProfile = (profile: EnvProfile) => {
+    setEnvRows(Object.entries(profile.env).map(([key, value]) => ({ key, value })));
+    setIncludeTags(profile.includeTags ?? "");
+    setExcludeTags(profile.excludeTags ?? "");
+    setProfileName(profile.name);
+  };
+
+  const storeProfile = async () => {
+    const name = profileName.trim();
+    if (!name) return;
+    const { env = {}, includeTags: include, excludeTags: exclude } = options();
+    setProfiles(await saveEnvProfile({ name, env, includeTags: include, excludeTags: exclude }));
+  };
+
+  const toggleTag = (tag: string) => {
+    const current = includeTags.split(",").map((t) => t.trim()).filter(Boolean);
+    const next = current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag];
+    setIncludeTags(next.join(", "));
+  };
+
+  // Everything I touched since main — the set worth running before pushing.
+  const runChanged = async () => {
+    const changed = await changedFlows();
+    if (changed.length === 0) return;
+    for (const flow of changed) {
+      const { runId } = await runFlow(flow, deviceId ?? undefined, options());
+      beginRun(runId, flow);
+    }
+  };
+
+  const runFlaky = async () => {
+    if (!activePath) return;
+    const times = Math.max(1, Number(repeatTimes) || 1);
+    setOptionsOpen(false);
+    await runRepeat(activePath, times, deviceId ?? undefined, options());
+  };
+
   // Lint the buffer as it settles, so mistakes surface before a run does.
   useEffect(() => {
     if (!activePath || buffer?.content === undefined) return;
@@ -210,6 +269,9 @@ export function EditorPane({ activePath }: { activePath?: string }) {
         <Toolbar>
           <Button variant="secondary" size="sm" icon="play" onClick={() => void runAll()} disabled={!status}>
             Run all
+          </Button>
+          <Button variant="ghost" size="sm" icon="flow" onClick={() => void runChanged()} disabled={!status}>
+            Run changed
           </Button>
           <ToolbarSpacer />
           {status ? (
@@ -316,6 +378,35 @@ export function EditorPane({ activePath }: { activePath?: string }) {
         }
       >
         <div className={styles.optionsSection}>
+          <div className={styles.optionsLabel}>Profile</div>
+          <div className={styles.envRow}>
+            <Select
+              options={[
+                { value: "", label: profiles.length ? "Load a profile…" : "No saved profiles" },
+                ...profiles.map((p) => ({ value: p.name, label: p.name })),
+              ]}
+              value=""
+              onChange={(e) => {
+                const profile = profiles.find((p) => p.name === e.target.value);
+                if (profile) applyProfile(profile);
+              }}
+            />
+            <TextField
+              placeholder="Name to save as"
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+            />
+            <IconButton icon="check" label="Save profile" onClick={() => void storeProfile()} />
+            <IconButton
+              icon="close"
+              label="Delete profile"
+              onClick={() =>
+                profileName && void deleteEnvProfile(profileName).then(setProfiles)
+              }
+            />
+          </div>
+        </div>
+        <div className={styles.optionsSection}>
           <div className={styles.optionsLabel}>Environment variables</div>
           {envRows.map((row, i) => (
             <div key={i} className={styles.envRow}>
@@ -356,6 +447,21 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             value={includeTags}
             onChange={(e) => setIncludeTags(e.target.value)}
           />
+          <div className={styles.tags}>
+            {tags.map(({ tag, count }) => (
+              <button
+                key={tag}
+                type="button"
+                className={[
+                  styles.tag,
+                  includeTags.includes(tag) ? styles.tagOn : "",
+                ].join(" ")}
+                onClick={() => toggleTag(tag)}
+              >
+                {tag} <span className={styles.tagCount}>{count}</span>
+              </button>
+            ))}
+          </div>
         </div>
         <div className={styles.optionsSection}>
           <TextField
@@ -364,6 +470,19 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             value={excludeTags}
             onChange={(e) => setExcludeTags(e.target.value)}
           />
+        </div>
+        <div className={styles.optionsSection}>
+          <div className={styles.optionsLabel}>Flakiness check</div>
+          <div className={styles.envRow}>
+            <TextField
+              placeholder="times"
+              value={repeatTimes}
+              onChange={(e) => setRepeatTimes(e.target.value)}
+            />
+            <Button size="sm" variant="secondary" icon="play" disabled={!activePath} onClick={() => void runFlaky()}>
+              Run this flow N times
+            </Button>
+          </div>
         </div>
       </Dialog>
     </div>

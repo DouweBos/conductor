@@ -1,5 +1,7 @@
 import { ipcMain } from "electron";
 
+import { appState } from "./state";
+
 import type {
   AgentStartResult,
   CaseMatrix,
@@ -7,6 +9,7 @@ import type {
   CommandResult,
   DeviceInfo,
   DeviceStreamInfo,
+  EnvProfile,
   FileEntry,
   FlowCatalog,
   FlowReference,
@@ -14,6 +17,7 @@ import type {
   LintProblem,
   RenameResult,
   MaestroStatus,
+  Platform,
   PomEntry,
   ProjectInfo,
   RunArtifacts,
@@ -39,7 +43,9 @@ import {
   appFingerprint,
   captureUi,
   inputText,
+  installApp,
   listDevices,
+  startDevice,
   swipe,
   tap,
 } from "./services/conductor/conductorService";
@@ -77,6 +83,7 @@ import { lintOne, lintProject } from "./services/flow/lint";
 import { findUsages, indexReferences, searchFlows } from "./services/flow/references";
 import { listEnvNames } from "./services/flow/envNames";
 import { clearHistory, historyArtifacts, listHistory } from "./services/flow/history";
+import { changedFlows, listTags } from "./services/flow/suite";
 import { startLogs, stopLogs } from "./services/logs/logsService";
 import { listPoms } from "./services/pom/pomService";
 import {
@@ -84,7 +91,13 @@ import {
   listSceneGraphs,
   loadSceneGraph,
 } from "./services/scenegraph/sceneGraphService";
-import { getTheme, setTheme } from "./services/settings/settingsService";
+import {
+  deleteEnvProfile,
+  getEnvProfiles,
+  getTheme,
+  saveEnvProfile,
+  setTheme,
+} from "./services/settings/settingsService";
 import {
   checkForUpdates,
   downloadUpdate,
@@ -150,6 +163,12 @@ export function registerIpcHandlers(): void {
     { deviceId: string; x1: number; y1: number; x2: number; y2: number },
     void
   >("device_swipe", (a) => swipe(a.deviceId, a.x1, a.y1, a.x2, a.y2));
+  handle<{ platform: Platform; deviceId?: string }, string>("device_start", (a) =>
+    startDevice(a.platform, a.deviceId),
+  );
+  handle<{ deviceId: string; appPath: string }, string>("device_install_app", (a) =>
+    installApp(a.deviceId, a.appPath),
+  );
   handle<{ deviceId: string; text: string }, void>("device_input_text", (a) =>
     inputText(a.deviceId, a.text),
   );
@@ -174,6 +193,15 @@ export function registerIpcHandlers(): void {
     { runIds: string[] }
   >("flow_run_repeat", (a) => runRepeat(a.path, a.times, a.deviceId, a.options));
   handle<{ runId: string }, void>("flow_run_cancel", (a) => cancelRun(a.runId));
+  handle<void, { tag: string; count: number }[]>("flows_tags", () => listTags());
+  handle<{ base?: string }, string[]>("flows_changed", (a) => changedFlows(a?.base));
+  handle<void, EnvProfile[]>("env_profiles", () => getEnvProfiles(appState.projectRoot ?? ""));
+  handle<{ profile: EnvProfile }, EnvProfile[]>("env_profile_save", (a) =>
+    saveEnvProfile(appState.projectRoot ?? "", a.profile),
+  );
+  handle<{ name: string }, EnvProfile[]>("env_profile_delete", (a) =>
+    deleteEnvProfile(appState.projectRoot ?? "", a.name),
+  );
   handle<void, RunRecord[]>("runs_history", () => listHistory());
   handle<void, void>("runs_clear", () => clearHistory());
   handle<{ runId: string }, RunArtifacts | null>("runs_artifacts", (a) => historyArtifacts(a.runId));
