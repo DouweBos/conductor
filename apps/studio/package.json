@@ -2,7 +2,7 @@
   "name": "conductor-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Conductor Studio — Maestro test workbench, agentic test writing, and test case management",
+  "description": "Conductor Studio \u2014 Maestro test workbench, agentic test writing, and test case management",
   "author": "Houwert",
   "license": "UNLICENSED",
   "type": "module",
@@ -20,7 +20,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.18.0",
     "@conductor/studio-ui": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "chokidar": "^4.0.0",
     "electron-updater": "^6.3.0",
     "react": "^19.1.0",

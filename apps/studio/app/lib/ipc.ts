@@ -32,6 +32,7 @@ export const pickProject = () => invoke<ProjectInfo | null>("project_pick");
 export const recentProjects = () => invoke<ProjectInfo[]>("project_recents");
 export const listFlows = () => invoke<FileEntry[]>("flows_list");
 export const setFlowsDir = (dir: string) => invoke<ProjectInfo>("flows_set_dir", { dir });
+export const listEnvNames = () => invoke<string[]>("flows_env_names");
 export const readFlow = (path: string) => invoke<string>("flow_read", { path });
 export const writeFlow = (path: string, content: string) =>
   invoke<void>("flow_write", { path, content });

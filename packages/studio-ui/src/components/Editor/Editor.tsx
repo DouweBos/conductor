@@ -1,3 +1,4 @@
+import { autocompletion, type CompletionSource } from "@codemirror/autocomplete";
 import { javascript } from "@codemirror/lang-javascript";
 import { yaml } from "@codemirror/lang-yaml";
 import { Compartment, EditorState } from "@codemirror/state";
@@ -24,9 +25,15 @@ export interface EditorProps {
   readOnly?: boolean;
   /** Fires on Cmd/Ctrl+S. */
   onSave?: () => void;
+  /** Extra completions offered alongside the language's own. */
+  completions?: CompletionSource;
   /** Receives an imperative API once mounted, and `null` on unmount. */
   registerApi?: (api: EditorApi | null) => void;
   className?: string;
+}
+
+function completionExtension(source?: CompletionSource) {
+  return source ? autocompletion({ override: [source] }) : [];
 }
 
 function langExtension(language: EditorLanguage) {
@@ -40,6 +47,7 @@ export function Editor({
   theme = "light",
   readOnly = false,
   onSave,
+  completions,
   registerApi,
   className,
 }: EditorProps) {
@@ -47,6 +55,7 @@ export function Editor({
   const viewRef = useRef<EditorView | null>(null);
   const langCompartment = useRef(new Compartment());
   const themeCompartment = useRef(new Compartment());
+  const completionCompartment = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
   const registerApiRef = useRef(registerApi);
@@ -73,6 +82,7 @@ export function Editor({
         saveKeymap,
         langCompartment.current.of(langExtension(language)),
         themeCompartment.current.of(theme === "dark" ? githubDark : githubLight),
+        completionCompartment.current.of(completionExtension(completions)),
         EditorView.editable.of(!readOnly),
         EditorState.readOnly.of(readOnly),
         EditorView.updateListener.of((update) => {
@@ -108,6 +118,13 @@ export function Editor({
       view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
     }
   }, [value]);
+
+  // Reconfigure completions.
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: completionCompartment.current.reconfigure(completionExtension(completions)),
+    });
+  }, [completions]);
 
   // Reconfigure language.
   useEffect(() => {

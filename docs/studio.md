@@ -20,7 +20,12 @@ A Maestro-Studio-style workbench:
   keeping them per-app, like `apps/plex/.maestro`, is found; when there's more
   than one the sidebar offers a picker.
 - **Center** — a YAML/JS editor (CodeMirror) with tabs, a run toolbar, and a
-  console.
+  console. Flow YAML autocompletes: **commands** where a step goes, that
+  command's **parameters** inside its block (including every element-selector
+  key), the header keys above the `---`, and **env variables** inside `${…}`.
+  The command vocabulary is transcribed from Maestro's own YAML models, and the
+  env names come from the whole flows directory — every `env:` block and every
+  `${VAR}` already referenced, plus `config.yaml`.
 - **Right** — a live device stream and an element inspector.
 
 The device mirror and inspector always use conductor: the daemon's H.264 video

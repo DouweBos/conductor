@@ -14,9 +14,10 @@ import {
   type EditorApi,
   type TabItem,
 } from "@conductor/studio-ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getMaestroStatus, runFlow, runFlowInline, runFolder } from "../../lib/ipc";
+import { getMaestroStatus, listEnvNames, runFlow, runFlowInline, runFolder } from "../../lib/ipc";
+import { maestroCompletion } from "../../lib/maestroCompletion";
 import { selectFlow } from "../../lib/router";
 import type { MaestroStatus, RunOptions } from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
@@ -55,6 +56,16 @@ export function EditorPane({ activePath }: { activePath?: string }) {
   const [includeTags, setIncludeTags] = useState("");
   const [excludeTags, setExcludeTags] = useState("");
   const editorApi = useRef<EditorApi | null>(null);
+  // The project's env vocabulary, read through a ref so the completion source
+  // stays stable while the names refresh underneath it.
+  const envNames = useRef<string[]>([]);
+  const completions = useMemo(() => maestroCompletion(() => envNames.current), []);
+
+  useEffect(() => {
+    listEnvNames()
+      .then((names) => (envNames.current = names))
+      .catch(() => {});
+  }, [activePath]);
 
   useEffect(() => {
     getMaestroStatus().then(setStatus).catch(() => {});
@@ -175,6 +186,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             value={buffer?.content ?? ""}
             language={languageFor(activePath)}
             theme={theme}
+            completions={languageFor(activePath) === "yaml" ? completions : undefined}
             registerApi={(api) => (editorApi.current = api)}
             onChange={(v) => setBufferContent(activePath, v)}
             onSave={() => void saveFile(activePath)}
