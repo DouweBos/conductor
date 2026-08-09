@@ -73,8 +73,12 @@ export const runFlow = (path: string, deviceId?: string, options?: RunOptions) =
   invoke<{ runId: string }>("flow_run", { path, deviceId, options });
 export const runFolder = (dir?: string, deviceId?: string, options?: RunOptions) =>
   invoke<{ runId: string }>("flow_run_folder", { dir, deviceId, options });
-export const runFlowInline = (snippet: string, deviceId?: string, appId?: string) =>
-  invoke<{ runId: string }>("flow_run_inline", { snippet, deviceId, appId });
+export const runFlowInline = (
+  snippet: string,
+  deviceId?: string,
+  appId?: string,
+  options?: RunOptions,
+) => invoke<{ runId: string }>("flow_run_inline", { snippet, deviceId, appId, options });
 export const cancelRun = (runId: string) => invoke<void>("flow_run_cancel", { runId });
 export const runCommand = (command: string, deviceId: string) =>
   invoke<CommandResult>("flow_run_command", { command, deviceId });

@@ -1,8 +1,8 @@
 import { autocompletion, type CompletionSource } from "@codemirror/autocomplete";
 import { javascript } from "@codemirror/lang-javascript";
 import { yaml } from "@codemirror/lang-yaml";
-import { Compartment, EditorState } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { Compartment, EditorState, RangeSet } from "@codemirror/state";
+import { EditorView, GutterMarker, gutter, keymap } from "@codemirror/view";
 import { githubDark, githubLight } from "@uiw/codemirror-theme-github";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
@@ -10,6 +10,19 @@ import { useEffect, useRef } from "react";
 import styles from "./Editor.module.css";
 
 export type EditorLanguage = "yaml" | "javascript";
+
+/**
+ * Run controls in the gutter: a play button on each listed line, plus a chevron
+ * that asks the host to open a menu at that point.
+ */
+export interface EditorRunGutter {
+  /** 1-based lines that get a control. */
+  lines: number[];
+  onRun: (line: number) => void;
+  onMenu: (line: number, x: number, y: number) => void;
+  runLabel?: string;
+  menuLabel?: string;
+}
 
 /** Imperative handle for reading editor state (e.g. "run selection"). */
 export interface EditorApi {
@@ -27,9 +40,66 @@ export interface EditorProps {
   onSave?: () => void;
   /** Extra completions offered alongside the language's own. */
   completions?: CompletionSource;
+  /** Per-line run controls shown in the gutter on hover. */
+  runGutter?: EditorRunGutter;
   /** Receives an imperative API once mounted, and `null` on unmount. */
   registerApi?: (api: EditorApi | null) => void;
   className?: string;
+}
+
+class RunMarker extends GutterMarker {
+  constructor(
+    private readonly line: number,
+    private readonly config: EditorRunGutter,
+  ) {
+    super();
+  }
+
+  eq(other: RunMarker) {
+    return other.line === this.line && other.config === this.config;
+  }
+
+  toDOM() {
+    const wrap = document.createElement("div");
+    wrap.className = styles.runControls;
+
+    const play = document.createElement("button");
+    play.type = "button";
+    play.className = styles.runButton;
+    play.title = this.config.runLabel ?? "Run this step";
+    play.setAttribute("aria-label", play.title);
+    play.textContent = "▶";
+    play.onmousedown = (event) => event.preventDefault();
+    play.onclick = () => this.config.onRun(this.line);
+
+    const menu = document.createElement("button");
+    menu.type = "button";
+    menu.className = styles.runMenuButton;
+    menu.title = this.config.menuLabel ?? "More run options";
+    menu.setAttribute("aria-label", menu.title);
+    menu.textContent = "⌄";
+    menu.onmousedown = (event) => event.preventDefault();
+    menu.onclick = (event) => {
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      this.config.onMenu(this.line, rect.left, rect.bottom);
+    };
+
+    wrap.append(play, menu);
+    return wrap;
+  }
+}
+
+function runGutterExtension(config?: EditorRunGutter) {
+  if (!config) return [];
+  return gutter({
+    class: styles.runGutter,
+    markers: (view) => {
+      const marks = config.lines
+        .filter((line) => line >= 1 && line <= view.state.doc.lines)
+        .map((line) => new RunMarker(line, config).range(view.state.doc.line(line).from));
+      return RangeSet.of(marks, true);
+    },
+  });
 }
 
 function completionExtension(source?: CompletionSource) {
@@ -48,6 +118,7 @@ export function Editor({
   readOnly = false,
   onSave,
   completions,
+  runGutter,
   registerApi,
   className,
 }: EditorProps) {
@@ -56,6 +127,7 @@ export function Editor({
   const langCompartment = useRef(new Compartment());
   const themeCompartment = useRef(new Compartment());
   const completionCompartment = useRef(new Compartment());
+  const gutterCompartment = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
   const registerApiRef = useRef(registerApi);
@@ -83,6 +155,7 @@ export function Editor({
         langCompartment.current.of(langExtension(language)),
         themeCompartment.current.of(theme === "dark" ? githubDark : githubLight),
         completionCompartment.current.of(completionExtension(completions)),
+        gutterCompartment.current.of(runGutterExtension(runGutter)),
         EditorView.editable.of(!readOnly),
         EditorState.readOnly.of(readOnly),
         EditorView.updateListener.of((update) => {
@@ -125,6 +198,13 @@ export function Editor({
       effects: completionCompartment.current.reconfigure(completionExtension(completions)),
     });
   }, [completions]);
+
+  // Reconfigure the run gutter — its lines move on every edit.
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: gutterCompartment.current.reconfigure(runGutterExtension(runGutter)),
+    });
+  }, [runGutter]);
 
   // Reconfigure language.
   useEffect(() => {

@@ -65,6 +65,11 @@ Maestro's.) The toolbar covers what a test engineer expects:
 
 - **Run**, **Run selection** (runs the highlighted steps inline), and **Run all**
   (the whole flows folder).
+- **Per-step run controls in the gutter**: hover the editor and a play button
+  appears beside every step — click it to run just that step, or use the chevron
+  next to it for **Run all until here**, which runs every step up to and
+  including that one. Both keep the flow's header, so `appId` and its `env`
+  defaults still apply, and both honour the run options.
 - **Run options**: environment variables (`--env`) and include/exclude tags.
 - A **step checklist** that ticks off each step live, plus a **screenshot captured
   automatically on failure**.

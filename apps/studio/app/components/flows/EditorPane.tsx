@@ -1,5 +1,6 @@
 import {
   Button,
+  ContextMenu,
   Dialog,
   Editor,
   EmptyState,
@@ -24,6 +25,7 @@ import {
   runFlowInline,
   runFolder,
 } from "../../lib/ipc";
+import { flowForSteps, parseSteps, stepAt, stepsUntil } from "../../lib/flowSteps";
 import { maestroCompletion } from "../../lib/maestroCompletion";
 import { selectFlow } from "../../lib/router";
 import type { FlowCatalog, MaestroStatus, RunOptions } from "../../lib/types";
@@ -63,6 +65,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
   const [includeTags, setIncludeTags] = useState("");
   const [excludeTags, setExcludeTags] = useState("");
   const editorApi = useRef<EditorApi | null>(null);
+  const [stepMenu, setStepMenu] = useState<{ line: number; x: number; y: number } | null>(null);
   // The project's env vocabulary, read through a ref so the completion source
   // stays stable while the names refresh underneath it.
   const envNames = useRef<string[]>([]);
@@ -123,12 +126,51 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     const snippet = editorApi.current?.getSelection() ?? "";
     if (!snippet.trim()) return;
     try {
-      const { runId } = await runFlowInline(snippet, deviceId ?? undefined, extractAppId(buffer?.content));
+      const { runId } = await runFlowInline(
+        snippet,
+        deviceId ?? undefined,
+        extractAppId(buffer?.content),
+        options(),
+      );
       beginRun(runId, `${activePath ?? "selection"} (selection)`);
     } catch {
       /* surfaced in console */
     }
   };
+
+  // Run controls in the gutter: one step, or everything up to and including it.
+  const steps = useMemo(() => parseSteps(buffer?.content ?? ""), [buffer?.content]);
+
+  const runSteps = async (chosen: ReturnType<typeof parseSteps>, label: string) => {
+    const content = buffer?.content;
+    if (!content || chosen.length === 0) return;
+    try {
+      const { runId } = await runFlowInline(
+        flowForSteps(content, chosen),
+        deviceId ?? undefined,
+        undefined,
+        options(),
+      );
+      beginRun(runId, `${activePath ?? "flow"} (${label})`);
+    } catch {
+      /* surfaced in console */
+    }
+  };
+
+  const runGutter = useMemo(
+    () => ({
+      lines: steps.map((step) => step.line),
+      onRun: (line: number) => {
+        const step = stepAt(steps, line);
+        if (step) void runSteps([step], `step ${steps.indexOf(step) + 1}`);
+      },
+      onMenu: (line: number, x: number, y: number) => setStepMenu({ line, x, y }),
+      runLabel: "Run this step",
+      menuLabel: "More run options",
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [steps],
+  );
 
   const runAll = async () => {
     try {
@@ -208,6 +250,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             language={languageFor(activePath)}
             theme={theme}
             completions={languageFor(activePath) === "yaml" ? completions : undefined}
+            runGutter={languageFor(activePath) === "yaml" ? runGutter : undefined}
             registerApi={(api) => (editorApi.current = api)}
             onChange={(v) => setBufferContent(activePath, v)}
             onSave={() => void saveFile(activePath)}
@@ -217,6 +260,25 @@ export function EditorPane({ activePath }: { activePath?: string }) {
       <div className={styles.console}>
         <RunConsole />
       </div>
+
+      {stepMenu ? (
+        <ContextMenu
+          open
+          x={stepMenu.x}
+          y={stepMenu.y}
+          items={[
+            {
+              label: "Run all until here",
+              icon: "play",
+              onClick: () => {
+                const chosen = stepsUntil(steps, stepMenu.line);
+                void runSteps(chosen, `through step ${chosen.length}`);
+              },
+            },
+          ]}
+          onClose={() => setStepMenu(null)}
+        />
+      ) : null}
 
       <Dialog
         open={optionsOpen}

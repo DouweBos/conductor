@@ -148,10 +148,10 @@ export function registerIpcHandlers(): void {
     "flow_run_folder",
     (a) => runFolder(a.dir, a.deviceId, a.options),
   );
-  handle<{ snippet: string; deviceId?: string; appId?: string }, { runId: string }>(
-    "flow_run_inline",
-    (a) => runFlowInline(a.snippet, a.deviceId, a.appId),
-  );
+  handle<
+    { snippet: string; deviceId?: string; appId?: string; options?: RunOptions },
+    { runId: string }
+  >("flow_run_inline", (a) => runFlowInline(a.snippet, a.deviceId, a.appId, a.options));
   handle<{ runId: string }, void>("flow_run_cancel", (a) => cancelRun(a.runId));
   handle<{ command: string; deviceId: string }, CommandResult>("flow_run_command", (a) =>
     runCommand(a.command, a.deviceId),

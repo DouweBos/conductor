@@ -134,6 +134,7 @@ export async function runFlowInline(
   snippet: string,
   deviceId?: string,
   appId?: string,
+  options?: RunOptions,
 ): Promise<{ runId: string }> {
   const status = await getMaestroStatus();
   const engine = status.activeEngine;
@@ -142,7 +143,7 @@ export async function runFlowInline(
   const header = appId ? `appId: ${appId}\n---\n` : "";
   const body = header + snippet.trim() + "\n";
   writeFileSync(file, body, "utf8");
-  const args = buildFlowArgs(engine, file, deviceId);
+  const args = buildFlowArgs(engine, file, deviceId, options);
   const steps = parseStepLabels(body).map(toStep);
   return launch({
     engine,
@@ -208,11 +209,13 @@ interface LaunchArgs {
 async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
   let bin = spec.bin;
   let prefix: string[] = [];
+  let env = process.env;
   if (bin === "__conductor__") {
     const resolved = await resolveConductor();
     if (!resolved) throw new Error("Neither maestro nor conductor is available to run flows.");
     bin = resolved.bin;
     prefix = resolved.prefixArgs;
+    env = resolved.env;
   }
 
   const runId = nextRunId();
@@ -262,7 +265,7 @@ async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
       tone: "command",
       text: `$ ${spec.engine} ${argSet.join(" ")}`,
     });
-    const child = spawn(bin, [...prefix, ...argSet], { env: process.env });
+    const child = spawn(bin, [...prefix, ...argSet], { env });
     processes.set(runId, child);
     child.stdout?.on("data", (c: Buffer) => pump(c, "default"));
     child.stderr?.on("data", (c: Buffer) => pump(c, "muted"));

@@ -30,6 +30,7 @@ export {
   type EditorProps,
   type EditorLanguage,
   type EditorApi,
+  type EditorRunGutter,
 } from "./components/Editor/Editor";
 export {
   ContextMenu,

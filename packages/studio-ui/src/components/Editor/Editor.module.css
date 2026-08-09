@@ -17,3 +17,58 @@
 .editor :global(.cm-editor.cm-focused) {
   outline: none;
 }
+
+/* Run controls sit in their own gutter and stay out of the way until you hover
+   the editor, then light up on the line you're pointing at. */
+.runGutter {
+  min-width: 30px;
+}
+
+.runControls {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+:global(.cm-editor:hover) .runControls {
+  opacity: 0.45;
+}
+
+:global(.cm-editor) .runControls:hover {
+  opacity: 1;
+}
+
+.runButton,
+.runMenuButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.runButton {
+  width: 14px;
+  height: 16px;
+}
+
+.runMenuButton {
+  width: 10px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
+.runButton:hover,
+.runMenuButton:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
