@@ -1,0 +1,23 @@
+.dirBar {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+
+.dirSelect {
+  flex: 1;
+  min-width: 0;
+}
+
+.dirPath {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* keep the tail (the flows dir) visible when it overflows */
+  text-align: left;
+}

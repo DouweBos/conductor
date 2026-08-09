@@ -12,8 +12,13 @@ It has light and dark modes, is notarized, and auto-updates.
 
 A Maestro-Studio-style workbench:
 
-- **Left** — a file tree of the project's flows (`.maestro/` by default), with a
-  right-click menu to **rename / duplicate / delete / add folders**.
+- **Left** — a file tree of the project's flows, with a right-click menu to
+  **rename / duplicate / delete / add folders**. Studio finds the flows directory
+  by searching the repo four levels deep for a `.maestro`/`maestro` folder that
+  actually holds flows (an `appId:` header or a `---` separator — so a
+  `.github/actions/maestro` full of workflow YAML doesn't count). A monorepo
+  keeping them per-app, like `apps/plex/.maestro`, is found; when there's more
+  than one the sidebar offers a picker.
 - **Center** — a YAML/JS editor (CodeMirror) with tabs, a run toolbar, and a
   console.
 - **Right** — a live device stream and an element inspector.

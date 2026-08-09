@@ -1,6 +1,13 @@
 import { create } from "zustand";
 
-import { getProjectInfo, listFlows, openProject, pickProject } from "../lib/ipc";
+import {
+  getProjectInfo,
+  listFlows,
+  openProject,
+  pickProject,
+  recentProjects,
+  setFlowsDir,
+} from "../lib/ipc";
 import type { FileEntry, ProjectInfo } from "../lib/types";
 
 interface ProjectState {
@@ -57,6 +64,32 @@ export async function chooseProject(): Promise<void> {
     store.setState({ loading: false });
   }
 }
+
+export async function openProjectAt(root: string): Promise<void> {
+  store.setState({ loading: true, error: null });
+  try {
+    const project = await openProject(root);
+    store.setState({ project });
+    await refreshFlows();
+  } catch (err) {
+    store.setState({ error: String(err) });
+  } finally {
+    store.setState({ loading: false });
+  }
+}
+
+/** Switch which discovered flows directory the sidebar shows. */
+export async function selectFlowsDir(dir: string): Promise<void> {
+  try {
+    const project = await setFlowsDir(dir);
+    store.setState({ project, error: null });
+    await refreshFlows();
+  } catch (err) {
+    store.setState({ error: String(err) });
+  }
+}
+
+export const listRecentProjects = recentProjects;
 
 export async function refreshFlows(): Promise<void> {
   try {

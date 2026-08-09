@@ -9,6 +9,8 @@ export interface ProjectInfo {
   name: string;
   /** Absolute path to the flows directory (default <root>/.maestro). */
   flowsDir: string;
+  /** Every flows directory found in the repo, shallowest first. */
+  flowsDirs: string[];
 }
 
 export interface FileEntry {
@@ -184,10 +186,30 @@ export interface SceneEdge {
   action: string;
 }
 
+/** Identity of the app a scene graph belongs to. */
+export interface AppFingerprint {
+  /** Bundle id (iOS/tvOS), package name (Android), or origin (web). */
+  appId: string;
+  /** Display name where the platform reports one, else derived from appId. */
+  appName: string;
+  platform: Platform;
+  /** Filename-safe `platform-appId`, the scene graph's storage key. */
+  key: string;
+}
+
 export interface SceneGraph {
   version: number;
+  /** The app this graph was recorded against; absent on pre-fingerprint files. */
+  app?: AppFingerprint;
   nodes: SceneNode[];
   edges: SceneEdge[];
+}
+
+export interface SceneGraphSummary {
+  key: string;
+  app: AppFingerprint;
+  screens: number;
+  transitions: number;
 }
 
 // ── Updater ────────────────────────────────────────────────────────────────

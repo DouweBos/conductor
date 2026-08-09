@@ -14,6 +14,7 @@ import type {
   ProjectInfo,
   RunOptions,
   SceneGraph,
+  SceneGraphSummary,
   TestCase,
   ThemePreference,
   UpdaterState,
@@ -28,7 +29,9 @@ function invoke<T>(channel: string, args?: unknown): Promise<T> {
 export const openProject = (root?: string) => invoke<ProjectInfo>("project_open", { root });
 export const getProjectInfo = () => invoke<ProjectInfo | null>("project_info");
 export const pickProject = () => invoke<ProjectInfo | null>("project_pick");
+export const recentProjects = () => invoke<ProjectInfo[]>("project_recents");
 export const listFlows = () => invoke<FileEntry[]>("flows_list");
+export const setFlowsDir = (dir: string) => invoke<ProjectInfo>("flows_set_dir", { dir });
 export const readFlow = (path: string) => invoke<string>("flow_read", { path });
 export const writeFlow = (path: string, content: string) =>
   invoke<void>("flow_write", { path, content });
@@ -85,7 +88,9 @@ export const syncCasesCi = (dimension?: string) =>
 // ── Agentic writer ──
 export const agentStatus = () => invoke<{ available: boolean }>("agent_status");
 export const listPoms = () => invoke<PomEntry[]>("pom_list");
-export const loadSceneGraph = () => invoke<SceneGraph>("scenegraph_load");
+export const loadSceneGraph = (deviceId?: string) =>
+  invoke<SceneGraph>("scenegraph_load", { deviceId });
+export const listSceneGraphs = () => invoke<SceneGraphSummary[]>("scenegraph_list");
 export const startAgent = (deviceId?: string, autoApprove?: boolean) =>
   invoke<AgentStartResult>("agent_start", { deviceId, autoApprove });
 export const sendAgentMessage = (agentId: string, text: string) =>

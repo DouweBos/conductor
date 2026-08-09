@@ -6,6 +6,7 @@ import {
   FileTree,
   IconButton,
   Panel,
+  Select,
   Spinner,
   TextField,
   type ContextMenuItem,
@@ -14,7 +15,14 @@ import { useState } from "react";
 
 import { createFlow, createFolder, deleteFlow, duplicateFlow, renameFlow } from "../../lib/ipc";
 import { selectFlow } from "../../lib/router";
-import { refreshFlows, useFlows, useProject, useProjectLoading } from "../../stores/projectStore";
+import {
+  refreshFlows,
+  selectFlowsDir,
+  useFlows,
+  useProject,
+  useProjectLoading,
+} from "../../stores/projectStore";
+import styles from "./FlowSidebar.module.css";
 
 const FLOW_TEMPLATE = `appId: com.example.app
 ---
@@ -87,6 +95,11 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
     delete: "Delete flow",
   };
 
+  // Monorepos have more than one; name the one we're showing either way.
+  const dirs = project?.flowsDirs ?? [];
+  const relative = (dir: string) =>
+    project ? dir.slice(project.root.length + 1) || "." : dir;
+
   return (
     <Panel
       title="Flows"
@@ -98,6 +111,22 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
         </>
       }
     >
+      {project ? (
+        dirs.length > 1 ? (
+          <div className={styles.dirBar}>
+            <Select
+              options={dirs.map((dir) => ({ value: dir, label: relative(dir) }))}
+              value={project.flowsDir}
+              onChange={(e) => void selectFlowsDir(e.target.value)}
+              className={styles.dirSelect}
+            />
+          </div>
+        ) : (
+          <div className={styles.dirBar} title={project.flowsDir}>
+            <span className={styles.dirPath}>{relative(project.flowsDir)}</span>
+          </div>
+        )
+      ) : null}
       {loading ? (
         <div style={{ padding: 12 }}>
           <Spinner label="Loading flows…" />

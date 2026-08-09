@@ -13,6 +13,7 @@ import type {
   ProjectInfo,
   RunOptions,
   SceneGraph,
+  SceneGraphSummary,
   TestCase,
   ThemePreference,
   UpdaterState,
@@ -28,6 +29,7 @@ import {
 } from "./services/agent/agentService";
 import { buildMatrix, listCases, syncCases } from "./services/cases/casesService";
 import {
+  appFingerprint,
   captureUi,
   inputText,
   listDevices,
@@ -46,10 +48,12 @@ import {
   duplicateFlow,
   getProjectInfo,
   listFlows,
+  listRecentProjects,
   openProject,
   pickProject,
   readFlow,
   renameFlow,
+  setFlowsDir,
   writeFlow,
 } from "./services/file/fileService";
 import {
@@ -62,7 +66,11 @@ import {
 } from "./services/flow/flowRunner";
 import { startLogs, stopLogs } from "./services/logs/logsService";
 import { listPoms } from "./services/pom/pomService";
-import { loadSceneGraph } from "./services/scenegraph/sceneGraphService";
+import {
+  findAppByKey,
+  listSceneGraphs,
+  loadSceneGraph,
+} from "./services/scenegraph/sceneGraphService";
 import { getTheme, setTheme } from "./services/settings/settingsService";
 import {
   checkForUpdates,
@@ -88,7 +96,9 @@ export function registerIpcHandlers(): void {
   handle<{ root?: string }, ProjectInfo>("project_open", (a) => openProject(a?.root));
   handle<void, ProjectInfo | null>("project_info", () => getProjectInfo());
   handle<void, ProjectInfo | null>("project_pick", () => pickProject());
+  handle<void, ProjectInfo[]>("project_recents", () => listRecentProjects());
   handle<void, FileEntry[]>("flows_list", () => listFlows());
+  handle<{ dir: string }, ProjectInfo>("flows_set_dir", (a) => setFlowsDir(a.dir));
   handle<{ path: string }, string>("flow_read", (a) => readFlow(a.path));
   handle<{ path: string; content: string }, void>("flow_write", (a) =>
     writeFlow(a.path, a.content),
@@ -154,7 +164,14 @@ export function registerIpcHandlers(): void {
   // ── Agentic writer ──
   handle<void, { available: boolean }>("agent_status", () => getAgentStatus());
   handle<void, PomEntry[]>("pom_list", () => listPoms());
-  handle<void, SceneGraph>("scenegraph_load", () => loadSceneGraph());
+  handle<{ deviceId?: string; key?: string }, SceneGraph>("scenegraph_load", async (a) => {
+    if (a?.key) return loadSceneGraph(await findAppByKey(a.key));
+    // A device id means "whatever app is in the foreground there" — the graph
+    // is keyed by app, not by device.
+    if (a?.deviceId) return loadSceneGraph(await appFingerprint(a.deviceId).catch(() => null));
+    return loadSceneGraph();
+  });
+  handle<void, SceneGraphSummary[]>("scenegraph_list", () => listSceneGraphs());
   handle<{ deviceId?: string; autoApprove?: boolean }, AgentStartResult>("agent_start", (a) =>
     startAgent(a?.deviceId, a?.autoApprove),
   );
