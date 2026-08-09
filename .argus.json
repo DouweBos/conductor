@@ -2,7 +2,10 @@
   "setup": {
     "copy": [
       ".claude",
-      "node_modules"
+      "node_modules",
+      "apps/studio/node_modules",
+      "packages/cli/node_modules",
+      "packages/studio-ui/node_modules"
     ],
     "symlink": [],
     "commands": [
@@ -21,6 +24,16 @@
     {
       "title": "Test",
       "command": "pnpm run test",
+      "restartOnRerun": false
+    },
+    {
+      "title": "Studio",
+      "command": "pnpm run dev:studio",
+      "restartOnRerun": true
+    },
+    {
+      "title": "Storybook",
+      "command": "pnpm run storybook",
       "restartOnRerun": false
     }
   ],
