@@ -8,7 +8,16 @@
 
 .select {
   flex: 1;
-  min-width: 0;
+  /* Enough to read a device name; without it the picker collapses to "iP". */
+  min-width: 150px;
+}
+
+.modeHint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stream {

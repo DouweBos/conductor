@@ -73,31 +73,6 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
         />
         <IconButton icon="refresh" label="Refresh devices" onClick={() => void refreshDevices()} />
         <ToolbarSpacer />
-        <SegmentedControl
-          options={[
-            { value: "interact", label: "Interact" },
-            { value: "inspect", label: "Inspect" },
-          ]}
-          value={mode}
-          onChange={(v) => changeMode(v as "interact" | "inspect")}
-        />
-        {mode === "inspect" ? (
-          <IconButton
-            icon="search"
-            label="Re-capture elements"
-            disabled={!selectedId || capturing}
-            onClick={() => selectedId && void refreshCapture(selectedId)}
-          />
-        ) : null}
-        {streaming && showRecord ? (
-          <IconButton
-            icon="dot"
-            label={recording ? "Stop recording" : "Record gestures into the open flow"}
-            active={recording}
-            onClick={toggleRecording}
-          />
-        ) : null}
-        {recording && showRecord ? <StatusPill tone="error" pulse>REC</StatusPill> : null}
         {streaming ? (
           <Button size="sm" variant="secondary" icon="stop" onClick={() => void disconnectSelectedDevice()}>
             Disconnect
@@ -114,6 +89,42 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
           </Button>
         )}
       </Toolbar>
+      {showInspector ? (
+        <Toolbar>
+          <SegmentedControl
+            label="Device mode"
+            options={[
+              { value: "interact", label: "Interact" },
+              { value: "inspect", label: "Inspect" },
+            ]}
+            value={mode}
+            onChange={(v) => changeMode(v as "interact" | "inspect")}
+          />
+          <span className={styles.modeHint}>
+            {mode === "inspect"
+              ? "Click an element for commands"
+              : "Taps and swipes drive the device"}
+          </span>
+          <ToolbarSpacer />
+          {mode === "inspect" ? (
+            <IconButton
+              icon="search"
+              label="Re-capture elements"
+              disabled={!selectedId || capturing}
+              onClick={() => selectedId && void refreshCapture(selectedId)}
+            />
+        ) : null}
+        {streaming && showRecord ? (
+          <IconButton
+            icon="dot"
+            label={recording ? "Stop recording" : "Record gestures into the open flow"}
+            active={recording}
+            onClick={toggleRecording}
+          />
+        ) : null}
+        {recording && showRecord ? <StatusPill tone="error" pulse>REC</StatusPill> : null}
+      </Toolbar>
+      ) : null}
       {error && !streaming ? <div className={styles.error}>{error}</div> : null}
       <div className={styles.stream}>
         <DeviceStream deviceId={streaming ? selectedId : null} />
