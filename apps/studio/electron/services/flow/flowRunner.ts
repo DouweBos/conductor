@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -113,8 +113,20 @@ export async function runFolder(
   const absDir = relDir ? path.resolve(project.flowsDir, relDir) : project.flowsDir;
   const status = await getMaestroStatus();
   const engine = status.activeEngine;
-  const args = buildFlowArgs(engine, absDir, deviceId, options);
-  return launch({ engine, ...args, flowPath: relDir ?? ".", deviceId, steps: [] });
+  // maestro runs a whole directory; conductor only takes one flow file, so we
+  // expand the folder and run the flows in sequence under a single run.
+  const targets = engine === "maestro" ? [absDir] : flowFilesIn(absDir);
+  if (!targets.length) throw new Error(`No flows found in ${absDir}`);
+  const first = buildFlowArgs(engine, targets[0], deviceId, options);
+  return launch({
+    engine,
+    bin: first.bin,
+    args: first.args,
+    queue: targets.map((t) => buildFlowArgs(engine, t, deviceId, options).args),
+    flowPath: relDir ?? ".",
+    deviceId,
+    steps: [],
+  });
 }
 
 /** Run an inline snippet (REPL multi-step / editor selection). */
@@ -156,6 +168,17 @@ function buildFlowArgs(
   return { bin: "__conductor__", args: ["run-flow", target, ...device, ...optionArgs(engine, options)] };
 }
 
+/** Flow files under a directory, recursively, in stable order. */
+function flowFilesIn(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir).sort()) {
+    const full = path.join(dir, name);
+    if (statSync(full).isDirectory()) out.push(...flowFilesIn(full));
+    else if (/\.(ya?ml|js)$/.test(name)) out.push(full);
+  }
+  return out;
+}
+
 function safeReadSteps(absPath: string): FlowStep[] {
   try {
     return parseStepLabels(readFileSync(absPath, "utf8")).map(toStep);
@@ -174,6 +197,8 @@ interface LaunchArgs {
   engine: FlowEngine;
   bin: string;
   args: string[];
+  /** Arg sets to run in sequence under one run id (folder runs on conductor). */
+  queue?: string[][];
   flowPath: string;
   deviceId?: string;
   steps: FlowStep[];
@@ -182,12 +207,12 @@ interface LaunchArgs {
 
 async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
   let bin = spec.bin;
-  let args = spec.args;
+  let prefix: string[] = [];
   if (bin === "__conductor__") {
     const resolved = await resolveConductor();
     if (!resolved) throw new Error("Neither maestro nor conductor is available to run flows.");
     bin = resolved.bin;
-    args = [...resolved.prefixArgs, ...spec.args];
+    prefix = resolved.prefixArgs;
   }
 
   const runId = nextRunId();
@@ -201,12 +226,8 @@ async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
   };
   appState.flowRuns.set(runId, record);
 
-  emitLine(runId, { id: `${runId}-cmd`, tone: "command", text: `$ ${spec.engine} ${spec.args.join(" ")}` });
   broadcastToRenderers(`flow_run_status:${runId}`, record);
   broadcastToRenderers(`flow_run_steps:${runId}`, steps);
-
-  const child = spawn(bin, args, { env: process.env });
-  processes.set(runId, child);
 
   let cursor = 0;
   let lineSeq = 0;
@@ -228,26 +249,41 @@ async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
       lineSeq += 1;
       const tone = toneForLine(raw, fallback);
       emitLine(runId, { id: `${runId}-${lineSeq}`, text: raw, tone });
-      if (tone === "success") advance(true);
-      else if (tone === "error") advance(false);
+      const outcome = stepOutcome(raw);
+      if (outcome) advance(outcome === "passed");
     }
   };
-  child.stdout?.on("data", (c: Buffer) => pump(c, "default"));
-  child.stderr?.on("data", (c: Buffer) => pump(c, "muted"));
 
-  child.on("error", (err) => {
-    emitLine(runId, { id: `${runId}-err`, tone: "error", text: err.message });
-    finish(runId, "error", spec);
-  });
-  child.on("close", (code) => {
-    processes.delete(runId);
-    const rec = appState.flowRuns.get(runId);
-    if (rec?.status === "cancelled") {
-      cleanup(spec);
-      return;
-    }
-    finish(runId, code === 0 ? "passed" : "failed", spec);
-  });
+  const queue = spec.queue?.length ? spec.queue : [spec.args];
+  const runNext = (index: number, failedSoFar: boolean): void => {
+    const argSet = queue[index];
+    emitLine(runId, {
+      id: `${runId}-cmd-${index}`,
+      tone: "command",
+      text: `$ ${spec.engine} ${argSet.join(" ")}`,
+    });
+    const child = spawn(bin, [...prefix, ...argSet], { env: process.env });
+    processes.set(runId, child);
+    child.stdout?.on("data", (c: Buffer) => pump(c, "default"));
+    child.stderr?.on("data", (c: Buffer) => pump(c, "muted"));
+
+    child.on("error", (err) => {
+      emitLine(runId, { id: `${runId}-err-${index}`, tone: "error", text: err.message });
+      processes.delete(runId);
+      finish(runId, "error", spec);
+    });
+    child.on("close", (code) => {
+      processes.delete(runId);
+      if (appState.flowRuns.get(runId)?.status === "cancelled") {
+        cleanup(spec);
+        return;
+      }
+      const failed = failedSoFar || code !== 0;
+      if (index + 1 < queue.length) runNext(index + 1, failed);
+      else finish(runId, failed ? "failed" : "passed", spec);
+    });
+  };
+  runNext(0, false);
 
   return { runId };
 }
@@ -280,7 +316,22 @@ function cleanup(spec: LaunchArgs): void {
   }
 }
 
+/**
+ * Per-step result lines, which drive the step checklist. maestro prints
+ * `<description>... COMPLETED|FAILED`; conductor prints `  → <step> ... ok|FAILED`.
+ * Run summaries ("✓ run-flow … done") deliberately don't match.
+ */
+function stepOutcome(line: string): "passed" | "failed" | null {
+  const maestro = /\.\.\.\s*(COMPLETED|FAILED|SKIPPED|WARNED)\s*$/.exec(line);
+  if (maestro) return maestro[1] === "FAILED" ? "failed" : "passed";
+  const conductor = /^\s*→\s.*\.\.\.\s*(ok|FAILED|skipped)\s*$/.exec(line);
+  if (conductor) return conductor[1] === "FAILED" ? "failed" : "passed";
+  return null;
+}
+
 function toneForLine(line: string, fallback: RunLogLine["tone"]): RunLogLine["tone"] {
+  const outcome = stepOutcome(line);
+  if (outcome) return outcome === "passed" ? "success" : "error";
   if (/(✓|✅|\bpassed\b|\bsuccess\b|\bcompleted\b|COMPLETED)/.test(line)) return "success";
   if (/(✗|✘|❌|\bfailed\b|\berror\b|\bexception\b|timed out|FAILED)/i.test(line)) return "error";
   if (/\bwarn/i.test(line)) return "warning";

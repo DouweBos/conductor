@@ -16,6 +16,7 @@ import type {
   TestCase,
   ThemePreference,
   UpdaterState,
+  VideoConfig,
 } from "../app/lib/types";
 import {
   getAgentStatus,
@@ -25,7 +26,7 @@ import {
   startAgent,
   stopAgent,
 } from "./services/agent/agentService";
-import { buildMatrix, listCases } from "./services/cases/casesService";
+import { buildMatrix, listCases, syncCases } from "./services/cases/casesService";
 import {
   captureUi,
   inputText,
@@ -34,6 +35,7 @@ import {
   tap,
 } from "./services/conductor/conductorService";
 import {
+  getDeviceStreamConfig,
   startDeviceStream,
   stopDeviceStream,
 } from "./services/device/deviceService";
@@ -103,6 +105,9 @@ export function registerIpcHandlers(): void {
     "device_stream_start",
     (a) => startDeviceStream(a.deviceId, a.platform as DeviceStreamInfo["platform"]),
   );
+  handle<{ deviceId: string }, VideoConfig | null>("device_stream_config", (a) =>
+    getDeviceStreamConfig(a.deviceId),
+  );
   handle<{ deviceId: string }, void>("device_stream_stop", (a) => stopDeviceStream(a.deviceId));
   handle<{ deviceId: string; x: number; y: number }, void>("device_tap", (a) =>
     tap(a.deviceId, a.x, a.y),
@@ -142,6 +147,7 @@ export function registerIpcHandlers(): void {
   // ── Test case management ──
   handle<void, TestCase[]>("cases_list", () => listCases());
   handle<{ dimension?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.dimension));
+  handle<{ dimension?: string }, CaseMatrix>("cases_sync_ci", (a) => syncCases(a?.dimension));
 
   // ── Agentic writer ──
   handle<void, { available: boolean }>("agent_status", () => getAgentStatus());

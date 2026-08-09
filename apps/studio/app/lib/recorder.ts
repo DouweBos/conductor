@@ -21,15 +21,17 @@ function area(el: CaptureElement): number {
   return el.bounds ? el.bounds.width * el.bounds.height : Number.POSITIVE_INFINITY;
 }
 
+/** Smallest element whose bounds contain the point, anywhere in the tree. */
 function findElementAtPoint(cap: CaptureUiResult, px: number, py: number): CaptureElement | null {
   let best: CaptureElement | null = null;
-  for (const el of cap.root.children ?? []) {
+  const visit = (el: CaptureElement) => {
     const b = el.bounds;
-    if (!b) continue;
-    if (px >= b.x && px <= b.x + b.width && py >= b.y && py <= b.y + b.height) {
-      if (!best || area(el) < area(best)) best = el;
+    if (b && px >= b.x && px <= b.x + b.width && py >= b.y && py <= b.y + b.height) {
+      if (el.text && (!best || area(el) < area(best))) best = el;
     }
-  }
+    for (const child of el.children ?? []) visit(child);
+  };
+  visit(cap.root);
   return best;
 }
 

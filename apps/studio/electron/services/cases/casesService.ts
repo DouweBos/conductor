@@ -6,6 +6,7 @@ import { parse as parseYaml } from "yaml";
 
 import type { CaseMatrix, TestCase } from "../../../app/lib/types";
 import { getProjectInfo } from "../file/fileService";
+import { getCiStatuses, getCiSync, syncCi } from "./ciService";
 
 const CASES_DIR = "test-cases";
 const DEFAULT_DIMENSION = "platform";
@@ -32,6 +33,8 @@ export async function listCases(): Promise<TestCase[]> {
       // skip malformed case files
     }
   }
+  const ci = getCiStatuses();
+  for (const c of cases) c.ciStatus = ci[c.id];
   return cases.sort((a, b) => a.id.localeCompare(b.id));
 }
 
@@ -54,7 +57,7 @@ function normalizeCase(raw: Record<string, unknown>, filePath: string): TestCase
     userStory: raw.userStory ? String(raw.userStory) : undefined,
     tags,
     flow: raw.flow ? String(raw.flow) : undefined,
-    ciStatus: undefined, // GH Actions sync is a follow-on
+    ciStatus: undefined, // filled in from the CI sync cache by listCases
     filePath,
   };
 }
@@ -64,5 +67,11 @@ export async function buildMatrix(dimension = DEFAULT_DIMENSION): Promise<CaseMa
   const columns = [
     ...new Set(cases.flatMap((c) => c.tags[dimension] ?? [])),
   ].sort();
-  return { dimension, columns, cases };
+  return { dimension, columns, cases, ci: getCiSync() ?? undefined };
+}
+
+/** Pull the latest GitHub Actions results in and re-read the cases. */
+export async function syncCases(dimension = DEFAULT_DIMENSION): Promise<CaseMatrix> {
+  await syncCi(await listCases());
+  return buildMatrix(dimension);
 }

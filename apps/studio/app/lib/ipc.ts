@@ -17,6 +17,7 @@ import type {
   TestCase,
   ThemePreference,
   UpdaterState,
+  VideoConfig,
 } from "./types";
 
 function invoke<T>(channel: string, args?: unknown): Promise<T> {
@@ -42,6 +43,8 @@ export const createFolder = (path: string) => invoke<void>("flow_mkdir", { path 
 export const listDevices = () => invoke<DeviceInfo[]>("devices_list");
 export const startDeviceStream = (deviceId: string, platform: Platform) =>
   invoke<DeviceStreamInfo>("device_stream_start", { deviceId, platform });
+export const getDeviceStreamConfig = (deviceId: string) =>
+  invoke<VideoConfig | null>("device_stream_config", { deviceId });
 export const stopDeviceStream = (deviceId: string) =>
   invoke<void>("device_stream_stop", { deviceId });
 export const deviceTap = (deviceId: string, x: number, y: number) =>
@@ -75,6 +78,8 @@ export const stopLogs = (deviceId: string) => invoke<void>("logs_stop", { device
 export const listCases = () => invoke<TestCase[]>("cases_list");
 export const casesMatrix = (dimension?: string) =>
   invoke<CaseMatrix>("cases_matrix", { dimension });
+export const syncCasesCi = (dimension?: string) =>
+  invoke<CaseMatrix>("cases_sync_ci", { dimension });
 
 // ── Agentic writer ──
 export const agentStatus = () => invoke<{ available: boolean }>("agent_status");

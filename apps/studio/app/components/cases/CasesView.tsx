@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   Matrix,
   Select,
@@ -8,7 +9,7 @@ import {
 } from "@conductor/studio-ui";
 import { useEffect, useMemo, useState } from "react";
 
-import { casesMatrix } from "../../lib/ipc";
+import { casesMatrix, syncCasesCi } from "../../lib/ipc";
 import type { CaseMatrix, FlowRunStatus } from "../../lib/types";
 import styles from "./CasesView.module.css";
 
@@ -26,6 +27,19 @@ export function CasesView() {
   const [dimension, setDimension] = useState("platform");
   const [matrix, setMatrix] = useState<CaseMatrix | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const sync = async () => {
+    setSyncing(true);
+    try {
+      setMatrix(await syncCasesCi(dimension));
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     casesMatrix(dimension)
@@ -78,8 +92,29 @@ export function CasesView() {
             value={dimension}
             onChange={(e) => setDimension(e.target.value)}
           />
+          <Button size="sm" variant="secondary" icon="refresh" disabled={syncing} onClick={() => void sync()}>
+            {syncing ? "Syncing…" : "Sync CI"}
+          </Button>
         </div>
       </header>
+
+      {matrix?.ci ? (
+        <div className={styles.ci}>
+          <StatusPill tone={matrix.ci.matched ? "info" : "warning"}>
+            {matrix.ci.matched}/{matrix.ci.total} cases matched
+          </StatusPill>
+          <span>
+            {matrix.ci.runName ?? "latest run"}
+            {matrix.ci.branch ? ` · ${matrix.ci.branch}` : ""}
+            {matrix.ci.repo ? ` · ${matrix.ci.repo}` : ""}
+          </span>
+          {matrix.ci.fallbackToRunStatus ? (
+            <span className={styles.ciNote}>
+              No job detail — showing the whole run's result for every case.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className={styles.matrix}>
         {error ? (

@@ -69,8 +69,14 @@ are mapped.
 
 Qase-inspired. Test cases are **git-tracked YAML files** under `test-cases/`,
 each mapping a user story to the Maestro flow that implements it and tagged by
-vertical / platform / product. The Cases screen renders them as a matrix; CI
-status will sync from GitHub Actions.
+vertical / platform / product. The Cases screen renders them as a matrix.
+
+**Sync CI** pulls the latest GitHub Actions run through the `gh` CLI (so it uses
+your existing `gh auth login`) and fills in each case's status. A case binds to
+the job that exercises it — the job name has to mention the case id (`TC-001`) or
+the flow file it points at. The header shows how many cases matched; when a run
+reports no job detail at all, every case falls back to the run's own result and
+the UI says so.
 
 Example case:
 

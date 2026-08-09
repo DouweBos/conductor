@@ -1,6 +1,7 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { listen } from "../lib/events";
+import { getDeviceStreamConfig } from "../lib/ipc";
 import type { VideoConfig, VideoFrame as FramePayload } from "../lib/types";
 
 export interface DeviceStreamState {
@@ -90,7 +91,15 @@ export function useDeviceStream(
     const unlistenConfig = listen<VideoConfig>(`device_video_config:${deviceId}`, setupDecoder);
     const unlistenFrame = listen<FramePayload>(`device_video_frame:${deviceId}`, onFrame);
 
+    // The stream's single config frame arrives before this hook mounts whenever
+    // the daemon is already up, so pull the cached one instead of waiting.
+    let cancelled = false;
+    void getDeviceStreamConfig(deviceId).then((config) => {
+      if (config && !cancelled && !decoderRef.current) setupDecoder(config);
+    });
+
     return () => {
+      cancelled = true;
       unlistenConfig();
       unlistenFrame();
       decoderRef.current?.close();

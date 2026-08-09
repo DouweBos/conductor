@@ -31,12 +31,18 @@ export async function listDevices(): Promise<DeviceInfo[]> {
     throw new Error(res.stderr.trim() || "conductor list-devices failed");
   }
   const parsed = safeJson<unknown>(res.stdout);
+  // The CLI splits booted devices from bootable ones; Studio shows both.
   const rows = Array.isArray(parsed)
     ? parsed
-    : Array.isArray((parsed as { devices?: unknown[] })?.devices)
-      ? (parsed as { devices: unknown[] }).devices
-      : [];
-  return rows.map(normalizeDevice).filter((d): d is DeviceInfo => d !== null);
+    : [
+        ...((parsed as { devices?: unknown[] })?.devices ?? []),
+        ...((parsed as { availableDevices?: unknown[] })?.availableDevices ?? []),
+      ];
+  const seen = new Set<string>();
+  return rows
+    .map(normalizeDevice)
+    .filter((d): d is DeviceInfo => d !== null)
+    .filter((d) => !seen.has(d.id) && seen.add(d.id));
 }
 
 function normalizeDevice(raw: unknown): DeviceInfo | null {
@@ -48,7 +54,7 @@ function normalizeDevice(raw: unknown): DeviceInfo | null {
   const rawState = String(r.state ?? r.status ?? "unknown").toLowerCase();
   const state = rawState.includes("boot") || rawState.includes("running")
     ? "booted"
-    : rawState.includes("shut")
+    : rawState.includes("shut") || rawState.includes("available")
       ? "shutdown"
       : "unknown";
   return {
@@ -90,12 +96,14 @@ interface CaptureBundle {
 }
 
 interface A11yEntry {
+  nodeId?: string;
   ref: string;
   label?: string;
   value?: string;
   role?: string;
   hint?: string;
-  frame?: { x?: number; y?: number; width?: number; height?: number };
+  /** Conductor reports frames as x/y/w/h in device points. */
+  frame?: { x?: number; y?: number; w?: number; h?: number };
 }
 
 function mapBundle(deviceId: string, bundle: CaptureBundle): CaptureUiResult {
@@ -104,44 +112,58 @@ function mapBundle(deviceId: string, bundle: CaptureBundle): CaptureUiResult {
   const screenshot = bundle.screenshot?.data
     ? `data:image/${bundle.screenshot.encoding ?? "png"};base64,${bundle.screenshot.data}`
     : undefined;
-  const children: CaptureElement[] = (bundle.a11ySnapshot ?? []).map((e) => ({
+  const root: CaptureElement = { ref: "root", role: "Screen", text: "Screen", children: [] };
+  nest(root, (bundle.a11ySnapshot ?? []).map(toElement));
+  return { deviceId, width, height, screenshot, root };
+}
+
+function toElement(e: A11yEntry): CaptureElement & { nodeId: string } {
+  return {
+    nodeId: e.nodeId ?? "",
     ref: e.ref,
     role: e.role || undefined,
     text: e.label || e.value || e.hint || undefined,
     bounds: e.frame
-      ? {
-          x: e.frame.x ?? 0,
-          y: e.frame.y ?? 0,
-          width: e.frame.width ?? 0,
-          height: e.frame.height ?? 0,
-        }
+      ? { x: e.frame.x ?? 0, y: e.frame.y ?? 0, width: e.frame.w ?? 0, height: e.frame.h ?? 0 }
       : undefined,
     children: [],
-  }));
-  return {
-    deviceId,
-    width,
-    height,
-    screenshot,
-    root: { ref: "root", role: "Screen", text: "Screen", children },
   };
 }
 
-function dims(deviceId: string): { width: number; height: number } | null {
-  const session = appState.deviceStreams.get(deviceId);
-  if (session?.width && session?.height) {
-    return { width: session.width, height: session.height };
+/**
+ * Rebuild the hierarchy from the flat snapshot: `nodeId` is a dot-path of child
+ * indices, so the nearest ancestor already in the map is an element's parent.
+ */
+function nest(root: CaptureElement, elements: (CaptureElement & { nodeId: string })[]): void {
+  const byPath = new Map<string, CaptureElement>();
+  for (const el of elements) {
+    const { nodeId, ...node } = el;
+    let parent = root;
+    const parts = nodeId.split(".");
+    for (let i = parts.length - 1; i > 0; i--) {
+      const found = byPath.get(parts.slice(0, i).join("."));
+      if (found) {
+        parent = found;
+        break;
+      }
+    }
+    parent.children!.push(node);
+    if (nodeId) byPath.set(nodeId, node);
   }
-  return null;
 }
 
 /** x/y are normalized 0..1 relative to the device screen. */
 export async function tap(deviceId: string, x: number, y: number): Promise<void> {
-  const d = dims(deviceId);
-  const at = d ? `${Math.round(x * d.width)},${Math.round(y * d.height)}` : `${x},${y}`;
+  // Pass the fraction through: conductor resolves 0–1 coordinates against the
+  // device's point size, which the video stream's pixel dimensions are not.
+  const at = `${round(x)},${round(y)}`;
   const res = await runConductor(["tap-on", "--at", at, ...deviceArgs(deviceId)], 20_000);
   if (res.code !== 0) throw new Error(res.stderr.trim() || "tap failed");
   appState.lastAction = `tapOn: point ${at}`;
+}
+
+function round(n: number): number {
+  return Math.round(n * 10_000) / 10_000;
 }
 
 export async function swipe(
@@ -153,7 +175,7 @@ export async function swipe(
 ): Promise<void> {
   // swipe accepts 0–1 normalized coordinates directly.
   const res = await runConductor(
-    ["swipe", "--start", `${x1},${y1}`, "--end", `${x2},${y2}`, ...deviceArgs(deviceId)],
+    ["swipe", "--start", `${round(x1)},${round(y1)}`, "--end", `${round(x2)},${round(y2)}`, ...deviceArgs(deviceId)],
     20_000,
   );
   if (res.code !== 0) throw new Error(res.stderr.trim() || "swipe failed");

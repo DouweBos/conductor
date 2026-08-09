@@ -136,10 +136,27 @@ export interface TestCase {
   filePath: string; // relative to project root
 }
 
+/** Result of a GitHub Actions CI sync for the test cases. */
+export interface CiSync {
+  repo?: string;
+  runUrl?: string;
+  runName?: string;
+  branch?: string;
+  syncedAt: number;
+  /** How many cases got a status, out of how many exist. */
+  matched: number;
+  total: number;
+  /** True when the run had no job detail, so every case shows the run's result. */
+  fallbackToRunStatus: boolean;
+  statuses: Record<string, FlowRunStatus>;
+}
+
 export interface CaseMatrix {
   dimension: string; // which tag dimension forms the columns
   columns: string[];
   cases: TestCase[];
+  /** The most recent CI sync, if one has run this session. */
+  ci?: CiSync;
 }
 
 // ── Agentic writer (scaffolded) ───────────────────────────────────────────

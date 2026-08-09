@@ -15,6 +15,8 @@ export interface DeviceStreamSession {
   width: number;
   height: number;
   ws: WebSocket | null;
+  /** Last config frame, replayed to renderers that subscribe after it arrived. */
+  config: VideoConfig | null;
 }
 
 interface StreamServerResult {
@@ -59,6 +61,7 @@ export async function startDeviceStream(
     width: 0,
     height: 0,
     ws: null,
+    config: null,
   };
   appState.deviceStreams.set(deviceId, session);
   connect(session);
@@ -107,6 +110,7 @@ function handleConfig(session: DeviceStreamSession, text: string): void {
     };
     session.width = config.width;
     session.height = config.height;
+    session.config = config;
     broadcastToRenderers(`device_video_config:${session.deviceId}`, config);
   } catch {
     // ignore malformed config
@@ -127,6 +131,11 @@ function isAnnexBKeyframe(bytes: Uint8Array): boolean {
     }
   }
   return false;
+}
+
+/** The cached config for a live stream, for renderers that missed the broadcast. */
+export function getDeviceStreamConfig(deviceId: string): VideoConfig | null {
+  return appState.deviceStreams.get(deviceId)?.config ?? null;
 }
 
 export function stopDeviceStream(deviceId: string): void {
