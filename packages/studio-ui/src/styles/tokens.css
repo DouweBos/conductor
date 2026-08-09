@@ -145,6 +145,9 @@
   --space-6: 24px;
   --space-8: 32px;
 
+  /* Every pane header / toolbar shares one height so they line up across panes. */
+  --bar-height: 40px;
+
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
