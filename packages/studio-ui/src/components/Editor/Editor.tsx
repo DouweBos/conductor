@@ -1,5 +1,6 @@
 import { autocompletion, type CompletionSource } from "@codemirror/autocomplete";
 import { javascript } from "@codemirror/lang-javascript";
+import { linter, type Diagnostic } from "@codemirror/lint";
 import { yaml } from "@codemirror/lang-yaml";
 import { Compartment, EditorState, RangeSet } from "@codemirror/state";
 import { EditorView, GutterMarker, gutter, keymap } from "@codemirror/view";
@@ -15,6 +16,13 @@ export type EditorLanguage = "yaml" | "javascript";
  * Run controls in the gutter: a play button on each listed line, plus a chevron
  * that asks the host to open a menu at that point.
  */
+/** A problem to underline, addressed by 1-based line. */
+export interface EditorProblem {
+  line: number;
+  severity: "error" | "warning" | "info";
+  message: string;
+}
+
 export interface EditorRunGutter {
   /** 1-based lines that get a control. */
   lines: number[];
@@ -44,6 +52,8 @@ export interface EditorProps {
   runGutter?: EditorRunGutter;
   /** Cmd/Ctrl-click on a line: the host decides whether it names something. */
   onFollowLine?: (lineText: string) => void;
+  /** Problems to underline in the text. */
+  problems?: EditorProblem[];
   /** Receives an imperative API once mounted, and `null` on unmount. */
   registerApi?: (api: EditorApi | null) => void;
   className?: string;
@@ -104,6 +114,24 @@ function runGutterExtension(config?: EditorRunGutter) {
   });
 }
 
+function lintExtension(problems?: EditorProblem[]) {
+  if (!problems) return [];
+  return linter((view: EditorView) => {
+    const diagnostics: Diagnostic[] = [];
+    for (const problem of problems) {
+      if (problem.line < 1 || problem.line > view.state.doc.lines) continue;
+      const line = view.state.doc.line(problem.line);
+      diagnostics.push({
+        from: line.from + (line.text.length - line.text.trimStart().length),
+        to: line.to,
+        severity: problem.severity,
+        message: problem.message,
+      });
+    }
+    return diagnostics;
+  });
+}
+
 function completionExtension(source?: CompletionSource) {
   return source ? autocompletion({ override: [source] }) : [];
 }
@@ -122,6 +150,7 @@ export function Editor({
   completions,
   runGutter,
   onFollowLine,
+  problems,
   registerApi,
   className,
 }: EditorProps) {
@@ -131,6 +160,7 @@ export function Editor({
   const themeCompartment = useRef(new Compartment());
   const completionCompartment = useRef(new Compartment());
   const gutterCompartment = useRef(new Compartment());
+  const lintCompartment = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
   const onFollowRef = useRef(onFollowLine);
@@ -161,6 +191,7 @@ export function Editor({
         themeCompartment.current.of(theme === "dark" ? githubDark : githubLight),
         completionCompartment.current.of(completionExtension(completions)),
         gutterCompartment.current.of(runGutterExtension(runGutter)),
+        lintCompartment.current.of(lintExtension(problems)),
         EditorView.editable.of(!readOnly),
         EditorState.readOnly.of(readOnly),
         EditorView.domEventHandlers({
@@ -219,6 +250,13 @@ export function Editor({
       effects: gutterCompartment.current.reconfigure(runGutterExtension(runGutter)),
     });
   }, [runGutter]);
+
+  // Reconfigure diagnostics.
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: lintCompartment.current.reconfigure(lintExtension(problems)),
+    });
+  }, [problems]);
 
   // Reconfigure language.
   useEffect(() => {

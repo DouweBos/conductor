@@ -185,6 +185,16 @@ export interface FlowReference {
   style: "alias" | "relative";
 }
 
+/** Something wrong with a flow that we can see without running it. */
+export interface LintProblem {
+  /** Flow path relative to the flows directory (or a case file, repo-relative). */
+  file: string;
+  line: number;
+  severity: "error" | "warning" | "info";
+  message: string;
+  text: string;
+}
+
 export interface FlowSearchHit {
   path: string;
   line: number;

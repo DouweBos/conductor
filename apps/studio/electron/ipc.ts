@@ -11,6 +11,7 @@ import type {
   FlowCatalog,
   FlowReference,
   FlowSearchHit,
+  LintProblem,
   RenameResult,
   MaestroStatus,
   PomEntry,
@@ -69,6 +70,7 @@ import {
   runFolder,
 } from "./services/flow/flowRunner";
 import { loadFlowCatalog } from "./services/flow/catalog";
+import { lintOne, lintProject } from "./services/flow/lint";
 import { findUsages, indexReferences, searchFlows } from "./services/flow/references";
 import { listEnvNames } from "./services/flow/envNames";
 import { startLogs, stopLogs } from "./services/logs/logsService";
@@ -111,6 +113,10 @@ export function registerIpcHandlers(): void {
   handle<void, FlowReference[]>("flows_references", () => indexReferences());
   handle<{ path: string }, FlowReference[]>("flows_usages", (a) => findUsages(a.path));
   handle<{ query: string }, FlowSearchHit[]>("flows_search", (a) => searchFlows(a.query));
+  handle<void, LintProblem[]>("flows_lint", () => lintProject());
+  handle<{ path: string; content: string }, LintProblem[]>("flows_lint_one", (a) =>
+    lintOne(a.path, a.content),
+  );
   handle<{ path: string }, string>("flow_read", (a) => readFlow(a.path));
   handle<{ path: string; content: string }, void>("flow_write", (a) =>
     writeFlow(a.path, a.content),

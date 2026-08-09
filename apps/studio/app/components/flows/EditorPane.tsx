@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getMaestroStatus,
+  lintFlowContent,
   listEnvNames,
   loadFlowCatalog,
   runFlow,
@@ -29,7 +30,7 @@ import { referenceOnLine, resolveReference } from "../../lib/flowRefs";
 import { flowForSteps, parseSteps, stepAt, stepsUntil } from "../../lib/flowSteps";
 import { maestroCompletion } from "../../lib/maestroCompletion";
 import { selectFlow } from "../../lib/router";
-import type { FlowCatalog, MaestroStatus, RunOptions } from "../../lib/types";
+import type { FlowCatalog, LintProblem, MaestroStatus, RunOptions } from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
 import {
   closeFile,
@@ -67,6 +68,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
   const [excludeTags, setExcludeTags] = useState("");
   const editorApi = useRef<EditorApi | null>(null);
   const [stepMenu, setStepMenu] = useState<{ line: number; x: number; y: number } | null>(null);
+  const [problems, setProblems] = useState<LintProblem[]>([]);
   // The project's env vocabulary, read through a ref so the completion source
   // stays stable while the names refresh underneath it.
   const envNames = useRef<string[]>([]);
@@ -138,6 +140,18 @@ export function EditorPane({ activePath }: { activePath?: string }) {
       /* surfaced in console */
     }
   };
+
+  // Lint the buffer as it settles, so mistakes surface before a run does.
+  useEffect(() => {
+    if (!activePath || buffer?.content === undefined) return;
+    const content = buffer.content;
+    const timer = setTimeout(() => {
+      lintFlowContent(activePath, content)
+        .then(setProblems)
+        .catch(() => setProblems([]));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [activePath, buffer?.content]);
 
   // Run controls in the gutter: one step, or everything up to and including it.
   const steps = useMemo(() => parseSteps(buffer?.content ?? ""), [buffer?.content]);
@@ -261,6 +275,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             completions={languageFor(activePath) === "yaml" ? completions : undefined}
             runGutter={languageFor(activePath) === "yaml" ? runGutter : undefined}
             onFollowLine={followLine}
+            problems={problems.map((p) => ({ line: p.line, severity: p.severity, message: p.message }))}
             registerApi={(api) => (editorApi.current = api)}
             onChange={(v) => setBufferContent(activePath, v)}
             onSave={() => void saveFile(activePath)}

@@ -34,9 +34,11 @@ import {
   useRunStatus,
   useRunSteps,
 } from "../../stores/runStore";
+import { ProblemList } from "./ProblemList";
+import { refreshProblems, useProblems } from "../../stores/problemStore";
 import styles from "./RunConsole.module.css";
 
-type Tab = "console" | "steps" | "logs";
+type Tab = "console" | "steps" | "logs" | "problems";
 type ReplMode = "cmd" | "maestro";
 
 const STATUS_TONE: Record<FlowRunStatus, StatusTone> = {
@@ -67,6 +69,7 @@ export function RunConsole() {
   const logLines = useLogLines();
   const logsStreaming = useLogsStreaming();
   const [tab, setTab] = useState<Tab>("console");
+  const problems = useProblems();
   const [mode, setMode] = useState<ReplMode>("cmd");
   const [command, setCommand] = useState("");
 
@@ -124,6 +127,11 @@ export function RunConsole() {
             onClick={() => setTab("steps")}
           />
           <TabButton label="Logs" active={tab === "logs"} onClick={() => setTab("logs")} />
+          <TabButton
+            label={problems.length ? `Problems (${problems.length})` : "Problems"}
+            active={tab === "problems"}
+            onClick={() => setTab("problems")}
+          />
         </div>
         {status ? (
           <StatusPill tone={STATUS_TONE[status]} pulse={status === "running"}>
@@ -162,6 +170,7 @@ export function RunConsole() {
         {tab === "logs" ? (
           <LogView lines={logLines} emptyLabel="Start logs to stream device output." />
         ) : null}
+        {tab === "problems" ? <ProblemList problems={problems} onRefresh={refreshProblems} /> : null}
       </div>
 
       <div className={styles.repl}>

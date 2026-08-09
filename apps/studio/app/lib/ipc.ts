@@ -11,6 +11,7 @@ import type {
   FlowCatalog,
   FlowReference,
   FlowSearchHit,
+  LintProblem,
   RenameResult,
   MaestroStatus,
   Platform,
@@ -49,6 +50,9 @@ export const renameFlow = (from: string, to: string) =>
 export const listReferences = () => invoke<FlowReference[]>("flows_references");
 export const findUsages = (path: string) => invoke<FlowReference[]>("flows_usages", { path });
 export const searchFlows = (query: string) => invoke<FlowSearchHit[]>("flows_search", { query });
+export const lintProject = () => invoke<LintProblem[]>("flows_lint");
+export const lintFlowContent = (path: string, content: string) =>
+  invoke<LintProblem[]>("flows_lint_one", { path, content });
 export const duplicateFlow = (from: string, to: string) =>
   invoke<void>("flow_duplicate", { from, to });
 export const createFolder = (path: string) => invoke<void>("flow_mkdir", { path });

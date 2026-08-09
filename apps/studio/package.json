@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.0",
+    "@codemirror/lint": "^6.8.0",
     "@conductor/studio-ui": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "chokidar": "^4.0.0",
