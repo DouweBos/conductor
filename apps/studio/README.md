@@ -29,7 +29,15 @@ A three-column workbench: flow tree, editor, device.
 ### Flow tree
 
 The project's flows, with a right-click menu to **rename / duplicate / delete /
-add folders**, and **New flow** from a template.
+add folders / find usages**, **New flow** from a template, and a search box that
+greps the whole flows directory.
+
+**Renaming repoints every caller.** A POM suite refers to a subflow from a dozen
+places (`commands/launch/launch.yaml` has 36 callers in the Plex suite), so a
+rename rewrites each reference in the style that call site used — a config.yaml
+alias stays an alias, a relative path stays relative. **Find usages** answers
+"what breaks if I change this", and Cmd/Ctrl-clicking a `runFlow`/`runScript`/
+`file` line in the editor opens what it names.
 
 ### Editor
 
@@ -74,6 +82,20 @@ are suite-wide globals passed on the command line and dotted ones are script
 output — so they're found whether or not the flow declares them. Scripts get
 `runScript:` instead.
 
+### Problems
+
+A linter checks the suite without running it, against the same command schema
+and flow catalog that drive autocomplete: unknown commands and parameters,
+unknown header keys, `runFlow`/`runScript` paths and aliases that don't resolve,
+calls that omit parameters the subflow reads, `${…}` names nothing supplies, and
+test cases pointing at flows that no longer exist. Problems underline in the
+editor as you type and collect in the **Problems** tab.
+
+It knows two things about how Maestro actually behaves, which keep it quiet on a
+healthy suite: an `env:` block is a sibling of `file:`, not a child, and env is
+inherited into subflows — so a subflow forwarding to another doesn't have to
+restate anything.
+
 ### Running flows
 
 Studio prefers the system-installed **`maestro`** binary (`maestro test`) and
@@ -98,6 +120,26 @@ labels which engine ran. (Conductor's flow YAML is a subset of Maestro's.)
   output in the console; `maestro` runs a YAML step inline against the device and
   shows it in the step list.
 - A **Logs** tab streaming `conductor logs` for the connected device.
+- **Run changed** runs only the flows you touched against `main` (committed and
+  working-tree alike).
+- **Run options** carry saved **profiles**, so the env a suite always needs
+  (`APP_ID`, platform) is picked rather than retyped; a **tag picker** built from
+  the tags the flows declare; a **shard count** (`--shard-split` on maestro,
+  `run-parallel` on conductor); and a **flakiness check** that runs one flow N
+  times and reports the pass rate.
+
+### Runs
+
+Every run is recorded per project — status, timing, output tail — so "it passed
+ten minutes ago" is answerable. Opening a maestro run reads the debug output it
+writes to `~/.maestro/tests/<run>/`: every executed command with its status and
+duration, the **screenshot** taken at that step, and the **screen hierarchy**
+captured with it. That's what explains a failure; a console scroll doesn't.
+
+A failed run has **Ask the agent to fix it**, which opens the agent with the
+failing step, the paths to that step's screenshot and hierarchy, and the output
+tail already composed — loaded into the composer rather than sent, so you read
+and edit it before the agent starts touching the app.
 
 ### Device panel
 
@@ -110,7 +152,10 @@ Two modes:
 
 - **Interact** — your taps and swipes drive the device. **Record** mode appends
   them to the open flow as Maestro steps, resolving taps to text/id selectors
-  via `capture-ui`.
+  via `capture-ui`, and can capture an `assertVisible` for the current screen —
+  a recording of nothing but taps passes against a completely broken app.
+  **Boot** and **Install a build** run conductor's `start-device` and
+  `install-app`, so getting a device ready doesn't mean leaving Studio.
 - **Inspect** — Maestro-Studio-style element picking. Every captured element is
   outlined over the stream; hovering highlights the smallest one under the
   cursor, clicking it lists the commands that fit it — **tapOn / longPressOn /
@@ -161,11 +206,12 @@ flow: login.yaml
 ```
 
 **Sync CI** pulls the latest GitHub Actions run through the `gh` CLI (so it uses
-your existing `gh auth login`) and fills in each case's status. A case binds to
-the job that exercises it — the job name has to mention the case id (`TC-001`) or
-the flow file it points at. The header shows how many cases matched; when a run
-reports no job detail at all, every case falls back to the run's own result and
-the UI says so.
+your existing `gh auth login`) and fills in each case's status. It prefers the
+**JUnit report** the run uploads, which names every flow and carries the failure
+message; where there's no report it falls back to matching job names against the
+case id (`TC-001`) or its flow file, and where a run has no job detail at all
+every case shows the run's own result and the UI says so. Workflows can also be
+**triggered** from here.
 
 ---
 
