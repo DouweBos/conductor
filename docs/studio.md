@@ -12,21 +12,35 @@ It has light and dark modes, is notarized, and auto-updates.
 
 A Maestro-Studio-style workbench:
 
-- **Left** — a file tree of the project's flows (`.maestro/` by default).
-- **Center** — a YAML/JS editor (CodeMirror) with tabs, plus a run console and a
-  REPL for running conductor commands live.
+- **Left** — a file tree of the project's flows (`.maestro/` by default), with a
+  right-click menu to **rename / duplicate / delete / add folders**.
+- **Center** — a YAML/JS editor (CodeMirror) with tabs, a run toolbar, and a
+  console.
 - **Right** — a live device stream and an element inspector.
 
 The device mirror and inspector always use conductor: the daemon's H.264 video
 WebSocket (`conductor stream-server`) is decoded in the renderer via WebCodecs,
 taps/swipes go through conductor's input commands, and the inspector reads
-`conductor capture-ui`. Clicking an element generates a Maestro command you can
-insert into the editor.
+`conductor capture-ui`. Selecting an element generates a command — **tapOn /
+assertVisible / inputText / longPressOn / copyTextFrom** — that you insert into
+the editor.
 
 **Running flows** prefers the **system-installed `maestro`** binary
-(`maestro test <file>`) and falls back to **`conductor run-flow`** when maestro is
-not on `PATH`. The console labels which engine ran. (Conductor's flow YAML is a
-subset of Maestro's, so most flows run under either.)
+(`maestro test`) and falls back to **`conductor run-flow`** when maestro is not on
+`PATH`. The console labels which engine ran. (Conductor's flow YAML is a subset of
+Maestro's.) The toolbar covers what a test engineer expects:
+
+- **Run**, **Run selection** (runs the highlighted steps inline), and **Run all**
+  (the whole flows folder).
+- **Run options**: environment variables (`--env`) and include/exclude tags.
+- A **step checklist** that ticks off each step live, plus a **screenshot captured
+  automatically on failure**.
+- A **REPL** with two modes: `conductor` (run a raw CLI command) and `maestro`
+  (run a YAML step inline against the device).
+- **Record mode**: toggle it and your taps/swipes on the device are appended to
+  the open flow as Maestro steps (taps resolve to text/id selectors via
+  `capture-ui`).
+- A **Logs** tab that streams `conductor logs` for the connected device.
 
 ### 2. Agentic test writing
 

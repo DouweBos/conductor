@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Select,
   Spinner,
   StatusPill,
   TreeView,
@@ -34,16 +35,36 @@ function findElement(root: CaptureElement, ref: string): CaptureElement | null {
   return null;
 }
 
-/** Maestro command suggested for the selected element (Studio's signature feature). */
-export function commandFor(el: CaptureElement): string {
-  if (el.text) return `- tapOn: "${el.text}"`;
-  if (el.identifier) return `- tapOn:\n    id: "${el.identifier}"`;
+export type CommandKind = "tapOn" | "assertVisible" | "inputText" | "longPressOn" | "copyTextFrom";
+
+/** A selector fragment for the element, preferring text then id then point. */
+function selectorFor(el: CaptureElement): string {
+  if (el.text) return `"${el.text}"`;
+  if (el.identifier) return `\n    id: "${el.identifier}"`;
   if (el.bounds) {
-    return `- tapOn:\n    point: "${Math.round(el.bounds.x + el.bounds.width / 2)},${Math.round(
+    return `\n    point: "${Math.round(el.bounds.x + el.bounds.width / 2)},${Math.round(
       el.bounds.y + el.bounds.height / 2,
     )}"`;
   }
-  return `- tapOn: "${el.ref}"`;
+  return `"${el.ref}"`;
+}
+
+/** Maestro command suggested for the selected element (Studio's signature feature). */
+export function commandFor(el: CaptureElement, kind: CommandKind = "tapOn"): string {
+  const sel = selectorFor(el);
+  switch (kind) {
+    case "assertVisible":
+      return `- assertVisible: ${sel}`;
+    case "longPressOn":
+      return `- longPressOn: ${sel}`;
+    case "inputText":
+      return `- tapOn: ${sel}\n- inputText: "TODO"`;
+    case "copyTextFrom":
+      return `- copyTextFrom: ${sel}`;
+    case "tapOn":
+    default:
+      return `- tapOn: ${sel}`;
+  }
 }
 
 export function Inspector({ deviceId }: { deviceId: string | null }) {
@@ -52,6 +73,7 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
   const [screenCount, setScreenCount] = useState(0);
+  const [kind, setKind] = useState<CommandKind>("tapOn");
   const buffers = useFlowBuffers();
 
   useEffect(() => {
@@ -86,7 +108,7 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
     if (!path) return;
     const buf = buffers[path];
     if (!buf) return;
-    const snippet = commandFor(selectedEl);
+    const snippet = commandFor(selectedEl, kind);
     const next = buf.content.endsWith("\n") || buf.content === ""
       ? `${buf.content}${snippet}\n`
       : `${buf.content}\n${snippet}\n`;
@@ -130,7 +152,18 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
       </div>
       {selectedEl ? (
         <div className={styles.snippet}>
-          <pre className={styles.code}>{commandFor(selectedEl)}</pre>
+          <Select
+            options={[
+              { value: "tapOn", label: "tapOn" },
+              { value: "assertVisible", label: "assertVisible" },
+              { value: "inputText", label: "inputText" },
+              { value: "longPressOn", label: "longPressOn" },
+              { value: "copyTextFrom", label: "copyTextFrom" },
+            ]}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as CommandKind)}
+          />
+          <pre className={styles.code}>{commandFor(selectedEl, kind)}</pre>
           <Button size="sm" variant="primary" icon="plus" onClick={insert}>
             Insert
           </Button>

@@ -17,6 +17,7 @@ export interface TreeViewProps {
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   onHover?: (id: string | null) => void;
+  onContextMenu?: (id: string, x: number, y: number) => void;
   defaultExpandedIds?: string[];
   /** Fully expand every branch on mount. */
   expandAll?: boolean;
@@ -27,6 +28,7 @@ export function TreeView({
   selectedId,
   onSelect,
   onHover,
+  onContextMenu,
   defaultExpandedIds,
   expandAll,
 }: TreeViewProps) {
@@ -56,6 +58,7 @@ export function TreeView({
           selectedId={selectedId}
           onSelect={onSelect}
           onHover={onHover}
+          onContextMenu={onContextMenu}
         />
       ))}
     </ul>
@@ -70,9 +73,10 @@ interface RowProps {
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   onHover?: (id: string | null) => void;
+  onContextMenu?: (id: string, x: number, y: number) => void;
 }
 
-function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, onHover }: RowProps) {
+function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, onHover, onContextMenu }: RowProps) {
   const hasChildren = !!node.children?.length;
   const isOpen = expanded.has(node.id);
   const selected = selectedId === node.id;
@@ -87,6 +91,12 @@ function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, onHover 
         }}
         onMouseEnter={() => onHover?.(node.id)}
         onMouseLeave={() => onHover?.(null)}
+        onContextMenu={(e) => {
+          if (onContextMenu) {
+            e.preventDefault();
+            onContextMenu(node.id, e.clientX, e.clientY);
+          }
+        }}
       >
         <span className={styles.twisty}>
           {hasChildren ? (
@@ -109,6 +119,7 @@ function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, onHover 
               selectedId={selectedId}
               onSelect={onSelect}
               onHover={onHover}
+              onContextMenu={onContextMenu}
             />
           ))}
         </ul>

@@ -15,6 +15,7 @@ export interface FileTreeProps {
   entries: FileEntry[];
   selectedPath?: string | null;
   onSelectFile?: (path: string) => void;
+  onContextMenu?: (path: string, x: number, y: number) => void;
 }
 
 function iconFor(entry: FileEntry): IconName {
@@ -32,7 +33,7 @@ function toNodes(entries: FileEntry[]): TreeNode[] {
   }));
 }
 
-export function FileTree({ entries, selectedPath, onSelectFile }: FileTreeProps) {
+export function FileTree({ entries, selectedPath, onSelectFile, onContextMenu }: FileTreeProps) {
   const nodes = useMemo(() => toNodes(entries), [entries]);
   const filePaths = useMemo(() => collectFilePaths(entries), [entries]);
 
@@ -44,6 +45,7 @@ export function FileTree({ entries, selectedPath, onSelectFile }: FileTreeProps)
       onSelect={(id) => {
         if (filePaths.has(id)) onSelectFile?.(id);
       }}
+      onContextMenu={onContextMenu}
     />
   );
 }

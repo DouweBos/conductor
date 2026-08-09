@@ -3,6 +3,8 @@ import { useRef } from "react";
 
 import { useDeviceStream } from "../../hooks/useDeviceStream";
 import { deviceSwipe, deviceTap } from "../../lib/ipc";
+import { recordSwipe, recordTap } from "../../lib/recorder";
+import { isRecording } from "../../stores/recorderStore";
 import styles from "./DeviceStream.module.css";
 
 interface Point {
@@ -42,8 +44,10 @@ export function DeviceStream({ deviceId }: { deviceId: string | null }) {
     const dist = Math.hypot(dx, dy);
     if (dist < 0.02) {
       void deviceTap(deviceId, end.x, end.y);
+      if (isRecording()) void recordTap(deviceId, end.x, end.y);
     } else {
       void deviceSwipe(deviceId, start.point.x, start.point.y, end.x, end.y);
+      if (isRecording()) recordSwipe(start.point.x, start.point.y, end.x, end.y);
     }
   };
 

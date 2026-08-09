@@ -10,6 +10,12 @@ import styles from "./Editor.module.css";
 
 export type EditorLanguage = "yaml" | "javascript";
 
+/** Imperative handle for reading editor state (e.g. "run selection"). */
+export interface EditorApi {
+  getValue: () => string;
+  getSelection: () => string;
+}
+
 export interface EditorProps {
   value: string;
   onChange?: (value: string) => void;
@@ -18,6 +24,8 @@ export interface EditorProps {
   readOnly?: boolean;
   /** Fires on Cmd/Ctrl+S. */
   onSave?: () => void;
+  /** Receives an imperative API once mounted, and `null` on unmount. */
+  registerApi?: (api: EditorApi | null) => void;
   className?: string;
 }
 
@@ -32,6 +40,7 @@ export function Editor({
   theme = "light",
   readOnly = false,
   onSave,
+  registerApi,
   className,
 }: EditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -40,8 +49,10 @@ export function Editor({
   const themeCompartment = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
+  const registerApiRef = useRef(registerApi);
   onChangeRef.current = onChange;
   onSaveRef.current = onSave;
+  registerApiRef.current = registerApi;
 
   // Create the view once.
   useEffect(() => {
@@ -73,7 +84,15 @@ export function Editor({
     });
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
+    registerApiRef.current?.({
+      getValue: () => view.state.doc.toString(),
+      getSelection: () => {
+        const { from, to } = view.state.selection.main;
+        return view.state.sliceDoc(from, to);
+      },
+    });
     return () => {
+      registerApiRef.current?.(null);
       view.destroy();
       viewRef.current = null;
     };

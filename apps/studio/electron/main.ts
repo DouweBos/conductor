@@ -4,6 +4,7 @@ import path from "node:path";
 import { registerIpcHandlers } from "./ipc";
 import { getMainWindow, setMainWindow } from "./mainWindow";
 import { disposeAllDeviceStreams } from "./services/device/deviceService";
+import { stopAllLogs } from "./services/logs/logsService";
 import { initUpdater } from "./services/updater/updaterService";
 import { fixProcessPath } from "./shellEnv";
 
@@ -77,4 +78,5 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   disposeAllDeviceStreams();
+  stopAllLogs();
 });

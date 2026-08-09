@@ -129,3 +129,15 @@ export async function renameFlow(from: string, to: string): Promise<void> {
   await mkdir(path.dirname(absTo), { recursive: true });
   await rename(absFrom, absTo);
 }
+
+export async function duplicateFlow(from: string, to: string): Promise<void> {
+  const absTo = resolveInFlows(to);
+  if (existsSync(absTo)) throw new Error(`File already exists: ${to}`);
+  const content = await readFile(resolveInFlows(from), "utf8");
+  await mkdir(path.dirname(absTo), { recursive: true });
+  await writeFile(absTo, content, "utf8");
+}
+
+export async function createFolder(relPath: string): Promise<void> {
+  await mkdir(resolveInFlows(relPath), { recursive: true });
+}

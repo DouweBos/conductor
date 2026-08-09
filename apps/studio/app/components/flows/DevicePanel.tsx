@@ -1,4 +1,4 @@
-import { Button, IconButton, Select, Toolbar, ToolbarSpacer } from "@conductor/studio-ui";
+import { Button, IconButton, Select, StatusPill, Toolbar, ToolbarSpacer } from "@conductor/studio-ui";
 
 import {
   connectSelectedDevice,
@@ -9,6 +9,7 @@ import {
   useDeviceStreaming,
   useSelectedDeviceId,
 } from "../../stores/deviceStore";
+import { toggleRecording, useRecording } from "../../stores/recorderStore";
 import { DeviceStream } from "./DeviceStream";
 import { Inspector } from "./Inspector";
 import styles from "./DevicePanel.module.css";
@@ -17,6 +18,7 @@ export function DevicePanel() {
   const devices = useDevices();
   const selectedId = useSelectedDeviceId();
   const streaming = useDeviceStreaming();
+  const recording = useRecording();
 
   const options = devices.map((d) => ({
     value: d.id,
@@ -35,6 +37,15 @@ export function DevicePanel() {
         />
         <IconButton icon="refresh" label="Refresh devices" onClick={() => void refreshDevices()} />
         <ToolbarSpacer />
+        {streaming ? (
+          <IconButton
+            icon="dot"
+            label={recording ? "Stop recording" : "Record gestures into the open flow"}
+            active={recording}
+            onClick={toggleRecording}
+          />
+        ) : null}
+        {recording ? <StatusPill tone="error" pulse>REC</StatusPill> : null}
         {streaming ? (
           <Button size="sm" variant="secondary" icon="stop" onClick={() => void disconnectSelectedDevice()}>
             Disconnect

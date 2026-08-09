@@ -11,6 +11,7 @@ import type {
   MaestroStatus,
   PomEntry,
   ProjectInfo,
+  RunOptions,
   SceneGraph,
   TestCase,
   ThemePreference,
@@ -38,7 +39,9 @@ import {
 } from "./services/device/deviceService";
 import {
   createFlow,
+  createFolder,
   deleteFlow,
+  duplicateFlow,
   getProjectInfo,
   listFlows,
   openProject,
@@ -51,7 +54,10 @@ import {
   getMaestroStatus,
   runCommand,
   runFlow,
+  runFlowInline,
+  runFolder,
 } from "./services/flow/flowRunner";
+import { startLogs, stopLogs } from "./services/logs/logsService";
 import { listPoms } from "./services/pom/pomService";
 import { loadSceneGraph } from "./services/scenegraph/sceneGraphService";
 import { getTheme, setTheme } from "./services/settings/settingsService";
@@ -88,6 +94,8 @@ export function registerIpcHandlers(): void {
   );
   handle<{ path: string }, void>("flow_delete", (a) => deleteFlow(a.path));
   handle<{ from: string; to: string }, void>("flow_rename", (a) => renameFlow(a.from, a.to));
+  handle<{ from: string; to: string }, void>("flow_duplicate", (a) => duplicateFlow(a.from, a.to));
+  handle<{ path: string }, void>("flow_mkdir", (a) => createFolder(a.path));
 
   // ── Devices ──
   handle<void, DeviceInfo[]>("devices_list", () => listDevices());
@@ -110,13 +118,26 @@ export function registerIpcHandlers(): void {
 
   // ── Flow running ──
   handle<void, MaestroStatus>("maestro_status", () => getMaestroStatus());
-  handle<{ path: string; deviceId?: string }, { runId: string }>("flow_run", (a) =>
-    runFlow(a.path, a.deviceId),
+  handle<{ path: string; deviceId?: string; options?: RunOptions }, { runId: string }>(
+    "flow_run",
+    (a) => runFlow(a.path, a.deviceId, a.options),
+  );
+  handle<{ dir?: string; deviceId?: string; options?: RunOptions }, { runId: string }>(
+    "flow_run_folder",
+    (a) => runFolder(a.dir, a.deviceId, a.options),
+  );
+  handle<{ snippet: string; deviceId?: string; appId?: string }, { runId: string }>(
+    "flow_run_inline",
+    (a) => runFlowInline(a.snippet, a.deviceId, a.appId),
   );
   handle<{ runId: string }, void>("flow_run_cancel", (a) => cancelRun(a.runId));
   handle<{ command: string; deviceId: string }, CommandResult>("flow_run_command", (a) =>
     runCommand(a.command, a.deviceId),
   );
+
+  // ── Device logs ──
+  handle<{ deviceId: string }, void>("logs_start", (a) => startLogs(a.deviceId));
+  handle<{ deviceId: string }, void>("logs_stop", (a) => stopLogs(a.deviceId));
 
   // ── Test case management ──
   handle<void, TestCase[]>("cases_list", () => listCases());

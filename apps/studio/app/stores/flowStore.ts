@@ -21,6 +21,11 @@ export const useBuffer = (path: string | undefined) =>
   store((s) => (path ? s.buffers[path] : undefined));
 export const useFlowBuffers = () => store((s) => s.buffers);
 
+/** Imperative read for non-React code (e.g. the gesture recorder). */
+export function getBuffer(path: string): FlowBuffer | undefined {
+  return store.getState().buffers[path];
+}
+
 export function languageFor(path: string): "yaml" | "javascript" {
   return /\.(js|ts)$/.test(path) ? "javascript" : "yaml";
 }

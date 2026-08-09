@@ -10,29 +10,93 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 32px;
-  padding: 0 var(--space-3);
+  height: 34px;
+  padding: 0 var(--space-2);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
-.title {
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.tab {
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
   font-size: var(--text-sm);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+}
+
+.tabActive {
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
 .spacer {
   flex: 1;
 }
 
-.output {
+.smallBtn {
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.smallBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.body {
   flex: 1;
   min-height: 0;
   overflow: auto;
   background: var(--bg-inset);
+}
+
+.steps {
+  padding: var(--space-2) 0;
+}
+
+.emptyHint {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.shot {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.shotLabel {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.shotImg {
+  max-width: 220px;
+  max-height: 400px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
 }
 
 .repl {
@@ -43,6 +107,19 @@
   height: 36px;
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
+}
+
+.mode {
+  appearance: none;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
 }
 
 .prompt {

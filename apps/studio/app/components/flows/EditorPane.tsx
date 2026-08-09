@@ -1,19 +1,25 @@
 import {
   Button,
+  Dialog,
+  Editor,
   EmptyState,
+  IconButton,
   Spinner,
   StatusPill,
   Tabs,
+  TextField,
   Toolbar,
+  ToolbarDivider,
   ToolbarSpacer,
-  Editor,
+  type EditorApi,
   type TabItem,
 } from "@conductor/studio-ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { getMaestroStatus, runFlow } from "../../lib/ipc";
+import { getMaestroStatus, runFlow, runFlowInline, runFolder } from "../../lib/ipc";
 import { selectFlow } from "../../lib/router";
-import type { MaestroStatus } from "../../lib/types";
+import type { MaestroStatus, RunOptions } from "../../lib/types";
+import { useSelectedDeviceId } from "../../stores/deviceStore";
 import {
   closeFile,
   languageFor,
@@ -23,11 +29,19 @@ import {
   useFlowBuffers,
   useOpenTabs,
 } from "../../stores/flowStore";
-import { useSelectedDeviceId } from "../../stores/deviceStore";
-import { useResolvedTheme } from "../../stores/themeStore";
 import { beginRun } from "../../stores/runStore";
+import { useResolvedTheme } from "../../stores/themeStore";
 import { RunConsole } from "./RunConsole";
 import styles from "./EditorPane.module.css";
+
+interface EnvRow {
+  key: string;
+  value: string;
+}
+
+function extractAppId(content: string | undefined): string | undefined {
+  return content?.match(/^appId:\s*(.+)$/m)?.[1]?.trim();
+}
 
 export function EditorPane({ activePath }: { activePath?: string }) {
   const openTabs = useOpenTabs();
@@ -36,6 +50,11 @@ export function EditorPane({ activePath }: { activePath?: string }) {
   const theme = useResolvedTheme();
   const deviceId = useSelectedDeviceId();
   const [status, setStatus] = useState<MaestroStatus | null>(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [envRows, setEnvRows] = useState<EnvRow[]>([]);
+  const [includeTags, setIncludeTags] = useState("");
+  const [excludeTags, setExcludeTags] = useState("");
+  const editorApi = useRef<EditorApi | null>(null);
 
   useEffect(() => {
     getMaestroStatus().then(setStatus).catch(() => {});
@@ -48,24 +67,70 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     dirty: buffers[path]?.dirty ?? false,
   }));
 
+  const options = (): RunOptions => {
+    const env: Record<string, string> = {};
+    for (const row of envRows) if (row.key.trim()) env[row.key.trim()] = row.value;
+    return {
+      env: Object.keys(env).length ? env : undefined,
+      includeTags: includeTags.trim() || undefined,
+      excludeTags: excludeTags.trim() || undefined,
+    };
+  };
+
   const run = async () => {
     if (!activePath) return;
     try {
-      const { runId } = await runFlow(activePath, deviceId ?? undefined);
+      const { runId } = await runFlow(activePath, deviceId ?? undefined, options());
       beginRun(runId, activePath);
     } catch {
-      // errors surface in the console via status; ignore here
+      /* surfaced in console */
+    }
+  };
+
+  const runSelection = async () => {
+    const snippet = editorApi.current?.getSelection() ?? "";
+    if (!snippet.trim()) return;
+    try {
+      const { runId } = await runFlowInline(snippet, deviceId ?? undefined, extractAppId(buffer?.content));
+      beginRun(runId, `${activePath ?? "selection"} (selection)`);
+    } catch {
+      /* surfaced in console */
+    }
+  };
+
+  const runAll = async () => {
+    try {
+      const { runId } = await runFolder(undefined, deviceId ?? undefined, options());
+      beginRun(runId, "all flows");
+    } catch {
+      /* surfaced in console */
     }
   };
 
   if (openTabs.length === 0 || !activePath) {
     return (
       <div className={styles.pane}>
-        <EmptyState
-          icon="code"
-          title="No flow open"
-          description="Select a flow from the sidebar to edit it, or create a new one."
-        />
+        <Toolbar>
+          <Button variant="secondary" size="sm" icon="play" onClick={() => void runAll()} disabled={!status}>
+            Run all
+          </Button>
+          <ToolbarSpacer />
+          {status ? (
+            <StatusPill tone={status.activeEngine === "maestro" ? "info" : "running"}>
+              engine: {status.activeEngine}
+            </StatusPill>
+          ) : null}
+        </Toolbar>
+        <div className={styles.editor}>
+          <EmptyState
+            icon="code"
+            title="No flow open"
+            description="Select a flow from the sidebar to edit it, or run all flows."
+          />
+        </div>
+        <div className={styles.console}>
+          <RunConsole />
+        </div>
       </div>
     );
   }
@@ -74,15 +139,17 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     <div className={styles.pane}>
       <Tabs tabs={tabs} activeId={activePath} onSelect={selectFlow} onClose={closeFile} />
       <Toolbar>
-        <Button
-          variant="primary"
-          size="sm"
-          icon="play"
-          disabled={!activePath}
-          onClick={() => void run()}
-        >
+        <Button variant="primary" size="sm" icon="play" onClick={() => void run()}>
           Run
         </Button>
+        <Button variant="secondary" size="sm" icon="code" onClick={() => void runSelection()}>
+          Run selection
+        </Button>
+        <Button variant="ghost" size="sm" icon="flow" onClick={() => void runAll()}>
+          Run all
+        </Button>
+        <IconButton icon="settings" label="Run options" onClick={() => setOptionsOpen(true)} />
+        <ToolbarDivider />
         <Button
           variant="secondary"
           size="sm"
@@ -108,6 +175,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             value={buffer?.content ?? ""}
             language={languageFor(activePath)}
             theme={theme}
+            registerApi={(api) => (editorApi.current = api)}
             onChange={(v) => setBufferContent(activePath, v)}
             onSave={() => void saveFile(activePath)}
           />
@@ -116,6 +184,68 @@ export function EditorPane({ activePath }: { activePath?: string }) {
       <div className={styles.console}>
         <RunConsole />
       </div>
+
+      <Dialog
+        open={optionsOpen}
+        title="Run options"
+        onClose={() => setOptionsOpen(false)}
+        footer={
+          <Button variant="primary" onClick={() => setOptionsOpen(false)}>
+            Done
+          </Button>
+        }
+      >
+        <div className={styles.optionsSection}>
+          <div className={styles.optionsLabel}>Environment variables</div>
+          {envRows.map((row, i) => (
+            <div key={i} className={styles.envRow}>
+              <TextField
+                placeholder="KEY"
+                value={row.key}
+                onChange={(e) =>
+                  setEnvRows((rows) => rows.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
+                }
+              />
+              <TextField
+                placeholder="value"
+                value={row.value}
+                onChange={(e) =>
+                  setEnvRows((rows) => rows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))
+                }
+              />
+              <IconButton
+                icon="close"
+                label="Remove"
+                onClick={() => setEnvRows((rows) => rows.filter((_, j) => j !== i))}
+              />
+            </div>
+          ))}
+          <Button
+            size="sm"
+            variant="ghost"
+            icon="plus"
+            onClick={() => setEnvRows((rows) => [...rows, { key: "", value: "" }])}
+          >
+            Add variable
+          </Button>
+        </div>
+        <div className={styles.optionsSection}>
+          <TextField
+            label="Include tags (comma-separated, maestro only)"
+            placeholder="smoke, checkout"
+            value={includeTags}
+            onChange={(e) => setIncludeTags(e.target.value)}
+          />
+        </div>
+        <div className={styles.optionsSection}>
+          <TextField
+            label="Exclude tags (maestro only)"
+            placeholder="flaky"
+            value={excludeTags}
+            onChange={(e) => setExcludeTags(e.target.value)}
+          />
+        </div>
+      </Dialog>
     </div>
   );
 }

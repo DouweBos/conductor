@@ -82,6 +82,20 @@ export interface MaestroStatus {
   activeEngine: FlowEngine;
 }
 
+export interface RunOptions {
+  env?: Record<string, string>;
+  includeTags?: string;
+  excludeTags?: string;
+}
+
+export type FlowStepStatus = "pending" | "running" | "passed" | "failed";
+
+export interface FlowStep {
+  id: string;
+  label: string;
+  status: FlowStepStatus;
+}
+
 export type FlowRunStatus = "running" | "passed" | "failed" | "cancelled" | "error";
 
 export interface FlowRun {

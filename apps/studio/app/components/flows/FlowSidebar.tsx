@@ -1,5 +1,6 @@
 import {
   Button,
+  ContextMenu,
   Dialog,
   EmptyState,
   FileTree,
@@ -7,45 +8,83 @@ import {
   Panel,
   Spinner,
   TextField,
+  type ContextMenuItem,
 } from "@conductor/studio-ui";
 import { useState } from "react";
 
-import { createFlow } from "../../lib/ipc";
+import { createFlow, createFolder, deleteFlow, duplicateFlow, renameFlow } from "../../lib/ipc";
 import { selectFlow } from "../../lib/router";
-import {
-  refreshFlows,
-  useFlows,
-  useProject,
-  useProjectLoading,
-} from "../../stores/projectStore";
+import { refreshFlows, useFlows, useProject, useProjectLoading } from "../../stores/projectStore";
 
 const FLOW_TEMPLATE = `appId: com.example.app
 ---
 - launchApp
 `;
 
+type PromptKind = "new" | "rename" | "duplicate" | "newfolder" | "delete";
+interface Prompt {
+  kind: PromptKind;
+  target?: string;
+  value: string;
+}
+
+function suggestDuplicate(path: string): string {
+  const dot = path.lastIndexOf(".");
+  return dot > 0 ? `${path.slice(0, dot)}-copy${path.slice(dot)}` : `${path}-copy`;
+}
+
 export function FlowSidebar({ activePath }: { activePath?: string }) {
   const flows = useFlows();
   const project = useProject();
   const loading = useProjectLoading();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [name, setName] = useState("");
+  const [prompt, setPrompt] = useState<Prompt | null>(null);
+  const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const create = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const path = /\.(ya?ml|js|ts)$/.test(trimmed) ? trimmed : `${trimmed}.yaml`;
+  const commit = async () => {
+    if (!prompt) return;
+    const value = prompt.value.trim();
     try {
-      await createFlow(path, FLOW_TEMPLATE);
+      if (prompt.kind === "new") {
+        const path = /\.(ya?ml|js|ts)$/.test(value) ? value : `${value}.yaml`;
+        await createFlow(path, FLOW_TEMPLATE);
+        selectFlow(path);
+      } else if (prompt.kind === "rename" && prompt.target) {
+        await renameFlow(prompt.target, value);
+        if (activePath === prompt.target) selectFlow(value);
+      } else if (prompt.kind === "duplicate" && prompt.target) {
+        await duplicateFlow(prompt.target, value);
+        selectFlow(value);
+      } else if (prompt.kind === "newfolder") {
+        await createFolder(value);
+      } else if (prompt.kind === "delete" && prompt.target) {
+        await deleteFlow(prompt.target);
+      }
       await refreshFlows();
-      selectFlow(path);
-      setDialogOpen(false);
-      setName("");
+      setPrompt(null);
       setError(null);
     } catch (err) {
       setError(String(err));
     }
+  };
+
+  const menuItems = (path: string): ContextMenuItem[] => [
+    { label: "Rename", icon: "file", onClick: () => setPrompt({ kind: "rename", target: path, value: path }) },
+    {
+      label: "Duplicate",
+      icon: "plus",
+      onClick: () => setPrompt({ kind: "duplicate", target: path, value: suggestDuplicate(path) }),
+    },
+    { label: "New folder", icon: "folder", onClick: () => setPrompt({ kind: "newfolder", value: "" }) },
+    { label: "Delete", icon: "close", danger: true, onClick: () => setPrompt({ kind: "delete", target: path, value: path }) },
+  ];
+
+  const promptTitle: Record<PromptKind, string> = {
+    new: "New flow",
+    rename: "Rename",
+    duplicate: "Duplicate",
+    newfolder: "New folder",
+    delete: "Delete flow",
   };
 
   return (
@@ -54,7 +93,7 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
       flush
       actions={
         <>
-          <IconButton icon="plus" label="New flow" onClick={() => setDialogOpen(true)} />
+          <IconButton icon="plus" label="New flow" onClick={() => setPrompt({ kind: "new", value: "" })} />
           <IconButton icon="refresh" label="Refresh" onClick={() => void refreshFlows()} />
         </>
       }
@@ -67,44 +106,58 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
         <EmptyState
           icon="flow"
           title="No flows yet"
-          description={
-            project
-              ? `Create a flow in ${project.flowsDir.split("/").slice(-1)[0]}/.`
-              : "Open a project to see its flows."
-          }
+          description={project ? "Create a flow to get started." : "Open a project to see its flows."}
           action={
-            <Button variant="primary" icon="plus" onClick={() => setDialogOpen(true)}>
+            <Button variant="primary" icon="plus" onClick={() => setPrompt({ kind: "new", value: "" })}>
               New flow
             </Button>
           }
         />
       ) : (
-        <FileTree entries={flows} selectedPath={activePath} onSelectFile={selectFlow} />
+        <FileTree
+          entries={flows}
+          selectedPath={activePath}
+          onSelectFile={selectFlow}
+          onContextMenu={(path, x, y) => setMenu({ path, x, y })}
+        />
       )}
 
+      {menu ? (
+        <ContextMenu open x={menu.x} y={menu.y} items={menuItems(menu.path)} onClose={() => setMenu(null)} />
+      ) : null}
+
       <Dialog
-        open={dialogOpen}
-        title="New flow"
-        onClose={() => setDialogOpen(false)}
+        open={prompt !== null}
+        title={prompt ? promptTitle[prompt.kind] : ""}
+        onClose={() => {
+          setPrompt(null);
+          setError(null);
+        }}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setDialogOpen(false)}>
+            <Button variant="ghost" onClick={() => setPrompt(null)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={() => void create()}>
-              Create
+            <Button variant={prompt?.kind === "delete" ? "danger" : "primary"} onClick={() => void commit()}>
+              {prompt?.kind === "delete" ? "Delete" : "OK"}
             </Button>
           </>
         }
       >
-        <TextField
-          label="File name"
-          placeholder="auth/login.yaml"
-          value={name}
-          autoFocus
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void create()}
-        />
+        {prompt?.kind === "delete" ? (
+          <p>
+            Delete <strong>{prompt.target}</strong>? This cannot be undone.
+          </p>
+        ) : (
+          <TextField
+            label={prompt?.kind === "newfolder" ? "Folder path" : "Path"}
+            placeholder={prompt?.kind === "newfolder" ? "auth" : "auth/login.yaml"}
+            value={prompt?.value ?? ""}
+            autoFocus
+            onChange={(e) => setPrompt((p) => (p ? { ...p, value: e.target.value } : p))}
+            onKeyDown={(e) => e.key === "Enter" && void commit()}
+          />
+        )}
         {error ? <p style={{ color: "var(--error)", marginTop: 8 }}>{error}</p> : null}
       </Dialog>
     </Panel>

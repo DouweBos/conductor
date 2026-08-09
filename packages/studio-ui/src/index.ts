@@ -20,7 +20,23 @@ export { EmptyState, type EmptyStateProps } from "./components/EmptyState/EmptyS
 export { Spinner, type SpinnerProps } from "./components/Spinner/Spinner";
 export { TreeView, type TreeViewProps, type TreeNode } from "./components/TreeView/TreeView";
 export { FileTree, type FileTreeProps, type FileEntry } from "./components/FileTree/FileTree";
-export { Editor, type EditorProps, type EditorLanguage } from "./components/Editor/Editor";
+export {
+  Editor,
+  type EditorProps,
+  type EditorLanguage,
+  type EditorApi,
+} from "./components/Editor/Editor";
+export {
+  ContextMenu,
+  type ContextMenuProps,
+  type ContextMenuItem,
+} from "./components/ContextMenu/ContextMenu";
+export {
+  StepList,
+  type StepListProps,
+  type StepItem,
+  type StepStatus,
+} from "./components/StepList/StepList";
 export {
   Matrix,
   type MatrixProps,

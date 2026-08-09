@@ -12,6 +12,7 @@ import type {
   Platform,
   PomEntry,
   ProjectInfo,
+  RunOptions,
   SceneGraph,
   TestCase,
   ThemePreference,
@@ -33,6 +34,9 @@ export const createFlow = (path: string, content?: string) =>
   invoke<void>("flow_create", { path, content });
 export const deleteFlow = (path: string) => invoke<void>("flow_delete", { path });
 export const renameFlow = (from: string, to: string) => invoke<void>("flow_rename", { from, to });
+export const duplicateFlow = (from: string, to: string) =>
+  invoke<void>("flow_duplicate", { from, to });
+export const createFolder = (path: string) => invoke<void>("flow_mkdir", { path });
 
 // ── Devices ──
 export const listDevices = () => invoke<DeviceInfo[]>("devices_list");
@@ -55,11 +59,17 @@ export const captureUi = (deviceId: string) => invoke<CaptureUiResult>("capture_
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");
-export const runFlow = (path: string, deviceId?: string) =>
-  invoke<{ runId: string }>("flow_run", { path, deviceId });
+export const runFlow = (path: string, deviceId?: string, options?: RunOptions) =>
+  invoke<{ runId: string }>("flow_run", { path, deviceId, options });
+export const runFolder = (dir?: string, deviceId?: string, options?: RunOptions) =>
+  invoke<{ runId: string }>("flow_run_folder", { dir, deviceId, options });
+export const runFlowInline = (snippet: string, deviceId?: string, appId?: string) =>
+  invoke<{ runId: string }>("flow_run_inline", { snippet, deviceId, appId });
 export const cancelRun = (runId: string) => invoke<void>("flow_run_cancel", { runId });
 export const runCommand = (command: string, deviceId: string) =>
   invoke<CommandResult>("flow_run_command", { command, deviceId });
+export const startLogs = (deviceId: string) => invoke<void>("logs_start", { deviceId });
+export const stopLogs = (deviceId: string) => invoke<void>("logs_stop", { deviceId });
 
 // ── Test case management ──
 export const listCases = () => invoke<TestCase[]>("cases_list");
