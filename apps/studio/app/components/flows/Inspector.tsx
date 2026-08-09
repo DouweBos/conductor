@@ -2,14 +2,16 @@ import {
   Button,
   EmptyState,
   Spinner,
+  StatusPill,
   TreeView,
   type TreeNode,
 } from "@conductor/studio-ui";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { captureUi } from "../../lib/ipc";
+import { useIpcEvent } from "../../hooks/useIpcEvent";
+import { captureUi, loadSceneGraph } from "../../lib/ipc";
 import { getCurrentRoute } from "../../lib/router";
-import type { CaptureElement, CaptureUiResult } from "../../lib/types";
+import type { CaptureElement, CaptureUiResult, SceneGraph } from "../../lib/types";
 import { setBufferContent, useFlowBuffers } from "../../stores/flowStore";
 import styles from "./Inspector.module.css";
 
@@ -49,7 +51,13 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
+  const [screenCount, setScreenCount] = useState(0);
   const buffers = useFlowBuffers();
+
+  useEffect(() => {
+    loadSceneGraph().then((g) => setScreenCount(g.nodes.length)).catch(() => {});
+  }, []);
+  useIpcEvent<SceneGraph>("scenegraph:updated", (g) => setScreenCount(g.nodes.length));
 
   const nodes = useMemo(
     () => (capture ? toNodes(capture.root.children ?? []) : []),
@@ -89,6 +97,9 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
     <div className={styles.inspector}>
       <div className={styles.header}>
         <span className={styles.title}>Inspector</span>
+        {screenCount > 0 ? (
+          <StatusPill tone="info">{screenCount} screens mapped</StatusPill>
+        ) : null}
         <div className={styles.spacer} />
         <Button
           size="sm"

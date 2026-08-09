@@ -7,6 +7,7 @@ import type {
 } from "../../../app/lib/types";
 import { appState } from "../../state";
 import { resolveConductor } from "../maestro/maestroService";
+import { recordCapture } from "../scenegraph/sceneGraphService";
 import { run } from "../util/exec";
 
 async function runConductor(args: string[], timeout = 60_000) {
@@ -73,7 +74,13 @@ export async function captureUi(deviceId: string): Promise<CaptureUiResult> {
   }
   const bundle = safeJson<CaptureBundle>(res.stdout);
   if (!bundle) throw new Error("capture-ui returned no parseable bundle");
-  return mapBundle(deviceId, bundle);
+  const result = mapBundle(deviceId, bundle);
+  // Grow the scene graph from what we observe; consume the pending action so it
+  // labels the transition edge into this screen.
+  const action = appState.lastAction;
+  appState.lastAction = null;
+  void recordCapture(result, action);
+  return result;
 }
 
 interface CaptureBundle {
@@ -134,6 +141,7 @@ export async function tap(deviceId: string, x: number, y: number): Promise<void>
   const at = d ? `${Math.round(x * d.width)},${Math.round(y * d.height)}` : `${x},${y}`;
   const res = await runConductor(["tap-on", "--at", at, ...deviceArgs(deviceId)], 20_000);
   if (res.code !== 0) throw new Error(res.stderr.trim() || "tap failed");
+  appState.lastAction = `tapOn: point ${at}`;
 }
 
 export async function swipe(
@@ -149,11 +157,13 @@ export async function swipe(
     20_000,
   );
   if (res.code !== 0) throw new Error(res.stderr.trim() || "swipe failed");
+  appState.lastAction = `swipe ${x1},${y1} → ${x2},${y2}`;
 }
 
 export async function inputText(deviceId: string, text: string): Promise<void> {
   const res = await runConductor(["input-text", text, ...deviceArgs(deviceId)], 20_000);
   if (res.code !== 0) throw new Error(res.stderr.trim() || "input-text failed");
+  appState.lastAction = `inputText: "${text.slice(0, 24)}"`;
 }
 
 /**

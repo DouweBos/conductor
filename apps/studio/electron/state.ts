@@ -14,6 +14,12 @@ class AppState {
 
   /** Active/most-recent flow runs, keyed by run id. */
   readonly flowRuns = new Map<string, FlowRun>();
+
+  /**
+   * The most recent device action (e.g. `tapOn: "Login"`), consumed by the
+   * scene-graph builder on the next capture-ui to label a transition edge.
+   */
+  lastAction: string | null = null;
 }
 
 export const appState = new AppState();

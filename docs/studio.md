@@ -44,6 +44,13 @@ POM catalog, and the known screens, so it drives the app with `conductor` via th
 Bash tool. Requires the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
 on `PATH`.
 
+The **scene graph** builds itself: every `capture-ui` (from the inspector, a tap,
+or a swipe) upserts a screen node keyed by a signature of the hierarchy, and the
+preceding action becomes a transition edge. It's persisted to
+`.conductor-studio/scenegraph.json` and fed into the agent's system prompt, so
+repeated runs skip re-orientation. The inspector header shows how many screens
+are mapped.
+
 ### 3. Test case management
 
 Qase-inspired. Test cases are **git-tracked YAML files** under `test-cases/`,
