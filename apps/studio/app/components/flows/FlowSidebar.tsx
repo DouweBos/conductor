@@ -11,10 +11,19 @@ import {
   TextField,
   type ContextMenuItem,
 } from "@conductor/studio-ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { createFlow, createFolder, deleteFlow, duplicateFlow, renameFlow } from "../../lib/ipc";
+import {
+  createFlow,
+  createFolder,
+  deleteFlow,
+  duplicateFlow,
+  findUsages,
+  renameFlow,
+  searchFlows,
+} from "../../lib/ipc";
 import { selectFlow } from "../../lib/router";
+import type { FlowReference, FlowSearchHit } from "../../lib/types";
 import {
   refreshFlows,
   selectFlowsDir,
@@ -46,8 +55,23 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
   const project = useProject();
   const loading = useProjectLoading();
   const [prompt, setPrompt] = useState<Prompt | null>(null);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<FlowSearchHit[]>([]);
+  const [usages, setUsages] = useState<{ path: string; refs: FlowReference[] } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void searchFlows(query).then(setHits).catch(() => setHits([]));
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const commit = async () => {
     if (!prompt) return;
@@ -58,7 +82,10 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
         await createFlow(path, FLOW_TEMPLATE);
         selectFlow(path);
       } else if (prompt.kind === "rename" && prompt.target) {
-        await renameFlow(prompt.target, value);
+        const { updated } = await renameFlow(prompt.target, value);
+        if (updated.length) {
+          setNotice(`Repointed ${updated.length} file${updated.length === 1 ? "" : "s"} that called it.`);
+        }
         if (activePath === prompt.target) selectFlow(value);
       } else if (prompt.kind === "duplicate" && prompt.target) {
         await duplicateFlow(prompt.target, value);
@@ -82,6 +109,11 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
       label: "Duplicate",
       icon: "plus",
       onClick: () => setPrompt({ kind: "duplicate", target: path, value: suggestDuplicate(path) }),
+    },
+    {
+      label: "Find usages",
+      icon: "search",
+      onClick: () => void findUsages(path).then((refs) => setUsages({ path, refs })),
     },
     { label: "New folder", icon: "folder", onClick: () => setPrompt({ kind: "newfolder", value: "" }) },
     { label: "Delete", icon: "close", danger: true, onClick: () => setPrompt({ kind: "delete", target: path, value: path }) },
@@ -127,7 +159,37 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
           </div>
         )
       ) : null}
-      {loading ? (
+      <div className={styles.searchBar}>
+        <TextField
+          placeholder="Search flows…"
+          value={query}
+          icon="search"
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+      {notice ? (
+        <button type="button" className={styles.notice} onClick={() => setNotice(null)}>
+          {notice}
+        </button>
+      ) : null}
+      {query.trim() ? (
+        hits.length === 0 ? (
+          <EmptyState icon="search" title="No matches" description={`Nothing matches “${query}”.`} />
+        ) : (
+          <ul className={styles.hits}>
+            {hits.map((hit) => (
+              <li key={`${hit.path}:${hit.line}`}>
+                <button type="button" className={styles.hit} onClick={() => selectFlow(hit.path)}>
+                  <span className={styles.hitPath}>
+                    {hit.path}:{hit.line}
+                  </span>
+                  <span className={styles.hitText}>{hit.text}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : loading ? (
         <div style={{ padding: 12 }}>
           <Spinner label="Loading flows…" />
         </div>
@@ -150,6 +212,36 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
           onContextMenu={(path, x, y) => setMenu({ path, x, y })}
         />
       )}
+
+      <Dialog
+        open={usages !== null}
+        title={usages ? `Usages of ${usages.path}` : ""}
+        onClose={() => setUsages(null)}
+      >
+        {usages && usages.refs.length === 0 ? (
+          <p className={styles.empty}>Nothing calls this flow.</p>
+        ) : (
+          <ul className={styles.hits}>
+            {(usages?.refs ?? []).map((ref) => (
+              <li key={`${ref.from}:${ref.line}`}>
+                <button
+                  type="button"
+                  className={styles.hit}
+                  onClick={() => {
+                    selectFlow(ref.from);
+                    setUsages(null);
+                  }}
+                >
+                  <span className={styles.hitPath}>
+                    {ref.from}:{ref.line}
+                  </span>
+                  <span className={styles.hitText}>{ref.text}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Dialog>
 
       {menu ? (
         <ContextMenu open x={menu.x} y={menu.y} items={menuItems(menu.path)} onClose={() => setMenu(null)} />

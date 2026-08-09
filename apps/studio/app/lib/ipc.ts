@@ -9,6 +9,9 @@ import type {
   DeviceStreamInfo,
   FileEntry,
   FlowCatalog,
+  FlowReference,
+  FlowSearchHit,
+  RenameResult,
   MaestroStatus,
   Platform,
   PomEntry,
@@ -41,7 +44,11 @@ export const writeFlow = (path: string, content: string) =>
 export const createFlow = (path: string, content?: string) =>
   invoke<void>("flow_create", { path, content });
 export const deleteFlow = (path: string) => invoke<void>("flow_delete", { path });
-export const renameFlow = (from: string, to: string) => invoke<void>("flow_rename", { from, to });
+export const renameFlow = (from: string, to: string) =>
+  invoke<RenameResult>("flow_rename", { from, to });
+export const listReferences = () => invoke<FlowReference[]>("flows_references");
+export const findUsages = (path: string) => invoke<FlowReference[]>("flows_usages", { path });
+export const searchFlows = (query: string) => invoke<FlowSearchHit[]>("flows_search", { query });
 export const duplicateFlow = (from: string, to: string) =>
   invoke<void>("flow_duplicate", { from, to });
 export const createFolder = (path: string) => invoke<void>("flow_mkdir", { path });

@@ -173,6 +173,29 @@ export interface FlowCatalogEntry {
   kind: "flow" | "script";
 }
 
+/** One flow naming another, e.g. a `runFlow: "@pages/details/open.yaml"` line. */
+export interface FlowReference {
+  /** Referring flow, relative to the flows directory. */
+  from: string;
+  /** Referenced flow, relative to the flows directory. */
+  to: string;
+  /** 1-based line of the reference in `from`. */
+  line: number;
+  text: string;
+  style: "alias" | "relative";
+}
+
+export interface FlowSearchHit {
+  path: string;
+  line: number;
+  text: string;
+}
+
+export interface RenameResult {
+  /** Files whose references were rewritten. */
+  updated: string[];
+}
+
 export interface FlowCatalog {
   entries: FlowCatalogEntry[];
   /** config.yaml `paths:` — alias -> directory, relative to the flows root. */

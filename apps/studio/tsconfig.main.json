@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["electron/**/*.ts", "app/lib/types.ts"]
+  "include": ["electron/**/*.ts", "app/lib/types.ts", "app/lib/flowRefs.ts"]
 }

@@ -3,9 +3,10 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { FileEntry, ProjectInfo } from "../../../app/lib/types";
+import type { FileEntry, ProjectInfo, RenameResult } from "../../../app/lib/types";
 import { appState } from "../../state";
 import { addRecentProject, getRecentProjects } from "../settings/settingsService";
+import { updateReferences } from "../flow/references";
 
 const FLOW_DIR_NAMES = new Set([".maestro", "maestro"]);
 const FLOW_EXTENSIONS = new Set([".yaml", ".yml", ".js", ".ts"]);
@@ -228,11 +229,18 @@ export async function deleteFlow(relPath: string): Promise<void> {
   await rm(resolveInFlows(relPath), { recursive: true, force: true });
 }
 
-export async function renameFlow(from: string, to: string): Promise<void> {
+/**
+ * Rename a flow and repoint everything that calls it — a POM suite refers to a
+ * subflow from a dozen places, and leaving those dangling breaks the suite
+ * silently.
+ */
+export async function renameFlow(from: string, to: string): Promise<RenameResult> {
   const absFrom = resolveInFlows(from);
   const absTo = resolveInFlows(to);
+  const updated = await updateReferences(from, to);
   await mkdir(path.dirname(absTo), { recursive: true });
   await rename(absFrom, absTo);
+  return { updated };
 }
 
 export async function duplicateFlow(from: string, to: string): Promise<void> {

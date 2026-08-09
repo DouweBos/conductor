@@ -9,6 +9,9 @@ import type {
   DeviceStreamInfo,
   FileEntry,
   FlowCatalog,
+  FlowReference,
+  FlowSearchHit,
+  RenameResult,
   MaestroStatus,
   PomEntry,
   ProjectInfo,
@@ -66,6 +69,7 @@ import {
   runFolder,
 } from "./services/flow/flowRunner";
 import { loadFlowCatalog } from "./services/flow/catalog";
+import { findUsages, indexReferences, searchFlows } from "./services/flow/references";
 import { listEnvNames } from "./services/flow/envNames";
 import { startLogs, stopLogs } from "./services/logs/logsService";
 import { listPoms } from "./services/pom/pomService";
@@ -104,6 +108,9 @@ export function registerIpcHandlers(): void {
   handle<{ dir: string }, ProjectInfo>("flows_set_dir", (a) => setFlowsDir(a.dir));
   handle<void, string[]>("flows_env_names", () => listEnvNames());
   handle<void, FlowCatalog>("flows_catalog", () => loadFlowCatalog());
+  handle<void, FlowReference[]>("flows_references", () => indexReferences());
+  handle<{ path: string }, FlowReference[]>("flows_usages", (a) => findUsages(a.path));
+  handle<{ query: string }, FlowSearchHit[]>("flows_search", (a) => searchFlows(a.query));
   handle<{ path: string }, string>("flow_read", (a) => readFlow(a.path));
   handle<{ path: string; content: string }, void>("flow_write", (a) =>
     writeFlow(a.path, a.content),
@@ -112,7 +119,7 @@ export function registerIpcHandlers(): void {
     createFlow(a.path, a.content),
   );
   handle<{ path: string }, void>("flow_delete", (a) => deleteFlow(a.path));
-  handle<{ from: string; to: string }, void>("flow_rename", (a) => renameFlow(a.from, a.to));
+  handle<{ from: string; to: string }, RenameResult>("flow_rename", (a) => renameFlow(a.from, a.to));
   handle<{ from: string; to: string }, void>("flow_duplicate", (a) => duplicateFlow(a.from, a.to));
   handle<{ path: string }, void>("flow_mkdir", (a) => createFolder(a.path));
 

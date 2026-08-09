@@ -42,6 +42,8 @@ export interface EditorProps {
   completions?: CompletionSource;
   /** Per-line run controls shown in the gutter on hover. */
   runGutter?: EditorRunGutter;
+  /** Cmd/Ctrl-click on a line: the host decides whether it names something. */
+  onFollowLine?: (lineText: string) => void;
   /** Receives an imperative API once mounted, and `null` on unmount. */
   registerApi?: (api: EditorApi | null) => void;
   className?: string;
@@ -119,6 +121,7 @@ export function Editor({
   onSave,
   completions,
   runGutter,
+  onFollowLine,
   registerApi,
   className,
 }: EditorProps) {
@@ -130,6 +133,8 @@ export function Editor({
   const gutterCompartment = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
+  const onFollowRef = useRef(onFollowLine);
+  onFollowRef.current = onFollowLine;
   const registerApiRef = useRef(registerApi);
   onChangeRef.current = onChange;
   onSaveRef.current = onSave;
@@ -158,6 +163,15 @@ export function Editor({
         gutterCompartment.current.of(runGutterExtension(runGutter)),
         EditorView.editable.of(!readOnly),
         EditorState.readOnly.of(readOnly),
+        EditorView.domEventHandlers({
+          mousedown(event, view) {
+            if (!(event.metaKey || event.ctrlKey) || !onFollowRef.current) return false;
+            const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+            if (pos === null) return false;
+            onFollowRef.current(view.state.doc.lineAt(pos).text);
+            return false;
+          },
+        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current?.(update.state.doc.toString());

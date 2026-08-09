@@ -40,7 +40,7 @@ export async function loadFlowCatalog(): Promise<FlowCatalog> {
 }
 
 /** `paths:` from the flows directory's config.yaml, normalized to relative dirs. */
-function readAliases(flowsDir: string): Record<string, string> {
+export function readAliases(flowsDir: string): Record<string, string> {
   for (const name of CONFIG_NAMES) {
     const configPath = path.join(flowsDir, name);
     if (!existsSync(configPath)) continue;

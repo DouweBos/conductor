@@ -25,6 +25,7 @@ import {
   runFlowInline,
   runFolder,
 } from "../../lib/ipc";
+import { referenceOnLine, resolveReference } from "../../lib/flowRefs";
 import { flowForSteps, parseSteps, stepAt, stepsUntil } from "../../lib/flowSteps";
 import { maestroCompletion } from "../../lib/maestroCompletion";
 import { selectFlow } from "../../lib/router";
@@ -172,6 +173,14 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     [steps],
   );
 
+  // Cmd-click a `runFlow: …` line to open the subflow it names.
+  const followLine = (lineText: string) => {
+    const raw = referenceOnLine(lineText);
+    if (!raw) return;
+    const target = resolveReference(raw, activePath ?? "", catalog.current.aliases);
+    if (target && catalog.current.entries.some((e) => e.path === target)) selectFlow(target);
+  };
+
   const runAll = async () => {
     try {
       const { runId } = await runFolder(undefined, deviceId ?? undefined, options());
@@ -251,6 +260,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             theme={theme}
             completions={languageFor(activePath) === "yaml" ? completions : undefined}
             runGutter={languageFor(activePath) === "yaml" ? runGutter : undefined}
+            onFollowLine={followLine}
             registerApi={(api) => (editorApi.current = api)}
             onChange={(v) => setBufferContent(activePath, v)}
             onSave={() => void saveFile(activePath)}
