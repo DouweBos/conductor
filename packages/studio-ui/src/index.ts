@@ -35,3 +35,9 @@ export {
   type ToastTone,
 } from "./components/Toast/Toast";
 export { LogView, type LogViewProps, type LogLine, type LogTone } from "./components/LogView/LogView";
+export { ChatMessage, type ChatMessageProps } from "./components/ChatMessage/ChatMessage";
+export {
+  ToolCallCard,
+  type ToolCallCardProps,
+  type ToolCallState,
+} from "./components/ToolCallCard/ToolCallCard";

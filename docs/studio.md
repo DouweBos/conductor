@@ -30,11 +30,19 @@ subset of Maestro's, so most flows run under either.)
 
 ### 2. Agentic test writing
 
-A Claude Code wrapper (modeled on Argus) that drives the app through conductor,
-reuses the repo's Maestro **subflow POMs**, and builds a **scene graph** of
-discovered screens (`.conductor-studio/scenegraph.json`) so later runs skip
-re-orientation. This pass ships the data layer (POM catalog + scene graph +
-conductor control) with the live agent runner to follow.
+A Claude Code wrapper (ported from Argus) that drives the app through conductor,
+reuses the repo's Maestro **subflow POMs**, and is seeded with a **scene graph**
+of discovered screens (`.conductor-studio/scenegraph.json`) so later runs skip
+re-orientation.
+
+The agent spawns the `claude` CLI with `--output-format stream-json
+--input-format stream-json --permission-prompt-tool stdio`; the main process
+parses the stream and forwards events to the renderer, which renders the
+conversation (messages + tool calls) and handles tool-permission prompts. Its
+system prompt describes the connected device, the conductor command surface, the
+POM catalog, and the known screens, so it drives the app with `conductor` via the
+Bash tool. Requires the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
+on `PATH`.
 
 ### 3. Test case management
 

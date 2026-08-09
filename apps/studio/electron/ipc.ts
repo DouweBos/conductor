@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 
 import type {
+  AgentStartResult,
   CaseMatrix,
   CaptureUiResult,
   CommandResult,
@@ -15,7 +16,14 @@ import type {
   ThemePreference,
   UpdaterState,
 } from "../app/lib/types";
-import { getAgentStatus } from "./services/agent/agentService";
+import {
+  getAgentStatus,
+  interruptAgent,
+  respondToAgentPermission,
+  sendAgentMessage,
+  startAgent,
+  stopAgent,
+} from "./services/agent/agentService";
 import { buildMatrix, listCases } from "./services/cases/casesService";
 import {
   captureUi,
@@ -114,10 +122,24 @@ export function registerIpcHandlers(): void {
   handle<void, TestCase[]>("cases_list", () => listCases());
   handle<{ dimension?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.dimension));
 
-  // ── Agentic writer (scaffolded) ──
+  // ── Agentic writer ──
   handle<void, { available: boolean }>("agent_status", () => getAgentStatus());
   handle<void, PomEntry[]>("pom_list", () => listPoms());
   handle<void, SceneGraph>("scenegraph_load", () => loadSceneGraph());
+  handle<{ deviceId?: string; autoApprove?: boolean }, AgentStartResult>("agent_start", (a) =>
+    startAgent(a?.deviceId, a?.autoApprove),
+  );
+  handle<{ agentId: string; text: string }, void>("agent_send", (a) =>
+    sendAgentMessage(a.agentId, a.text),
+  );
+  handle<{ agentId: string }, void>("agent_stop", (a) => stopAgent(a.agentId));
+  handle<{ agentId: string }, void>("agent_interrupt", (a) => interruptAgent(a.agentId));
+  handle<
+    { agentId: string; toolUseId: string; decision: "allow" | "deny"; toolName?: string; allowAll?: boolean },
+    void
+  >("agent_permission_respond", (a) =>
+    respondToAgentPermission(a.agentId, a.toolUseId, a.decision, a.toolName, a.allowAll),
+  );
 
   // ── Settings / theme ──
   handle<void, ThemePreference>("theme_get", () => getTheme());

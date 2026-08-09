@@ -1,96 +1,212 @@
-import { Button, Icon, Panel, StatusPill, Tag } from "@conductor/studio-ui";
-import { useEffect, useState } from "react";
+import {
+  Button,
+  ChatMessage,
+  EmptyState,
+  Icon,
+  StatusPill,
+  ToolCallCard,
+  type StatusTone,
+} from "@conductor/studio-ui";
+import { useEffect, useRef, useState } from "react";
 
-import { agentStatus, listPoms, loadSceneGraph } from "../../lib/ipc";
-import type { PomEntry, SceneGraph } from "../../lib/types";
+import { useAgentEvents } from "../../hooks/useAgentEvents";
+import {
+  agentStatus as fetchAgentStatus,
+  respondAgentPermission,
+  sendAgentMessage,
+  startAgent,
+  stopAgent,
+} from "../../lib/ipc";
+import type { AgentStatus, ConversationItem } from "../../lib/types";
+import {
+  setPermission,
+  startSession,
+  useAgentId,
+  useAgentItems,
+  useAgentPermission,
+  useAgentStatus,
+} from "../../stores/agentStore";
+import { getSelectedDevice } from "../../stores/deviceStore";
 import styles from "./AgentView.module.css";
 
+const STATUS_TONE: Record<AgentStatus, StatusTone> = {
+  idle: "neutral",
+  starting: "running",
+  running: "running",
+  "awaiting-input": "warning",
+  stopped: "neutral",
+  error: "error",
+};
+
 export function AgentView() {
+  const agentId = useAgentId();
+  const status = useAgentStatus();
+  const items = useAgentItems();
+  const permission = useAgentPermission();
   const [available, setAvailable] = useState<boolean | null>(null);
-  const [poms, setPoms] = useState<PomEntry[]>([]);
-  const [graph, setGraph] = useState<SceneGraph | null>(null);
+  const [draft, setDraft] = useState("");
+  const [startError, setStartError] = useState<string | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useAgentEvents(agentId);
 
   useEffect(() => {
-    agentStatus().then((s) => setAvailable(s.available)).catch(() => setAvailable(false));
-    listPoms().then(setPoms).catch(() => {});
-    loadSceneGraph().then(setGraph).catch(() => {});
+    fetchAgentStatus().then((s) => setAvailable(s.available)).catch(() => setAvailable(false));
   }, []);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [items, permission]);
+
+  const begin = async (prompt: string) => {
+    const device = getSelectedDevice();
+    setStartError(null);
+    try {
+      const { agentId: id } = await startAgent(device?.id, false);
+      startSession(id);
+      if (prompt.trim()) {
+        // Give the CLI a tick to finish its initialize handshake.
+        setTimeout(() => void sendAgentMessage(id, prompt.trim()), 400);
+      }
+      setDraft("");
+    } catch (err) {
+      setStartError(String(err));
+    }
+  };
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text) return;
+    if (!agentId) {
+      void begin(text);
+      return;
+    }
+    void sendAgentMessage(agentId, text);
+    setDraft("");
+  };
+
+  const respond = (decision: "allow" | "deny", allowAll = false) => {
+    if (!agentId || !permission) return;
+    void respondAgentPermission(
+      agentId,
+      permission.toolUseId,
+      decision,
+      permission.toolName,
+      allowAll,
+    );
+    setPermission(null);
+  };
+
+  const running = agentId !== null && status !== "stopped" && status !== "error";
 
   return (
     <div className={styles.view}>
-      <div className={styles.hero}>
-        <div className={styles.heroIcon}>
-          <Icon name="agent" size={28} />
+      <header className={styles.header}>
+        <div className={styles.headTitle}>
+          <Icon name="agent" size={18} />
+          <span>Agentic test writing</span>
         </div>
-        <div>
-          <h1 className={styles.title}>Agentic test writing</h1>
-          <p className={styles.subtitle}>
-            A Claude Code agent drives the app through conductor, reuses your Maestro
-            subflow POMs, and builds a scene graph so later runs skip re-orientation.
-          </p>
-        </div>
-        <div className={styles.status}>
-          {available === null ? null : available ? (
-            <StatusPill tone="success">Claude Code detected</StatusPill>
-          ) : (
-            <StatusPill tone="warning">Claude Code not on PATH</StatusPill>
-          )}
-        </div>
+        {agentId ? <StatusPill tone={STATUS_TONE[status]} pulse={status === "running"}>{status}</StatusPill> : null}
+        <div className={styles.spacer} />
+        {available === false ? <StatusPill tone="warning">Claude Code not on PATH</StatusPill> : null}
+        {running ? (
+          <Button size="sm" variant="secondary" icon="stop" onClick={() => agentId && void stopAgent(agentId)}>
+            Stop
+          </Button>
+        ) : null}
+      </header>
+
+      <div className={styles.conversation}>
+        {!agentId && items.length === 0 ? (
+          <EmptyState
+            icon="agent"
+            title="Describe the test you want"
+            description="The agent drives the app through conductor, reuses your Maestro subflow POMs, and writes flows. Connect a device first for it to interact."
+          />
+        ) : (
+          items.map((item) => <ConversationRow key={item.id} item={item} />)
+        )}
+        {startError ? <div className={styles.error}>{startError}</div> : null}
+        <div ref={endRef} />
       </div>
 
-      <div className={styles.grid}>
-        <Panel title="Reusable POMs (Maestro subflows)">
-          {poms.length === 0 ? (
-            <p className={styles.muted}>
-              No parameterized subflows found. Subflows with an <code>env:</code> block become
-              POMs the agent composes via <code>runFlow</code>.
-            </p>
-          ) : (
-            <ul className={styles.pomList}>
-              {poms.map((pom) => (
-                <li key={pom.path} className={styles.pomItem}>
-                  <div className={styles.pomName}>
-                    <Icon name="flow" size={14} />
-                    {pom.name}
-                  </div>
-                  <div className={styles.pomTags}>
-                    {pom.params.map((p) => (
-                      <Tag key={p}>{p}</Tag>
-                    ))}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-
-        <Panel title="Scene graph">
-          <div className={styles.graphStat}>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{graph?.nodes.length ?? 0}</span>
-              <span className={styles.statLabel}>screens</span>
-            </div>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{graph?.edges.length ?? 0}</span>
-              <span className={styles.statLabel}>transitions</span>
-            </div>
+      {permission ? (
+        <div className={styles.permission}>
+          <div className={styles.permText}>
+            <strong>{permission.toolName}</strong> wants to run
+            {summaryOf(permission.toolInput)
+              ? `: ${summaryOf(permission.toolInput)}`
+              : ""}
           </div>
-          <p className={styles.muted}>
-            Discovered screens are stored in <code>.conductor-studio/scenegraph.json</code>{" "}
-            and seed subsequent agent runs.
-          </p>
-        </Panel>
-      </div>
+          <div className={styles.permActions}>
+            <Button size="sm" variant="ghost" onClick={() => respond("deny")}>
+              Deny
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => respond("allow", true)}>
+              Allow all {permission.toolName}
+            </Button>
+            <Button size="sm" variant="primary" onClick={() => respond("allow")}>
+              Allow
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
-      <div className={styles.cta}>
-        <Button variant="primary" icon="agent" disabled>
-          Start agentic run
+      <div className={styles.composer}>
+        <textarea
+          className={styles.input}
+          placeholder={agentId ? "Message the agent…" : "Describe a test to write, then press Enter to start…"}
+          value={draft}
+          rows={2}
+          disabled={available === false}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+        <Button variant="primary" icon={agentId ? "flow" : "agent"} onClick={send} disabled={available === false}>
+          {agentId ? "Send" : "Start"}
         </Button>
-        <span className={styles.ctaNote}>
-          The live agent runner lands in a follow-up — the data layer (POM catalog, scene
-          graph, conductor control) is wired and ready.
-        </span>
       </div>
     </div>
   );
+}
+
+function ConversationRow({ item }: { item: ConversationItem }) {
+  switch (item.kind) {
+    case "text":
+      return <ChatMessage role={item.role}>{item.text}</ChatMessage>;
+    case "tool_use":
+      return (
+        <ToolCallCard
+          name={item.name}
+          summary={summaryOf(item.input)}
+          detail={JSON.stringify(item.input, null, 2)}
+        />
+      );
+    case "tool_result":
+      return (
+        <ToolCallCard
+          name="result"
+          state={item.isError ? "error" : "done"}
+          summary={item.text.split("\n")[0]?.slice(0, 80)}
+          detail={item.text}
+        />
+      );
+    case "result":
+      return <ChatMessage role="assistant">{item.text}</ChatMessage>;
+    default:
+      return null;
+  }
+}
+
+function summaryOf(input: Record<string, unknown>): string {
+  if (typeof input.command === "string") return input.command;
+  if (typeof input.file_path === "string") return input.file_path;
+  if (typeof input.path === "string") return input.path;
+  const first = Object.values(input).find((v) => typeof v === "string");
+  return typeof first === "string" ? first : "";
 }

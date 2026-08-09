@@ -1,6 +1,7 @@
 // Typed IPC wrappers — the ONLY place the renderer calls window.conductorStudio.
 // Components import these named functions; they never touch the bridge directly.
 import type {
+  AgentStartResult,
   CaseMatrix,
   CaptureUiResult,
   CommandResult,
@@ -69,6 +70,19 @@ export const casesMatrix = (dimension?: string) =>
 export const agentStatus = () => invoke<{ available: boolean }>("agent_status");
 export const listPoms = () => invoke<PomEntry[]>("pom_list");
 export const loadSceneGraph = () => invoke<SceneGraph>("scenegraph_load");
+export const startAgent = (deviceId?: string, autoApprove?: boolean) =>
+  invoke<AgentStartResult>("agent_start", { deviceId, autoApprove });
+export const sendAgentMessage = (agentId: string, text: string) =>
+  invoke<void>("agent_send", { agentId, text });
+export const stopAgent = (agentId: string) => invoke<void>("agent_stop", { agentId });
+export const interruptAgent = (agentId: string) => invoke<void>("agent_interrupt", { agentId });
+export const respondAgentPermission = (
+  agentId: string,
+  toolUseId: string,
+  decision: "allow" | "deny",
+  toolName?: string,
+  allowAll?: boolean,
+) => invoke<void>("agent_permission_respond", { agentId, toolUseId, decision, toolName, allowAll });
 
 // ── Theme ──
 export const getTheme = () => invoke<ThemePreference>("theme_get");

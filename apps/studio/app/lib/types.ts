@@ -177,3 +177,26 @@ export interface UpdaterState {
 }
 
 export type ThemePreference = "light" | "dark" | "system";
+
+// ── Agentic writer (live) ──────────────────────────────────────────────────
+export type AgentStatus = "idle" | "starting" | "running" | "awaiting-input" | "stopped" | "error";
+
+export interface AgentPermissionRequest {
+  requestId: string;
+  toolUseId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  title?: string;
+  description?: string;
+}
+
+export interface AgentStartResult {
+  agentId: string;
+}
+
+/** A rendered item in the agent conversation, derived from stream-json events. */
+export type ConversationItem =
+  | { kind: "text"; id: string; role: "assistant" | "user"; text: string }
+  | { kind: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { kind: "tool_result"; id: string; text: string; isError: boolean }
+  | { kind: "result"; id: string; text: string; isError: boolean };
