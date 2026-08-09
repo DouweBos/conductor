@@ -162,6 +162,23 @@ export interface CaseMatrix {
 }
 
 // ── Agentic writer (scaffolded) ───────────────────────────────────────────
+/** A subflow or script a flow can call, and what it expects. */
+export interface FlowCatalogEntry {
+  /** Path relative to the flows directory. */
+  path: string;
+  /** `@alias/…` form, when a config.yaml alias covers it. */
+  alias?: string;
+  /** Keys of the flow's header `env:` block — its parameters. */
+  params: string[];
+  kind: "flow" | "script";
+}
+
+export interface FlowCatalog {
+  entries: FlowCatalogEntry[];
+  /** config.yaml `paths:` — alias -> directory, relative to the flows root. */
+  aliases: Record<string, string>;
+}
+
 export interface PomEntry {
   /** Reusable Maestro subflow name (its file, relative to flowsDir). */
   path: string;

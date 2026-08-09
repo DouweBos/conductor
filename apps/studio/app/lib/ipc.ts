@@ -8,6 +8,7 @@ import type {
   DeviceInfo,
   DeviceStreamInfo,
   FileEntry,
+  FlowCatalog,
   MaestroStatus,
   Platform,
   PomEntry,
@@ -33,6 +34,7 @@ export const recentProjects = () => invoke<ProjectInfo[]>("project_recents");
 export const listFlows = () => invoke<FileEntry[]>("flows_list");
 export const setFlowsDir = (dir: string) => invoke<ProjectInfo>("flows_set_dir", { dir });
 export const listEnvNames = () => invoke<string[]>("flows_env_names");
+export const loadFlowCatalog = () => invoke<FlowCatalog>("flows_catalog");
 export const readFlow = (path: string) => invoke<string>("flow_read", { path });
 export const writeFlow = (path: string, content: string) =>
   invoke<void>("flow_write", { path, content });

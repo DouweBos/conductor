@@ -8,6 +8,7 @@ import type {
   DeviceInfo,
   DeviceStreamInfo,
   FileEntry,
+  FlowCatalog,
   MaestroStatus,
   PomEntry,
   ProjectInfo,
@@ -64,6 +65,7 @@ import {
   runFlowInline,
   runFolder,
 } from "./services/flow/flowRunner";
+import { loadFlowCatalog } from "./services/flow/catalog";
 import { listEnvNames } from "./services/flow/envNames";
 import { startLogs, stopLogs } from "./services/logs/logsService";
 import { listPoms } from "./services/pom/pomService";
@@ -101,6 +103,7 @@ export function registerIpcHandlers(): void {
   handle<void, FileEntry[]>("flows_list", () => listFlows());
   handle<{ dir: string }, ProjectInfo>("flows_set_dir", (a) => setFlowsDir(a.dir));
   handle<void, string[]>("flows_env_names", () => listEnvNames());
+  handle<void, FlowCatalog>("flows_catalog", () => loadFlowCatalog());
   handle<{ path: string }, string>("flow_read", (a) => readFlow(a.path));
   handle<{ path: string; content: string }, void>("flow_write", (a) =>
     writeFlow(a.path, a.content),

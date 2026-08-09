@@ -16,10 +16,17 @@ import {
 } from "@conductor/studio-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getMaestroStatus, listEnvNames, runFlow, runFlowInline, runFolder } from "../../lib/ipc";
+import {
+  getMaestroStatus,
+  listEnvNames,
+  loadFlowCatalog,
+  runFlow,
+  runFlowInline,
+  runFolder,
+} from "../../lib/ipc";
 import { maestroCompletion } from "../../lib/maestroCompletion";
 import { selectFlow } from "../../lib/router";
-import type { MaestroStatus, RunOptions } from "../../lib/types";
+import type { FlowCatalog, MaestroStatus, RunOptions } from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
 import {
   closeFile,
@@ -59,11 +66,25 @@ export function EditorPane({ activePath }: { activePath?: string }) {
   // The project's env vocabulary, read through a ref so the completion source
   // stays stable while the names refresh underneath it.
   const envNames = useRef<string[]>([]);
-  const completions = useMemo(() => maestroCompletion(() => envNames.current), []);
+  const catalog = useRef<FlowCatalog>({ entries: [], aliases: {} });
+  const currentPath = useRef<string | undefined>(activePath);
+  currentPath.current = activePath;
+  const completions = useMemo(
+    () =>
+      maestroCompletion({
+        envNames: () => envNames.current,
+        catalog: () => catalog.current,
+        currentPath: () => currentPath.current,
+      }),
+    [],
+  );
 
   useEffect(() => {
     listEnvNames()
       .then((names) => (envNames.current = names))
+      .catch(() => {});
+    loadFlowCatalog()
+      .then((loaded) => (catalog.current = loaded))
       .catch(() => {});
   }, [activePath]);
 

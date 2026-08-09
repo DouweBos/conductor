@@ -26,6 +26,16 @@ A Maestro-Studio-style workbench:
   The command vocabulary is transcribed from Maestro's own YAML models, and the
   env names come from the whole flows directory — every `env:` block and every
   `${VAR}` already referenced, plus `config.yaml`.
+
+  Because POM suites are written by chaining subflows, **the flows themselves
+  complete too**: type `details/open` where a step goes and the subflow comes up,
+  accepting it writes the whole `runFlow` — the file in its `@alias/…` form when
+  `config.yaml` declares one, plus the `env:` block of every parameter it
+  expects, with tab stops in the values. Parameters are inferred from the
+  subflow's own `${…}` usage (lower-camelCase ones; SCREAMING_SNAKE names are
+  suite globals and dotted ones are script output), so they're found whether or
+  not the flow declares them. `file:`, `files:`, `path:` and `script:` values
+  complete from the flows directory the same way, alias and relative form both.
 - **Right** — a live device stream and an element inspector.
 
 The device mirror and inspector always use conductor: the daemon's H.264 video
