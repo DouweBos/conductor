@@ -26,7 +26,8 @@ import {
   useAgentPermission,
   useAgentStatus,
 } from "../../stores/agentStore";
-import { getSelectedDevice } from "../../stores/deviceStore";
+import { getSelectedDevice, refreshDevices } from "../../stores/deviceStore";
+import { DevicePanel } from "../flows/DevicePanel";
 import styles from "./AgentView.module.css";
 
 const STATUS_TONE: Record<AgentStatus, StatusTone> = {
@@ -52,6 +53,7 @@ export function AgentView() {
 
   useEffect(() => {
     fetchAgentStatus().then((s) => setAvailable(s.available)).catch(() => setAvailable(false));
+    void refreshDevices();
   }, []);
 
   useEffect(() => {
@@ -100,76 +102,82 @@ export function AgentView() {
   const running = agentId !== null && status !== "stopped" && status !== "error";
 
   return (
-    <div className={styles.view}>
-      <header className={styles.header}>
-        <div className={styles.headTitle}>
-          <Icon name="agent" size={18} />
-          <span>Agentic test writing</span>
+    <div className={styles.layout}>
+      <div className={styles.view}>
+        <header className={styles.header}>
+          <div className={styles.headTitle}>
+            <Icon name="agent" size={18} />
+            <span>Agentic test writing</span>
+          </div>
+          {agentId ? <StatusPill tone={STATUS_TONE[status]} pulse={status === "running"}>{status}</StatusPill> : null}
+          <div className={styles.spacer} />
+          {available === false ? <StatusPill tone="warning">Claude Code not on PATH</StatusPill> : null}
+          {running ? (
+            <Button size="sm" variant="secondary" icon="stop" onClick={() => agentId && void stopAgent(agentId)}>
+              Stop
+            </Button>
+          ) : null}
+        </header>
+
+        <div className={styles.conversation}>
+          {!agentId && items.length === 0 ? (
+            <EmptyState
+              icon="agent"
+              title="Describe the test you want"
+              description="The agent drives the app through conductor, reuses your Maestro subflow POMs, and writes flows. Connect a device first for it to interact."
+            />
+          ) : (
+            items.map((item) => <ConversationRow key={item.id} item={item} />)
+          )}
+          {startError ? <div className={styles.error}>{startError}</div> : null}
+          <div ref={endRef} />
         </div>
-        {agentId ? <StatusPill tone={STATUS_TONE[status]} pulse={status === "running"}>{status}</StatusPill> : null}
-        <div className={styles.spacer} />
-        {available === false ? <StatusPill tone="warning">Claude Code not on PATH</StatusPill> : null}
-        {running ? (
-          <Button size="sm" variant="secondary" icon="stop" onClick={() => agentId && void stopAgent(agentId)}>
-            Stop
-          </Button>
+
+        {permission ? (
+          <div className={styles.permission}>
+            <div className={styles.permText}>
+              <strong>{permission.toolName}</strong> wants to run
+              {summaryOf(permission.toolInput)
+                ? `: ${summaryOf(permission.toolInput)}`
+                : ""}
+            </div>
+            <div className={styles.permActions}>
+              <Button size="sm" variant="ghost" onClick={() => respond("deny")}>
+                Deny
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => respond("allow", true)}>
+                Allow all {permission.toolName}
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => respond("allow")}>
+                Allow
+              </Button>
+            </div>
+          </div>
         ) : null}
-      </header>
 
-      <div className={styles.conversation}>
-        {!agentId && items.length === 0 ? (
-          <EmptyState
-            icon="agent"
-            title="Describe the test you want"
-            description="The agent drives the app through conductor, reuses your Maestro subflow POMs, and writes flows. Connect a device first for it to interact."
+        <div className={styles.composer}>
+          <textarea
+            className={styles.input}
+            placeholder={agentId ? "Message the agent…" : "Describe a test to write, then press Enter to start…"}
+            value={draft}
+            rows={2}
+            disabled={available === false}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
           />
-        ) : (
-          items.map((item) => <ConversationRow key={item.id} item={item} />)
-        )}
-        {startError ? <div className={styles.error}>{startError}</div> : null}
-        <div ref={endRef} />
-      </div>
-
-      {permission ? (
-        <div className={styles.permission}>
-          <div className={styles.permText}>
-            <strong>{permission.toolName}</strong> wants to run
-            {summaryOf(permission.toolInput)
-              ? `: ${summaryOf(permission.toolInput)}`
-              : ""}
-          </div>
-          <div className={styles.permActions}>
-            <Button size="sm" variant="ghost" onClick={() => respond("deny")}>
-              Deny
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => respond("allow", true)}>
-              Allow all {permission.toolName}
-            </Button>
-            <Button size="sm" variant="primary" onClick={() => respond("allow")}>
-              Allow
-            </Button>
-          </div>
+          <Button variant="primary" icon={agentId ? "flow" : "agent"} onClick={send} disabled={available === false}>
+            {agentId ? "Send" : "Start"}
+          </Button>
         </div>
-      ) : null}
-
-      <div className={styles.composer}>
-        <textarea
-          className={styles.input}
-          placeholder={agentId ? "Message the agent…" : "Describe a test to write, then press Enter to start…"}
-          value={draft}
-          rows={2}
-          disabled={available === false}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <Button variant="primary" icon={agentId ? "flow" : "agent"} onClick={send} disabled={available === false}>
-          {agentId ? "Send" : "Start"}
-        </Button>
+      </div>
+      {/* Watch the agent drive the device while it works. */}
+      <div className={styles.device}>
+        <DevicePanel showRecord={false} showInspector={false} />
       </div>
     </div>
   );

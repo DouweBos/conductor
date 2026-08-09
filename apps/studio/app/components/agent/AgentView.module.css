@@ -1,8 +1,23 @@
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 .view {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-width: 0;
   min-height: 0;
+}
+
+.device {
+  width: 400px;
+  flex-shrink: 0;
+  min-height: 0;
+  border-left: 1px solid var(--border-subtle);
 }
 
 .header {

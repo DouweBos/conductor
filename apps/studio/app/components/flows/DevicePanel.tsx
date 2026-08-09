@@ -14,7 +14,13 @@ import { DeviceStream } from "./DeviceStream";
 import { Inspector } from "./Inspector";
 import styles from "./DevicePanel.module.css";
 
-export function DevicePanel() {
+export interface DevicePanelProps {
+  /** Gesture recording appends to the open flow, so it's flows-only. */
+  showRecord?: boolean;
+  showInspector?: boolean;
+}
+
+export function DevicePanel({ showRecord = true, showInspector = true }: DevicePanelProps = {}) {
   const devices = useDevices();
   const selectedId = useSelectedDeviceId();
   const streaming = useDeviceStreaming();
@@ -37,7 +43,7 @@ export function DevicePanel() {
         />
         <IconButton icon="refresh" label="Refresh devices" onClick={() => void refreshDevices()} />
         <ToolbarSpacer />
-        {streaming ? (
+        {streaming && showRecord ? (
           <IconButton
             icon="dot"
             label={recording ? "Stop recording" : "Record gestures into the open flow"}
@@ -45,7 +51,7 @@ export function DevicePanel() {
             onClick={toggleRecording}
           />
         ) : null}
-        {recording ? <StatusPill tone="error" pulse>REC</StatusPill> : null}
+        {recording && showRecord ? <StatusPill tone="error" pulse>REC</StatusPill> : null}
         {streaming ? (
           <Button size="sm" variant="secondary" icon="stop" onClick={() => void disconnectSelectedDevice()}>
             Disconnect
@@ -65,9 +71,11 @@ export function DevicePanel() {
       <div className={styles.stream}>
         <DeviceStream deviceId={streaming ? selectedId : null} />
       </div>
-      <div className={styles.inspector}>
-        <Inspector deviceId={selectedId} />
-      </div>
+      {showInspector ? (
+        <div className={styles.inspector}>
+          <Inspector deviceId={selectedId} />
+        </div>
+      ) : null}
     </div>
   );
 }
