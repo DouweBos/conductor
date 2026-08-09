@@ -16,7 +16,9 @@ import type {
   MaestroStatus,
   PomEntry,
   ProjectInfo,
+  RunArtifacts,
   RunOptions,
+  RunRecord,
   SceneGraph,
   SceneGraphSummary,
   TestCase,
@@ -68,11 +70,13 @@ import {
   runFlow,
   runFlowInline,
   runFolder,
+  runRepeat,
 } from "./services/flow/flowRunner";
 import { loadFlowCatalog } from "./services/flow/catalog";
 import { lintOne, lintProject } from "./services/flow/lint";
 import { findUsages, indexReferences, searchFlows } from "./services/flow/references";
 import { listEnvNames } from "./services/flow/envNames";
+import { clearHistory, historyArtifacts, listHistory } from "./services/flow/history";
 import { startLogs, stopLogs } from "./services/logs/logsService";
 import { listPoms } from "./services/pom/pomService";
 import {
@@ -165,7 +169,14 @@ export function registerIpcHandlers(): void {
     { snippet: string; deviceId?: string; appId?: string; options?: RunOptions },
     { runId: string }
   >("flow_run_inline", (a) => runFlowInline(a.snippet, a.deviceId, a.appId, a.options));
+  handle<
+    { path: string; times: number; deviceId?: string; options?: RunOptions },
+    { runIds: string[] }
+  >("flow_run_repeat", (a) => runRepeat(a.path, a.times, a.deviceId, a.options));
   handle<{ runId: string }, void>("flow_run_cancel", (a) => cancelRun(a.runId));
+  handle<void, RunRecord[]>("runs_history", () => listHistory());
+  handle<void, void>("runs_clear", () => clearHistory());
+  handle<{ runId: string }, RunArtifacts | null>("runs_artifacts", (a) => historyArtifacts(a.runId));
   handle<{ command: string; deviceId: string }, CommandResult>("flow_run_command", (a) =>
     runCommand(a.command, a.deviceId),
   );

@@ -19,8 +19,12 @@ import { appState } from "../../state";
 import { captureUi, runCommandLine } from "../conductor/conductorService";
 import { getProjectInfo } from "../file/fileService";
 import { detectConductor, detectMaestro, resolveConductor } from "../maestro/maestroService";
+import { artifactDirFor, recordRun } from "./history";
 
 const processes = new Map<string, ChildProcess>();
+/** Tail of each run's output, kept for the history record. */
+const outputTail = new Map<string, string[]>();
+const OUTPUT_TAIL = 400;
 let runCounterSeed = 0;
 
 function nextRunId(): string {
@@ -129,6 +133,48 @@ export async function runFolder(
   });
 }
 
+/**
+ * Run one flow N times to see whether it's actually stable. Each iteration is
+ * its own run record, grouped so the history can show a pass rate.
+ */
+export async function runRepeat(
+  relPath: string,
+  times: number,
+  deviceId?: string,
+  options?: RunOptions,
+): Promise<{ runIds: string[] }> {
+  const group = `repeat-${Date.now()}`;
+  const runIds: string[] = [];
+  for (let i = 0; i < Math.max(1, times); i++) {
+    const status = await getMaestroStatus();
+    const absPath = flowAbsolutePath(relPath);
+    const args = buildFlowArgs(status.activeEngine, absPath, deviceId, options);
+    const { runId } = await launch({
+      engine: status.activeEngine,
+      ...args,
+      flowPath: relPath,
+      deviceId,
+      steps: safeReadSteps(absPath),
+      repeatGroup: group,
+    });
+    runIds.push(runId);
+    await settled(runId);
+  }
+  return { runIds };
+}
+
+/** Resolve once a run leaves the running state. */
+function settled(runId: string): Promise<void> {
+  return new Promise((resolve) => {
+    const check = () => {
+      const record = appState.flowRuns.get(runId);
+      if (!record || record.status !== "running") resolve();
+      else setTimeout(check, 250);
+    };
+    check();
+  });
+}
+
 /** Run an inline snippet (REPL multi-step / editor selection). */
 export async function runFlowInline(
   snippet: string,
@@ -204,6 +250,8 @@ interface LaunchArgs {
   deviceId?: string;
   steps: FlowStep[];
   cleanupDir?: string;
+  /** Set when this run is one iteration of a repeat, so history can group them. */
+  repeatGroup?: string;
 }
 
 async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
@@ -297,7 +345,22 @@ function finish(runId: string, status: FlowRun["status"], spec: LaunchArgs): voi
     record.status = status;
     record.finishedAt = Date.now();
     broadcastToRenderers(`flow_run_status:${runId}`, record);
+    // Maestro writes its debug output as it goes, so it exists by now.
+    recordRun({
+      runId,
+      flowPath: record.flowPath,
+      engine: record.engine,
+      status,
+      startedAt: record.startedAt,
+      finishedAt: record.finishedAt,
+      deviceId: spec.deviceId,
+      artifactDir: record.engine === "maestro" ? artifactDirFor(record.startedAt) : undefined,
+      output: outputTail.get(runId) ?? [],
+      repeatGroup: spec.repeatGroup,
+    });
+    broadcastToRenderers("runs:updated", runId);
   }
+  outputTail.delete(runId);
   // Capture a screenshot of the current screen when a run fails, for triage.
   if ((status === "failed" || status === "error") && spec.deviceId) {
     captureUi(spec.deviceId)
@@ -342,6 +405,10 @@ function toneForLine(line: string, fallback: RunLogLine["tone"]): RunLogLine["to
 }
 
 function emitLine(runId: string, line: RunLogLine): void {
+  const tail = outputTail.get(runId) ?? [];
+  tail.push(line.text);
+  if (tail.length > OUTPUT_TAIL) tail.shift();
+  outputTail.set(runId, tail);
   broadcastToRenderers(`flow_run_output:${runId}`, line);
 }
 

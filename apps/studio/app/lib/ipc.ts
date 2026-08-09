@@ -17,7 +17,9 @@ import type {
   Platform,
   PomEntry,
   ProjectInfo,
+  RunArtifacts,
   RunOptions,
+  RunRecord,
   SceneGraph,
   SceneGraphSummary,
   TestCase,
@@ -90,7 +92,12 @@ export const runFlowInline = (
   appId?: string,
   options?: RunOptions,
 ) => invoke<{ runId: string }>("flow_run_inline", { snippet, deviceId, appId, options });
+export const runRepeat = (path: string, times: number, deviceId?: string, options?: RunOptions) =>
+  invoke<{ runIds: string[] }>("flow_run_repeat", { path, times, deviceId, options });
 export const cancelRun = (runId: string) => invoke<void>("flow_run_cancel", { runId });
+export const runHistory = () => invoke<RunRecord[]>("runs_history");
+export const clearRunHistory = () => invoke<void>("runs_clear");
+export const runArtifacts = (runId: string) => invoke<RunArtifacts | null>("runs_artifacts", { runId });
 export const runCommand = (command: string, deviceId: string) =>
   invoke<CommandResult>("flow_run_command", { command, deviceId });
 export const startLogs = (deviceId: string) => invoke<void>("logs_start", { deviceId });

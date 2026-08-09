@@ -109,6 +109,42 @@ export interface FlowRun {
   finishedAt?: number;
 }
 
+/** One executed command from Maestro's debug output. */
+export interface RunArtifactStep {
+  index: number;
+  label: string;
+  /** COMPLETED / FAILED / SKIPPED, as maestro records it. */
+  status: string;
+  durationMs?: number;
+  /** Absolute paths to the screen at that step. */
+  screenshot?: string;
+  hierarchy?: string;
+}
+
+export interface RunArtifacts {
+  dir: string;
+  flowName: string;
+  steps: RunArtifactStep[];
+  logs: string[];
+}
+
+/** A finished run, kept so failures can be compared against what came before. */
+export interface RunRecord {
+  runId: string;
+  flowPath: string;
+  engine: FlowEngine;
+  status: FlowRunStatus;
+  startedAt: number;
+  finishedAt: number;
+  deviceId?: string;
+  /** Maestro's debug output directory for this run, when it wrote one. */
+  artifactDir?: string;
+  /** Tail of the run's output. */
+  output: string[];
+  /** Set when the run was one iteration of a repeat. */
+  repeatGroup?: string;
+}
+
 export type LogTone = "default" | "muted" | "success" | "error" | "warning" | "command";
 
 export interface RunLogLine {
