@@ -9,11 +9,12 @@ import type {
 } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { getProjectInfo } from "../file/fileService";
+import { getMcpAuthToken, getMcpPort } from "../mcp/server";
 import { which } from "../util/exec";
 import { ClaudeAgent } from "./claudeAgent";
 import { buildAgentSystemPrompt } from "./systemPrompt";
 import type { DeviceInfo } from "../../../app/lib/types";
-import { listDevices } from "../conductor/conductorService";
+import { acquireDevice, listDevices, releaseDevice } from "../conductor/conductorService";
 
 interface AgentSession {
   agent: ClaudeAgent;
@@ -51,6 +52,14 @@ export async function startAgent(deviceId?: string, autoApprove?: boolean): Prom
     } catch {
       device = null;
     }
+    // Claim the device for the life of this agent. Two agents driving one
+    // device produce nonsense results, so refuse to start rather than race.
+    if (!(await acquireDevice(deviceId))) {
+      throw new Error(
+        `${device?.name ?? deviceId} is already reserved by another agent. ` +
+          "Pick a different device, or wait for that run to finish.",
+      );
+    }
   }
 
   agentSeq += 1;
@@ -70,6 +79,7 @@ export async function startAgent(deviceId?: string, autoApprove?: boolean): Prom
     systemPrompt,
     debugLogPath: path.join(logDir, `${agentId}.log`),
     autoApprove,
+    mcpServers: studioMcpServer(),
   });
 
   agent.on("event", (line: string) => broadcastToRenderers(`agent:event:${agentId}`, line));
@@ -85,6 +95,8 @@ export async function startAgent(deviceId?: string, autoApprove?: boolean): Prom
     setStatus(agentId, code === 0 ? "stopped" : "error");
     broadcastToRenderers(`agent:exit:${agentId}`, { code });
     sessions.delete(agentId);
+    // However the agent ended, the device goes back to the pool.
+    if (deviceId) void releaseDevice(deviceId).then(() => broadcastToRenderers("devices:pool", {}));
   });
 
   sessions.set(agentId, agent);
@@ -92,6 +104,20 @@ export async function startAgent(deviceId?: string, autoApprove?: boolean): Prom
   agent.start();
   setStatus(agentId, "running");
   return { agentId };
+}
+
+/** The Studio MCP server, injected into every agent we spawn. */
+function studioMcpServer(): Record<string, unknown> {
+  const port = getMcpPort();
+  const token = getMcpAuthToken();
+  if (!port || !token) return {};
+  return {
+    studio: {
+      type: "http",
+      url: `http://127.0.0.1:${port}/mcp`,
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  };
 }
 
 export function sendAgentMessage(agentId: string, text: string): void {

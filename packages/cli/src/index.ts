@@ -1172,7 +1172,14 @@ async function main(): Promise<void> {
       const release = argv['release'] as boolean;
       const releaseId = typeof argv['release'] === 'string' ? argv['release'] : rest[0];
       const action = acquire ? 'acquire' : release || releaseId ? 'release' : 'list';
-      exitCode = await devicePool(action, releaseId, opts);
+      const owner = argv['owner'] ? Number(argv['owner']) : undefined;
+      exitCode = await devicePool(
+        action,
+        releaseId,
+        opts,
+        argv['device'] as string | undefined,
+        owner
+      );
       break;
     }
 

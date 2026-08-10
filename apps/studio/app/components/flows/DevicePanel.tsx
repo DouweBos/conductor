@@ -89,7 +89,9 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
 
   const options = devices.map((d) => ({
     value: d.id,
-    label: `${d.name}${d.state === "booted" ? " · booted" : ""}`,
+    label: `${d.name}${d.state === "booted" ? " · booted" : ""}${
+      d.reservedBy ? ` · in use (${d.reservedBy})` : ""
+    }`,
   }));
 
   return (

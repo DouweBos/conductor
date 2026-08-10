@@ -179,6 +179,12 @@ Maestro **subflow POMs**, and is seeded with a **scene graph** of discovered
 screens so later runs skip re-orientation. The device panel sits beside the
 conversation, so you can watch the agent work.
 
+The agent **reserves its device** in conductor's shared pool for the length of
+the session, so a second agent — in Studio, in a terminal, or in another editor —
+can't tap through the app half-way into a test. Starting an agent on a device
+somebody else holds fails with who holds it rather than racing; the device picker
+marks reserved devices, and the claim is returned however the agent ends.
+
 The agent spawns the `claude` CLI with `--output-format stream-json
 --input-format stream-json --permission-prompt-tool stdio`; the main process
 parses the stream and forwards events to the renderer, which renders the

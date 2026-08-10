@@ -1,5 +1,9 @@
 export const HELP = `  device-pool --list                  List all devices and pool status
   device-pool --acquire               Claim a free device (prints device ID)
+    --device <id>                     Claim this specific device instead of any free one
+    --owner <pid>                     Hold the claim for this process (default: this CLI's
+                                      own PID, which exits immediately — pass a long-lived
+                                      PID to keep the device reserved)
   device-pool --release <id>          Release a device back to the pool`;
 
 /**
@@ -134,7 +138,11 @@ function pruneStaleAcquisitions(state: PoolState): void {
 export async function devicePool(
   action: 'list' | 'acquire' | 'release',
   releaseId?: string,
-  opts: OutputOptions = {}
+  opts: OutputOptions = {},
+  /** Claim this device specifically, rather than any free one. */
+  wantedDevice?: string,
+  /** Process that owns the claim; it is released when that process goes away. */
+  ownerPid?: number
 ): Promise<number> {
   if (action === 'list') {
     const allDevices = await discoverAllDevices();
@@ -174,6 +182,10 @@ export async function devicePool(
       return 1;
     }
 
+    // A claim lives as long as its owner process. This CLI exits immediately, so
+    // a caller that wants to keep a device reserved passes its own long-lived PID.
+    const owner = String(ownerPid ?? process.pid);
+
     const result = await withLock(() => {
       const state = readPool();
       pruneStaleAcquisitions(state);
@@ -185,18 +197,25 @@ export async function devicePool(
         }
       }
 
-      // Find a free device
-      const free = state.devices.find((e) => allDevices.includes(e.deviceId) && !e.acquiredBy);
+      // A specific device when asked for, else any free one.
+      const free = wantedDevice
+        ? state.devices.find((e) => e.deviceId === wantedDevice && !e.acquiredBy)
+        : state.devices.find((e) => allDevices.includes(e.deviceId) && !e.acquiredBy);
       if (!free) return null;
 
-      free.acquiredBy = String(process.pid);
+      free.acquiredBy = owner;
       free.acquiredAt = Date.now();
       writePool(state);
       return free.deviceId;
     });
 
     if (!result) {
-      printError('No free devices available in pool', opts);
+      printError(
+        wantedDevice
+          ? `Device ${wantedDevice} is already in use by another agent`
+          : 'No free devices available in pool',
+        opts
+      );
       return 1;
     }
 

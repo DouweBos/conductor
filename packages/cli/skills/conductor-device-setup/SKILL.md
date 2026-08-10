@@ -14,7 +14,7 @@ nothing is booted yet.
 conductor workspace info     # detected project type, bundle IDs, devices, Metro port — best first call
 conductor list-devices       # booted + available devices
 conductor foreground-app     # bundle id of the app currently in front
-conductor list-apps          # installed app ids / package names
+conductor list-apps          # installed app ids / package names (--json adds appNames on iOS/tvOS)
 ```
 
 ## Devices
@@ -100,10 +100,27 @@ Parallel agents each get their own `--session <name>` so they don't collide.
 | `conductor daemon-status`              | Show daemon status                                                                                   |
 | `conductor daemon-stop [--all]`        | Stop this session's daemon (`--all` = every session)                                                 |
 | `conductor device-pool --list`         | List devices + pool status                                                                           |
-| `conductor device-pool --acquire`      | Claim a free device (prints id)                                                                      |
+| `conductor device-pool --acquire`      | Claim a free device (prints id); `--device <id>` claims that one, `--owner <pid>` holds the claim     |
 | `conductor device-pool --release <id>` | Release a device back to the pool                                                                    |
 
 Don't leave a daemon running when you're done — `daemon-stop` it.
+
+### Reserving a device
+
+Claim a device before driving it when other agents share the machine, so nobody
+taps through your test half-way. A claim belongs to a **process**: conductor
+frees any claim whose owner has exited, and the CLI exits immediately, so
+`--acquire` on its own reserves nothing. Pass the PID that should hold it:
+
+```bash
+conductor device-pool --acquire --device <id> --owner $$ --json   # claim it
+conductor device-pool --list --json                               # who holds what
+conductor device-pool --release <id>                              # give it back
+```
+
+Acquiring a device someone else holds fails rather than stealing it. Always
+release when you're done — a crash releases it for you, an abandoned shell
+doesn't.
 
 ## Tips
 

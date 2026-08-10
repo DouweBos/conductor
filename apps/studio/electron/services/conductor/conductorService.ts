@@ -45,10 +45,19 @@ export async function listDevices(): Promise<DeviceInfo[]> {
         ...((parsed as { availableDevices?: unknown[] })?.availableDevices ?? []),
       ];
   const seen = new Set<string>();
-  return rows
+  const devices = rows
     .map(normalizeDevice)
     .filter((d): d is DeviceInfo => d !== null)
     .filter((d) => !seen.has(d.id) && seen.add(d.id));
+
+  // Mark what another agent has claimed, so you don't pick a device mid-test.
+  const pool = await devicePoolStatus();
+  const own = String(process.pid);
+  for (const device of devices) {
+    const holder = pool[device.id];
+    if (holder) device.reservedBy = holder === own ? "this app" : `PID ${holder}`;
+  }
+  return devices;
 }
 
 function normalizeDevice(raw: unknown): DeviceInfo | null {
@@ -132,6 +141,41 @@ export async function appFingerprint(
     platform: resolvedPlatform,
     key: `${resolvedPlatform}-${appId}`.replace(/[^A-Za-z0-9._-]+/g, "_"),
   };
+}
+
+/**
+ * Reserve a device in conductor's shared pool so a second agent can't drive it
+ * mid-test. The claim is owned by this process, not by the CLI invocation —
+ * conductor releases a claim whose owner has gone away, and the CLI exits
+ * immediately, so without this the reservation would evaporate at once.
+ */
+export async function acquireDevice(deviceId: string): Promise<boolean> {
+  const res = await runConductor(
+    ["device-pool", "--acquire", "--device", deviceId, "--owner", String(process.pid), "--json"],
+    20_000,
+  );
+  return res.code === 0;
+}
+
+export async function releaseDevice(deviceId: string): Promise<void> {
+  await runConductor(["device-pool", "--release", deviceId, "--json"], 20_000).catch(() => {});
+}
+
+/** Who holds each device right now, by device id. */
+export async function devicePoolStatus(): Promise<Record<string, string | null>> {
+  try {
+    const res = await runConductor(["device-pool", "--list", "--json"], 20_000);
+    const parsed = safeJson<{ devices?: { deviceId: string; free: boolean; acquiredBy?: string }[] }>(
+      res.stdout,
+    );
+    const out: Record<string, string | null> = {};
+    for (const entry of parsed?.devices ?? []) {
+      out[entry.deviceId] = entry.free ? null : (entry.acquiredBy ?? "another agent");
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 /** Boot a simulator/emulator so you don't have to leave Studio to get a device. */

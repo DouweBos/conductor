@@ -25,6 +25,8 @@ export interface DeviceInfo {
   name: string;
   platform: Platform;
   state: "booted" | "shutdown" | "unknown";
+  /** Who holds this device in conductor's pool, when someone does. */
+  reservedBy?: string;
 }
 
 export interface DeviceStreamInfo {
