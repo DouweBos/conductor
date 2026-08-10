@@ -8,9 +8,15 @@
   min-height: 0;
 }
 
+/*
+ * Shrinks to whatever is left after the label. `max-height: 100%` resolved
+ * against the whole wrapper, ignoring its sibling, so the frame claimed the
+ * full height and pushed the label out of view.
+ */
 .frame {
   position: relative;
-  max-height: 100%;
+  flex: 0 1 auto;
+  min-height: 0;
   max-width: 100%;
   border-radius: var(--radius-xl);
   padding: 6px;
@@ -42,6 +48,7 @@
 }
 
 .label {
+  flex-shrink: 0;
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
