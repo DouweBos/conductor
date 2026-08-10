@@ -18,10 +18,10 @@
   outline: none;
 }
 
-/* Run controls sit in their own gutter and stay out of the way until you hover
-   the editor, then light up on the line you're pointing at. */
+/* Run controls sit in their own gutter, dim until you hover the editor and
+   solid on the line you're pointing at. */
 .runGutter {
-  min-width: 30px;
+  min-width: 38px;
 }
 
 .runControls {
@@ -34,7 +34,7 @@
 }
 
 :global(.cm-editor:hover) .runControls {
-  opacity: 0.45;
+  opacity: 0.75;
 }
 
 :global(.cm-editor) .runControls:hover {
@@ -48,27 +48,26 @@
   justify-content: center;
   padding: 0;
   border: none;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--accent);
-  font-size: 9px;
-  line-height: 1;
+  line-height: 0;
   cursor: pointer;
 }
 
 .runButton {
-  width: 14px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 
 .runMenuButton {
-  width: 10px;
-  height: 16px;
-  color: var(--text-muted);
+  width: 14px;
+  height: 20px;
+  color: var(--text-secondary);
 }
 
 .runButton:hover,
 .runMenuButton:hover {
-  background: var(--bg-hover);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
 }

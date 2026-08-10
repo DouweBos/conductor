@@ -1,4 +1,4 @@
-export { Icon, Icons, type IconName, type IconProps } from "./icons/Icons";
+export { Icon, Icons, iconElement, type IconName, type IconProps } from "./icons/Icons";
 
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from "./components/Button/Button";
 export { IconButton, type IconButtonProps } from "./components/IconButton/IconButton";

@@ -8,6 +8,7 @@ import { githubDark, githubLight } from "@uiw/codemirror-theme-github";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
 
+import { iconElement } from "../../icons/Icons";
 import styles from "./Editor.module.css";
 
 export type EditorLanguage = "yaml" | "javascript";
@@ -80,7 +81,7 @@ class RunMarker extends GutterMarker {
     play.className = styles.runButton;
     play.title = this.config.runLabel ?? "Run this step";
     play.setAttribute("aria-label", play.title);
-    play.textContent = "▶";
+    play.append(iconElement("play", 12));
     play.onmousedown = (event) => event.preventDefault();
     play.onclick = () => this.config.onRun(this.line);
 
@@ -89,7 +90,7 @@ class RunMarker extends GutterMarker {
     menu.className = styles.runMenuButton;
     menu.title = this.config.menuLabel ?? "More run options";
     menu.setAttribute("aria-label", menu.title);
-    menu.textContent = "⌄";
+    menu.append(iconElement("chevronDown", 12));
     menu.onmousedown = (event) => event.preventDefault();
     menu.onclick = (event) => {
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();

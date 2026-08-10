@@ -74,6 +74,28 @@ export interface IconProps {
   title?: string;
 }
 
+/**
+ * Build an icon as a detached SVG, for the few places that construct DOM
+ * imperatively (the editor's gutter). Same glyphs as {@link Icon}.
+ */
+export function iconElement(name: IconName, size = 16): SVGSVGElement {
+  const filled = FILLED[name];
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", filled ? "currentColor" : "none");
+  svg.setAttribute("stroke", filled ? "none" : "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", PATHS[name]);
+  svg.append(path);
+  return svg;
+}
+
 export function Icon({ name, size = 16, className, style, title }: IconProps) {
   const filled = FILLED[name];
   return (
