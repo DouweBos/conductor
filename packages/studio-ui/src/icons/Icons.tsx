@@ -31,7 +31,8 @@ export type IconName =
   | "tap"
   | "flow"
   | "dot"
-  | "record";
+  | "record"
+  | "camera";
 
 const PATHS: Record<IconName, string> = {
   file: "M7 3h7l5 5v13H7zM14 3v5h5",
@@ -61,6 +62,7 @@ const PATHS: Record<IconName, string> = {
   dot: "M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
   // A record button reads as a solid circle; `dot` is the 4px list bullet.
   record: "M12 5.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z",
+  camera: "M3.5 9h3.1l1.4-2h8l1.4 2h3.1v9.5H3.5zM12 11a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z",
 };
 
 const FILLED: Partial<Record<IconName, boolean>> = {

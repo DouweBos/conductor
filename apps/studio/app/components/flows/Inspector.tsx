@@ -10,10 +10,20 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { useIpcEvent } from "../../hooks/useIpcEvent";
-import { captureUi, loadSceneGraph } from "../../lib/ipc";
+import { loadSceneGraph } from "../../lib/ipc";
 import { getCurrentRoute } from "../../lib/router";
-import type { CaptureElement, CaptureUiResult, SceneGraph } from "../../lib/types";
+import type { CaptureElement, SceneGraph } from "../../lib/types";
 import { setBufferContent, useFlowBuffers } from "../../stores/flowStore";
+import {
+  findElement,
+  refreshCapture,
+  setSelectedRef,
+  useCapture,
+  useCaptureError,
+  useCaptureLoading,
+  useSelectedRef,
+} from "../../stores/inspectStore";
+import { SceneGraphDialog } from "./SceneGraphDialog";
 import styles from "./Inspector.module.css";
 
 function toNodes(elements: CaptureElement[]): TreeNode[] {
@@ -24,15 +34,6 @@ function toNodes(elements: CaptureElement[]): TreeNode[] {
     meta: el.ref,
     children: el.children && el.children.length ? toNodes(el.children) : undefined,
   }));
-}
-
-function findElement(root: CaptureElement, ref: string): CaptureElement | null {
-  if (root.ref === ref) return root;
-  for (const child of root.children ?? []) {
-    const found = findElement(child, ref);
-    if (found) return found;
-  }
-  return null;
 }
 
 export type CommandKind = "tapOn" | "assertVisible" | "inputText" | "longPressOn" | "copyTextFrom";
@@ -68,18 +69,21 @@ export function commandFor(el: CaptureElement, kind: CommandKind = "tapOn"): str
 }
 
 export function Inspector({ deviceId }: { deviceId: string | null }) {
-  const [capture, setCapture] = useState<CaptureUiResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedRef, setSelectedRef] = useState<string | null>(null);
-  const [screenCount, setScreenCount] = useState(0);
+  const capture = useCapture();
+  const loading = useCaptureLoading();
+  const error = useCaptureError();
+  const selectedRef = useSelectedRef();
+  const [graph, setGraph] = useState<SceneGraph | null>(null);
+  const [graphOpen, setGraphOpen] = useState(false);
   const [kind, setKind] = useState<CommandKind>("tapOn");
   const buffers = useFlowBuffers();
 
   useEffect(() => {
-    loadSceneGraph().then((g) => setScreenCount(g.nodes.length)).catch(() => {});
-  }, []);
-  useIpcEvent<SceneGraph>("scenegraph:updated", (g) => setScreenCount(g.nodes.length));
+    loadSceneGraph(deviceId ?? undefined).then(setGraph).catch(() => {});
+  }, [deviceId]);
+  useIpcEvent<SceneGraph>("scenegraph:updated", setGraph);
+
+  const screenCount = graph?.nodes.length ?? 0;
 
   const nodes = useMemo(
     () => (capture ? toNodes(capture.root.children ?? []) : []),
@@ -87,19 +91,6 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
   );
 
   const selectedEl = capture && selectedRef ? findElement(capture.root, selectedRef) : null;
-
-  const capture_ = async () => {
-    if (!deviceId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setCapture(await captureUi(deviceId));
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const insert = () => {
     if (!selectedEl) return;
@@ -120,15 +111,22 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
       <div className={styles.header}>
         <span className={styles.title}>Inspector</span>
         {screenCount > 0 ? (
-          <StatusPill tone="info">{screenCount} screens mapped</StatusPill>
+          <button
+            type="button"
+            className={styles.graphButton}
+            onClick={() => setGraphOpen(true)}
+            title="Show the recorded screens and transitions"
+          >
+            <StatusPill tone="info">{screenCount} screens mapped</StatusPill>
+          </button>
         ) : null}
         <div className={styles.spacer} />
         <Button
           size="sm"
           variant="secondary"
-          icon="search"
+          icon="camera"
           disabled={!deviceId || loading}
-          onClick={() => void capture_()}
+          onClick={() => deviceId && void refreshCapture(deviceId)}
         >
           Capture UI
         </Button>
@@ -142,7 +140,7 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
           <EmptyState icon="alert" title="Capture failed" description={error} />
         ) : !capture ? (
           <EmptyState
-            icon="search"
+            icon="camera"
             title="No capture yet"
             description="Capture the UI to inspect the element hierarchy and generate commands."
           />
@@ -169,6 +167,7 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
           </Button>
         </div>
       ) : null}
+      <SceneGraphDialog graph={graph} open={graphOpen} onClose={() => setGraphOpen(false)} />
     </div>
   );
 }

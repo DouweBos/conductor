@@ -151,7 +151,7 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
           <ToolbarSpacer />
           {mode === "inspect" ? (
             <IconButton
-              icon="search"
+              icon="camera"
               label="Re-capture elements"
               disabled={!selectedId || capturing}
               onClick={() => selectedId && void refreshCapture(selectedId)}
