@@ -71,3 +71,9 @@
   background: var(--accent);
   color: var(--accent-fg);
 }
+
+/* The lines a hovered gutter control is about to run. */
+.runHighlight {
+  background: var(--accent-subtle);
+  box-shadow: inset 2px 0 0 var(--accent);
+}

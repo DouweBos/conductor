@@ -110,7 +110,7 @@ labels which engine ran. (Conductor's flow YAML is a subset of Maestro's.)
 - **Per-step runs**: hover the editor and a play button appears in the gutter
   beside every step. Click it to run just that step; the chevron next to it
   offers **Run all until here**, running every step up to and including that
-  one. A step owns the lines indented under it, so multi-line commands run
+  one. Hovering either control highlights exactly the lines it would run. A step owns the lines indented under it, so multi-line commands run
   whole, and the slice keeps the flow's header so `appId` and its `env` defaults
   still apply.
 - A **step checklist** ticks off each step live, parsed from what the engines

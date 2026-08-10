@@ -239,6 +239,12 @@ export function EditorPane({ activePath }: { activePath?: string }) {
         if (step) void runSteps([step], `step ${steps.indexOf(step) + 1}`);
       },
       onMenu: (line: number, x: number, y: number) => setStepMenu({ line, x, y }),
+      rangeFor: (line: number, kind: "run" | "until") => {
+        const step = stepAt(steps, line);
+        if (!step) return { from: line, to: line };
+        // The play button runs this step; the menu runs everything up to it.
+        return { from: kind === "until" ? (steps[0]?.line ?? step.line) : step.line, to: step.endLine };
+      },
       runLabel: "Run this step",
       menuLabel: "More run options",
     }),

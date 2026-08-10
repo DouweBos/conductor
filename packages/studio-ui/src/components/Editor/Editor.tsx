@@ -2,8 +2,8 @@ import { autocompletion, type CompletionSource } from "@codemirror/autocomplete"
 import { javascript } from "@codemirror/lang-javascript";
 import { linter, type Diagnostic } from "@codemirror/lint";
 import { yaml } from "@codemirror/lang-yaml";
-import { Compartment, EditorState, RangeSet } from "@codemirror/state";
-import { EditorView, GutterMarker, gutter, keymap } from "@codemirror/view";
+import { Compartment, EditorState, RangeSet, StateEffect, StateField } from "@codemirror/state";
+import { Decoration, EditorView, GutterMarker, gutter, keymap, type DecorationSet } from "@codemirror/view";
 import { githubDark, githubLight } from "@uiw/codemirror-theme-github";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
@@ -29,6 +29,11 @@ export interface EditorRunGutter {
   lines: number[];
   onRun: (line: number) => void;
   onMenu: (line: number, x: number, y: number) => void;
+  /**
+   * Lines a control would run, so hovering it can show you what you're about to
+   * run. `kind` is "run" for the play button and "until" for the menu.
+   */
+  rangeFor?: (line: number, kind: "run" | "until") => { from: number; to: number };
   runLabel?: string;
   menuLabel?: string;
 }
@@ -60,6 +65,28 @@ export interface EditorProps {
   className?: string;
 }
 
+/** Lines a gutter control is about to run, shown while it's hovered. */
+const setRunHighlight = StateEffect.define<{ from: number; to: number } | null>();
+const runHighlightLine = Decoration.line({ class: styles.runHighlight });
+
+const runHighlightField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    let next = value.map(tr.changes);
+    for (const effect of tr.effects) {
+      if (!effect.is(setRunHighlight)) continue;
+      if (!effect.value) return Decoration.none;
+      const marks = [];
+      for (let line = effect.value.from; line <= Math.min(effect.value.to, tr.state.doc.lines); line++) {
+        marks.push(runHighlightLine.range(tr.state.doc.line(line).from));
+      }
+      next = Decoration.set(marks);
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 class RunMarker extends GutterMarker {
   constructor(
     private readonly line: number,
@@ -72,7 +99,12 @@ class RunMarker extends GutterMarker {
     return other.line === this.line && other.config === this.config;
   }
 
-  toDOM() {
+  toDOM(view: EditorView) {
+    const highlight = (kind: "run" | "until" | null) => {
+      const range = kind && this.config.rangeFor ? this.config.rangeFor(this.line, kind) : null;
+      view.dispatch({ effects: setRunHighlight.of(range) });
+    };
+
     const wrap = document.createElement("div");
     wrap.className = styles.runControls;
 
@@ -83,6 +115,8 @@ class RunMarker extends GutterMarker {
     play.setAttribute("aria-label", play.title);
     play.append(iconElement("play", 12));
     play.onmousedown = (event) => event.preventDefault();
+    play.onmouseenter = () => highlight("run");
+    play.onmouseleave = () => highlight(null);
     play.onclick = () => this.config.onRun(this.line);
 
     const menu = document.createElement("button");
@@ -92,6 +126,8 @@ class RunMarker extends GutterMarker {
     menu.setAttribute("aria-label", menu.title);
     menu.append(iconElement("chevronDown", 12));
     menu.onmousedown = (event) => event.preventDefault();
+    menu.onmouseenter = () => highlight("until");
+    menu.onmouseleave = () => highlight(null);
     menu.onclick = (event) => {
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
       this.config.onMenu(this.line, rect.left, rect.bottom);
@@ -104,15 +140,18 @@ class RunMarker extends GutterMarker {
 
 function runGutterExtension(config?: EditorRunGutter) {
   if (!config) return [];
-  return gutter({
-    class: styles.runGutter,
-    markers: (view) => {
-      const marks = config.lines
-        .filter((line) => line >= 1 && line <= view.state.doc.lines)
-        .map((line) => new RunMarker(line, config).range(view.state.doc.line(line).from));
-      return RangeSet.of(marks, true);
-    },
-  });
+  return [
+    runHighlightField,
+    gutter({
+      class: styles.runGutter,
+      markers: (view) => {
+        const marks = config.lines
+          .filter((line) => line >= 1 && line <= view.state.doc.lines)
+          .map((line) => new RunMarker(line, config).range(view.state.doc.line(line).from));
+        return RangeSet.of(marks, true);
+      },
+    }),
+  ];
 }
 
 function lintExtension(problems?: EditorProblem[]) {
