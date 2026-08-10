@@ -76,6 +76,11 @@
   flex-shrink: 0;
 }
 
+.filterField {
+  flex: 1;
+  min-width: 0;
+}
+
 .filterCount {
   font-size: var(--text-xs);
   color: var(--text-muted);

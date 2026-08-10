@@ -160,6 +160,7 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
       {capture ? (
         <div className={styles.filter}>
           <TextField
+            className={styles.filterField}
             placeholder="Filter elements by id, text or role…"
             value={filter}
             icon="search"

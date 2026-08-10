@@ -10,10 +10,12 @@
   color: var(--text-secondary);
 }
 
+/* Fills its container, like any other form control. */
 .wrapper {
   position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
 }
 
 .icon {
