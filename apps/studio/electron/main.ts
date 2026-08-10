@@ -3,8 +3,10 @@ import path from "node:path";
 
 import { registerIpcHandlers } from "./ipc";
 import { installOpenProjectMenuItem } from "./menu";
+import { startMcpServer, stopMcpServer } from "./services/mcp/server";
 import { getMainWindow, setMainWindow } from "./mainWindow";
 import { disposeAllDeviceStreams } from "./services/device/deviceService";
+import { releaseAllReservations } from "./services/device/reservations";
 import { stopAllLogs } from "./services/logs/logsService";
 import { initUpdater } from "./services/updater/updaterService";
 import { fixProcessPath } from "./shellEnv";
@@ -70,6 +72,11 @@ if (!app.requestSingleInstanceLock()) {
     await fixProcessPath();
     registerIpcHandlers();
     installOpenProjectMenuItem();
+    // Agents reach the scene graph through this; a failure here must not stop
+    // the app from launching.
+    await startMcpServer().catch((err: unknown) => {
+      console.error("[studio] MCP server failed to start:", err);
+    });
     createWindow();
     if (!isDev) initUpdater();
 
@@ -93,4 +100,7 @@ process.on("unhandledRejection", (err) => console.error("[studio] unhandled reje
 app.on("before-quit", () => {
   disposeAllDeviceStreams();
   stopAllLogs();
+  stopMcpServer();
+  // Quitting shouldn't leave a device claimed against a PID that's gone.
+  void releaseAllReservations();
 });

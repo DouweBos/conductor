@@ -197,10 +197,13 @@ export async function devicePool(
         }
       }
 
-      // A specific device when asked for, else any free one.
+      // A specific device when asked for, else any free one. Re-claiming a
+      // device you already hold succeeds — an owner running two things against
+      // one device isn't a conflict, and it keeps the call idempotent.
+      const claimable = (e: PoolEntry) => !e.acquiredBy || e.acquiredBy === owner;
       const free = wantedDevice
-        ? state.devices.find((e) => e.deviceId === wantedDevice && !e.acquiredBy)
-        : state.devices.find((e) => allDevices.includes(e.deviceId) && !e.acquiredBy);
+        ? state.devices.find((e) => e.deviceId === wantedDevice && claimable(e))
+        : state.devices.find((e) => allDevices.includes(e.deviceId) && claimable(e));
       if (!free) return null;
 
       free.acquiredBy = owner;

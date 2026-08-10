@@ -14,7 +14,8 @@ import { which } from "../util/exec";
 import { ClaudeAgent } from "./claudeAgent";
 import { buildAgentSystemPrompt } from "./systemPrompt";
 import type { DeviceInfo } from "../../../app/lib/types";
-import { acquireDevice, listDevices, releaseDevice } from "../conductor/conductorService";
+import { listDevices } from "../conductor/conductorService";
+import { endReservation, reserveDevice } from "../device/reservations";
 
 interface AgentSession {
   agent: ClaudeAgent;
@@ -54,12 +55,7 @@ export async function startAgent(deviceId?: string, autoApprove?: boolean): Prom
     }
     // Claim the device for the life of this agent. Two agents driving one
     // device produce nonsense results, so refuse to start rather than race.
-    if (!(await acquireDevice(deviceId))) {
-      throw new Error(
-        `${device?.name ?? deviceId} is already reserved by another agent. ` +
-          "Pick a different device, or wait for that run to finish.",
-      );
-    }
+    await reserveDevice(deviceId, `the agent on ${device?.name ?? deviceId}`);
   }
 
   agentSeq += 1;
@@ -96,7 +92,7 @@ export async function startAgent(deviceId?: string, autoApprove?: boolean): Prom
     broadcastToRenderers(`agent:exit:${agentId}`, { code });
     sessions.delete(agentId);
     // However the agent ended, the device goes back to the pool.
-    if (deviceId) void releaseDevice(deviceId).then(() => broadcastToRenderers("devices:pool", {}));
+    if (deviceId) void endReservation(deviceId);
   });
 
   sessions.set(agentId, agent);

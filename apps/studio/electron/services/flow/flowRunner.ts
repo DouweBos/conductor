@@ -19,6 +19,7 @@ import { appState } from "../../state";
 import { captureUi, runCommandLine } from "../conductor/conductorService";
 import { getProjectInfo } from "../file/fileService";
 import { detectConductor, detectMaestro, resolveConductor } from "../maestro/maestroService";
+import { endReservation, reserveDevice } from "../device/reservations";
 import { artifactDirFor, recordRun } from "./history";
 
 const processes = new Map<string, ChildProcess>();
@@ -269,12 +270,21 @@ interface LaunchArgs {
 }
 
 async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
+  // Claim the device before anything spawns: a run sharing a device with another
+  // agent tests whatever that agent happened to leave on screen. Every entry
+  // point funnels through here, so this covers Run, Run all and per-step runs.
+  if (spec.deviceId) await reserveDevice(spec.deviceId, `running ${spec.flowPath}`);
+
   let bin = spec.bin;
   let prefix: string[] = [];
   let env = process.env;
   if (bin === "__conductor__") {
     const resolved = await resolveConductor();
-    if (!resolved) throw new Error("Neither maestro nor conductor is available to run flows.");
+    if (!resolved) {
+      // Nothing will spawn, so hand the device straight back.
+      if (spec.deviceId) await endReservation(spec.deviceId);
+      throw new Error("Neither maestro nor conductor is available to run flows.");
+    }
     bin = resolved.bin;
     prefix = resolved.prefixArgs;
     env = resolved.env;
@@ -387,6 +397,7 @@ function finish(runId: string, status: FlowRun["status"], spec: LaunchArgs): voi
 }
 
 function cleanup(spec: LaunchArgs): void {
+  if (spec.deviceId) void endReservation(spec.deviceId);
   if (spec.cleanupDir) {
     try {
       rmSync(spec.cleanupDir, { recursive: true, force: true });

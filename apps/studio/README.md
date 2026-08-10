@@ -104,6 +104,11 @@ Studio prefers the system-installed **`maestro`** binary (`maestro test`) and
 falls back to **`conductor run-flow`** when maestro isn't on `PATH`. The console
 labels which engine ran. (Conductor's flow YAML is a subset of Maestro's.)
 
+Every run — and every agent session — **reserves its device** in conductor's
+shared pool first, so a second agent can't tap through the app mid-test. The
+claim is handed back however the run ends, and a run on a device somebody else
+holds is refused rather than raced.
+
 - **Run** the open flow, **Run selection** (the highlighted steps, inline), and
   **Run all** (the flows folder — expanded to one run per flow on the conductor
   engine, which takes a single file at a time).
