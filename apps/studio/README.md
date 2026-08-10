@@ -25,8 +25,8 @@ Set `CONDUCTOR_BIN` to point at a specific conductor CLI; otherwise Studio uses
 ## 1. The Maestro workbench
 
 A three-column workbench: flow tree, editor, device. Every divider is draggable
-— the sidebar and device columns horizontally, the console vertically — and the
-sizes are remembered between sessions.
+— the sidebar and device columns horizontally, the console and the device
+panel's inspector vertically — and the sizes are remembered between sessions.
 
 ### Flow tree
 

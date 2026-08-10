@@ -3,6 +3,7 @@ import {
   IconButton,
   SegmentedControl,
   Select,
+  SplitPane,
   StatusPill,
   Toolbar,
   ToolbarSpacer,
@@ -176,18 +177,30 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
       </Toolbar>
       ) : null}
       {error && !streaming ? <div className={styles.error}>{error}</div> : null}
-      <div className={styles.stream}>
-        <DeviceStream deviceId={streaming ? selectedId : null} />
-      </div>
       {showInspector ? (
-        <div className={styles.inspector}>
-          {mode === "inspect" && capture ? (
-            <CommandSuggestions capture={capture} platform={device?.platform ?? "ios"} />
-          ) : (
-            <Inspector deviceId={selectedId} />
-          )}
+        <SplitPane
+          direction="vertical"
+          initialSizes={[0, 260]}
+          flexIndex={0}
+          minSize={120}
+          storageKey="inspector"
+        >
+          <div className={styles.stream}>
+            <DeviceStream deviceId={streaming ? selectedId : null} />
+          </div>
+          <div className={styles.inspector}>
+            {mode === "inspect" && capture ? (
+              <CommandSuggestions capture={capture} platform={device?.platform ?? "ios"} />
+            ) : (
+              <Inspector deviceId={selectedId} />
+            )}
+          </div>
+        </SplitPane>
+      ) : (
+        <div className={styles.stream}>
+          <DeviceStream deviceId={streaming ? selectedId : null} />
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
