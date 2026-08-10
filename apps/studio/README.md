@@ -167,7 +167,10 @@ Two modes:
   then a percentage coordinate. Coordinates only appear for tap-like commands,
   since an assertion can't match a point. On tvOS you get the remote keys
   instead, because `tap-on` isn't supported there at all. Picking in the
-  inspector tree and picking on the stream are the same selection.
+  inspector tree and picking on the stream are the same selection. The tree has
+  a filter box — a capture runs to hundreds of nodes, so matching on id, text or
+  role is the only way through it; matches keep the ancestors that lead to them
+  so the hierarchy still reads.
 
 ## 2. Agentic test writing
 

@@ -4,6 +4,7 @@ import {
   Select,
   Spinner,
   StatusPill,
+  TextField,
   TreeView,
   type TreeNode,
 } from "@conductor/studio-ui";
@@ -25,6 +26,28 @@ import {
 } from "../../stores/inspectStore";
 import { SceneGraphDialog } from "./SceneGraphDialog";
 import styles from "./Inspector.module.css";
+
+/** Text a search matches against: id, label, role, ref. */
+function haystack(el: CaptureElement): string {
+  return [el.identifier, el.text, el.role, el.ref].filter(Boolean).join(" ").toLowerCase();
+}
+
+/**
+ * Keep elements matching the query, and the ancestors that lead to them — a
+ * capture runs to hundreds of nodes, so the tree is only usable filtered.
+ */
+function filterTree(elements: CaptureElement[], needle: string): CaptureElement[] {
+  const out: CaptureElement[] = [];
+  for (const el of elements) {
+    const children = filterTree(el.children ?? [], needle);
+    if (children.length > 0 || haystack(el).includes(needle)) out.push({ ...el, children });
+  }
+  return out;
+}
+
+function countElements(elements: CaptureElement[]): number {
+  return elements.reduce((sum, el) => sum + 1 + countElements(el.children ?? []), 0);
+}
 
 function toNodes(elements: CaptureElement[]): TreeNode[] {
   return elements.map((el, i) => ({
@@ -85,10 +108,13 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
 
   const screenCount = graph?.nodes.length ?? 0;
 
-  const nodes = useMemo(
-    () => (capture ? toNodes(capture.root.children ?? []) : []),
-    [capture],
-  );
+  const [filter, setFilter] = useState("");
+  const matched = useMemo(() => {
+    const children = capture?.root.children ?? [];
+    const needle = filter.trim().toLowerCase();
+    return needle ? filterTree(children, needle) : children;
+  }, [capture, filter]);
+  const nodes = useMemo(() => toNodes(matched), [matched]);
 
   const selectedEl = capture && selectedRef ? findElement(capture.root, selectedRef) : null;
 
@@ -131,6 +157,19 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
           Capture UI
         </Button>
       </div>
+      {capture ? (
+        <div className={styles.filter}>
+          <TextField
+            placeholder="Filter elements by id, text or role…"
+            value={filter}
+            icon="search"
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          {filter.trim() ? (
+            <span className={styles.filterCount}>{countElements(matched)}</span>
+          ) : null}
+        </div>
+      ) : null}
       <div className={styles.body}>
         {loading ? (
           <div className={styles.center}>
@@ -145,7 +184,15 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
             description="Capture the UI to inspect the element hierarchy and generate commands."
           />
         ) : (
-          <TreeView nodes={nodes} selectedId={selectedRef} onSelect={setSelectedRef} expandAll />
+          nodes.length === 0 ? (
+            <EmptyState
+              icon="search"
+              title="No elements match"
+              description={`Nothing on screen matches “${filter}”.`}
+            />
+          ) : (
+            <TreeView nodes={nodes} selectedId={selectedRef} onSelect={setSelectedRef} expandAll />
+          )
         )}
       </div>
       {selectedEl ? (
