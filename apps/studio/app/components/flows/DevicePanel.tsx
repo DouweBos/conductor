@@ -158,20 +158,31 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
             />
         ) : null}
         {streaming && showRecord ? (
-          <IconButton
-            icon="dot"
-            label={recording ? "Stop recording" : "Record gestures into the open flow"}
-            active={recording}
+          <Button
+            size="sm"
+            variant={recording ? "primary" : "ghost"}
+            icon="record"
             onClick={toggleRecording}
-          />
+            title={
+              recording
+                ? "Stop recording"
+                : "Append your taps and swipes to the open flow as Maestro steps"
+            }
+          >
+            {recording ? "Stop" : "Record"}
+          </Button>
         ) : null}
         {recording && showRecord ? (
-          <IconButton
+          <Button
+            size="sm"
+            variant="secondary"
             icon="check"
-            label="Record an assertion for this screen"
             disabled={!selectedId}
             onClick={() => selectedId && void recordAssertion(selectedId)}
-          />
+            title="Append an assertVisible for what's on screen now"
+          >
+            Assert
+          </Button>
         ) : null}
         {recording && showRecord ? <StatusPill tone="error" pulse>REC</StatusPill> : null}
       </Toolbar>

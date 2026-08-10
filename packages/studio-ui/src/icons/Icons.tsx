@@ -30,7 +30,8 @@ export type IconName =
   | "settings"
   | "tap"
   | "flow"
-  | "dot";
+  | "dot"
+  | "record";
 
 const PATHS: Record<IconName, string> = {
   file: "M7 3h7l5 5v13H7zM14 3v5h5",
@@ -58,10 +59,13 @@ const PATHS: Record<IconName, string> = {
   tap: "M9 4v9M9 9l2 8 1.5-1 2 3 2-1-2-3 2-1z",
   flow: "M6 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM18 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM8 7h6a2 2 0 0 1 2 2v6",
   dot: "M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
+  // A record button reads as a solid circle; `dot` is the 4px list bullet.
+  record: "M12 5.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z",
 };
 
 const FILLED: Partial<Record<IconName, boolean>> = {
   play: true,
+  record: true,
   stop: true,
   dot: true,
 };
