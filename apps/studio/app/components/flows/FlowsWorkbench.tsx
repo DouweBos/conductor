@@ -1,3 +1,4 @@
+import { SplitPane } from "@conductor/studio-ui";
 import { useEffect } from "react";
 
 import { useRoute } from "../../lib/router";
@@ -23,7 +24,13 @@ export function FlowsWorkbench() {
   }, []);
 
   return (
-    <div className={styles.workbench}>
+    <SplitPane
+      className={styles.workbench}
+      initialSizes={[260, 0, 400]}
+      flexIndex={1}
+      minSize={180}
+      storageKey="workbench"
+    >
       <div className={styles.sidebar}>
         <FlowSidebar activePath={activePath} />
       </div>
@@ -33,6 +40,6 @@ export function FlowsWorkbench() {
       <div className={styles.device}>
         <DevicePanel />
       </div>
-    </div>
+    </SplitPane>
   );
 }

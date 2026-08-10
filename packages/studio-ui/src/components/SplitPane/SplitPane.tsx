@@ -1,10 +1,4 @@
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import styles from "./SplitPane.module.css";
 
@@ -12,52 +6,99 @@ export interface SplitPaneProps {
   /** Panels to lay out. Two or more; N-1 draggable gutters are inserted. */
   children: ReactNode[];
   direction?: "horizontal" | "vertical";
-  /** Initial size (px) of every panel except the last, which flexes. */
+  /** Size (px) of each panel. The entry for {@link flexIndex} is ignored. */
   initialSizes?: number[];
+  /** Which panel absorbs the leftover space. Defaults to the last. */
+  flexIndex?: number;
   minSize?: number;
+  /** Remembers the sizes across sessions when set. */
+  storageKey?: string;
   className?: string;
+}
+
+function loadSizes(key: string | undefined, fallback: number[]): number[] {
+  if (!key) return fallback;
+  try {
+    const raw = window.localStorage.getItem(`splitpane:${key}`);
+    const parsed = raw ? (JSON.parse(raw) as number[]) : null;
+    return Array.isArray(parsed) && parsed.length === fallback.length ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export function SplitPane({
   children,
   direction = "horizontal",
   initialSizes,
+  flexIndex,
   minSize = 120,
+  storageKey,
   className,
 }: SplitPaneProps) {
-  const panels = children.filter((c) => c != null);
-  const [sizes, setSizes] = useState<number[]>(
-    () => initialSizes ?? panels.slice(0, -1).map(() => 240),
+  const panels = children.filter((child) => child != null);
+  const flex = flexIndex ?? panels.length - 1;
+  const [sizes, setSizes] = useState<number[]>(() =>
+    loadSizes(storageKey, initialSizes ?? panels.map(() => 240)),
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const dragIndex = useRef<number | null>(null);
+  const sizesRef = useRef(sizes);
+  sizesRef.current = sizes;
 
   const horizontal = direction === "horizontal";
 
   const onMove = useCallback(
     (clientPos: number) => {
-      const idx = dragIndex.current;
-      if (idx == null || !containerRef.current) return;
+      const gutter = dragIndex.current;
+      if (gutter == null || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const origin = horizontal ? rect.left : rect.top;
-      const before = sizes.slice(0, idx).reduce((a, b) => a + b, 0);
-      const next = Math.max(minSize, clientPos - origin - before);
+      const start = horizontal ? rect.left : rect.top;
+      const total = horizontal ? rect.width : rect.height;
+      const current = sizesRef.current;
+      // A gutter before the flexing panel resizes the panel on its left; one
+      // after it resizes the panel on its right. Either way the flexing panel
+      // takes up the slack.
+      const target = gutter < flex ? gutter : gutter + 1;
+      const fixed = (from: number, to: number) =>
+        current.slice(from, to).reduce((sum, size, i) => (from + i === flex ? sum : sum + size), 0);
+
+      let next: number;
+      let room: number;
+      if (target < flex) {
+        const before = fixed(0, target);
+        next = clientPos - start - before;
+        room = total - before - fixed(target + 1, current.length);
+      } else {
+        const after = fixed(target + 1, current.length);
+        next = start + total - clientPos - after;
+        room = total - after - fixed(0, target);
+      }
+
+      const clamped = Math.max(minSize, Math.min(next, room - minSize));
       setSizes((prev) => {
         const copy = [...prev];
-        copy[idx] = next;
+        copy[target] = clamped;
         return copy;
       });
     },
-    [horizontal, minSize, sizes],
+    [flex, horizontal, minSize],
   );
 
   useEffect(() => {
-    const handleMouse = (e: MouseEvent) =>
-      onMove(horizontal ? e.clientX : e.clientY);
+    const handleMouse = (event: MouseEvent) => onMove(horizontal ? event.clientX : event.clientY);
     const stop = () => {
+      if (dragIndex.current == null) return;
       dragIndex.current = null;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      if (storageKey) {
+        try {
+          window.localStorage.setItem(`splitpane:${storageKey}`, JSON.stringify(sizesRef.current));
+        } catch {
+          // Layout memory is a nicety; never break resizing over it.
+        }
+      }
     };
     window.addEventListener("mousemove", handleMouse);
     window.addEventListener("mouseup", stop);
@@ -65,10 +106,10 @@ export function SplitPane({
       window.removeEventListener("mousemove", handleMouse);
       window.removeEventListener("mouseup", stop);
     };
-  }, [horizontal, onMove]);
+  }, [horizontal, onMove, storageKey]);
 
-  const startDrag = (idx: number) => {
-    dragIndex.current = idx;
+  const startDrag = (index: number) => {
+    dragIndex.current = index;
     document.body.style.cursor = horizontal ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
   };
@@ -79,23 +120,23 @@ export function SplitPane({
 
   return (
     <div ref={containerRef} className={cls}>
-      {panels.map((panel, i) => {
-        const isLast = i === panels.length - 1;
-        const size = sizes[i];
-        return (
-          <div key={i} className={styles.pane} style={isLast ? undefined : sizeStyle(horizontal, size)}>
-            {panel}
-            {!isLast && (
-              <div
-                className={styles.gutter}
-                role="separator"
-                aria-orientation={horizontal ? "vertical" : "horizontal"}
-                onMouseDown={() => startDrag(i)}
-              />
-            )}
-          </div>
-        );
-      })}
+      {panels.map((panel, index) => (
+        <div
+          key={index}
+          className={[styles.pane, index === flex ? styles.flexing : ""].join(" ")}
+          style={index === flex ? undefined : sizeStyle(horizontal, sizes[index] ?? minSize)}
+        >
+          {panel}
+          {index < panels.length - 1 && (
+            <div
+              className={styles.gutter}
+              role="separator"
+              aria-orientation={horizontal ? "vertical" : "horizontal"}
+              onMouseDown={() => startDrag(index)}
+            />
+          )}
+        </div>
+      ))}
     </div>
   );
 }

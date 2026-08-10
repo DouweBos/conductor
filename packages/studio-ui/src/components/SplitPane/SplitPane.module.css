@@ -22,7 +22,7 @@
   flex-direction: column;
 }
 
-.pane:last-child {
+.flexing {
   flex: 1 1 0;
 }
 

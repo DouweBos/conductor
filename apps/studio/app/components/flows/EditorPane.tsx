@@ -6,6 +6,7 @@ import {
   EmptyState,
   IconButton,
   Select,
+  SplitPane,
   Spinner,
   StatusPill,
   Tabs,
@@ -286,16 +287,18 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             </StatusPill>
           ) : null}
         </Toolbar>
-        <div className={styles.editor}>
-          <EmptyState
-            icon="code"
-            title="No flow open"
-            description="Select a flow from the sidebar to edit it, or run all flows."
-          />
-        </div>
-        <div className={styles.console}>
-          <RunConsole />
-        </div>
+        <SplitPane direction="vertical" initialSizes={[0, 240]} flexIndex={0} minSize={120} storageKey="console">
+          <div className={styles.editor}>
+            <EmptyState
+              icon="code"
+              title="No flow open"
+              description="Select a flow from the sidebar to edit it, or run all flows."
+            />
+          </div>
+          <div className={styles.console}>
+            <RunConsole />
+          </div>
+        </SplitPane>
       </div>
     );
   }
@@ -330,29 +333,31 @@ export function EditorPane({ activePath }: { activePath?: string }) {
           </StatusPill>
         ) : null}
       </Toolbar>
-      <div className={styles.editor}>
-        {buffer?.loading ? (
-          <div className={styles.loading}>
-            <Spinner label="Opening…" />
-          </div>
-        ) : (
-          <Editor
-            value={buffer?.content ?? ""}
-            language={languageFor(activePath)}
-            theme={theme}
-            completions={languageFor(activePath) === "yaml" ? completions : undefined}
-            runGutter={languageFor(activePath) === "yaml" ? runGutter : undefined}
-            onFollowLine={followLine}
-            problems={problems.map((p) => ({ line: p.line, severity: p.severity, message: p.message }))}
-            registerApi={(api) => (editorApi.current = api)}
-            onChange={(v) => setBufferContent(activePath, v)}
-            onSave={() => void saveFile(activePath)}
-          />
-        )}
-      </div>
-      <div className={styles.console}>
-        <RunConsole />
-      </div>
+      <SplitPane direction="vertical" initialSizes={[0, 240]} flexIndex={0} minSize={120} storageKey="console">
+        <div className={styles.editor}>
+          {buffer?.loading ? (
+            <div className={styles.loading}>
+              <Spinner label="Opening…" />
+            </div>
+          ) : (
+            <Editor
+              value={buffer?.content ?? ""}
+              language={languageFor(activePath)}
+              theme={theme}
+              completions={languageFor(activePath) === "yaml" ? completions : undefined}
+              runGutter={languageFor(activePath) === "yaml" ? runGutter : undefined}
+              onFollowLine={followLine}
+              problems={problems.map((p) => ({ line: p.line, severity: p.severity, message: p.message }))}
+              registerApi={(api) => (editorApi.current = api)}
+              onChange={(v) => setBufferContent(activePath, v)}
+              onSave={() => void saveFile(activePath)}
+            />
+          )}
+        </div>
+        <div className={styles.console}>
+          <RunConsole />
+        </div>
+      </SplitPane>
 
       {stepMenu ? (
         <ContextMenu
