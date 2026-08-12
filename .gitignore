@@ -15,6 +15,9 @@ packages/cli/drivers/
 *.profraw
 *.profdata
 
+# Studio's own per-project artefacts (scene graphs, case results)
+.conductor-studio/
+
 # Conductor Studio build artifacts
 apps/studio/dist/
 apps/studio/dist-electron/

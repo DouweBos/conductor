@@ -48,6 +48,7 @@ export {
   Matrix,
   type MatrixProps,
   type MatrixColumn,
+  type MatrixGroup,
   type MatrixRow,
 } from "./components/Matrix/Matrix";
 export { DeviceFrame, type DeviceFrameProps } from "./components/DeviceFrame/DeviceFrame";

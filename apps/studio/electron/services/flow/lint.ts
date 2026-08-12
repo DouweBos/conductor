@@ -40,7 +40,7 @@ export async function lintProject(): Promise<LintProblem[]> {
     }
     problems.push(...lintFlow(file.path, content, catalog, known, calledFlows.has(file.path)));
   }
-  problems.push(...(await lintCases(known)));
+  problems.push(...(await lintCases(known, calledFlows)));
   return problems;
 }
 
@@ -189,7 +189,7 @@ function missingParams(
 }
 
 /** Cases pointing nowhere, and flows no case covers. */
-async function lintCases(known: Set<string>): Promise<LintProblem[]> {
+async function lintCases(known: Set<string>, called: Set<string>): Promise<LintProblem[]> {
   const problems: LintProblem[] = [];
   let cases;
   try {
@@ -198,16 +198,43 @@ async function lintCases(known: Set<string>): Promise<LintProblem[]> {
     return problems;
   }
   const ids = new Set<string>();
+  const covered = new Set<string>();
   for (const testCase of cases) {
-    if (ids.has(testCase.id)) {
-      problems.push(problem(testCase.filePath, 1, "error", `Duplicate case id "${testCase.id}".`, ""));
+    // altIds share the id space: a matrix id may only name one case.
+    for (const id of [testCase.id, ...(testCase.altIds ?? [])]) {
+      if (ids.has(id)) {
+        problems.push(problem(testCase.filePath, 1, "error", `Duplicate case id "${id}".`, ""));
+      }
+      ids.add(id);
     }
-    ids.add(testCase.id);
-    if (testCase.flow && !known.has(testCase.flow)) {
+    // A step's page object is as load-bearing as the flow link: it is what a
+    // scaffold writes and what coverage is measured against.
+    for (const step of testCase.steps ?? []) {
+      if (step.pom && !known.has(step.pom)) {
+        problems.push(
+          problem(testCase.filePath, 1, "error", `Step names a missing page object: ${step.pom}.`, ""),
+        );
+      }
+    }
+    const flows = [testCase.flow, ...Object.values(testCase.flows ?? {})].filter(Boolean);
+    for (const flow of flows as string[]) {
+      covered.add(flow);
+      if (known.has(flow)) continue;
       problems.push(
-        problem(testCase.filePath, 1, "error", `Case points at a missing flow: ${testCase.flow}.`, ""),
+        problem(testCase.filePath, 1, "error", `Case points at a missing flow: ${flow}.`, ""),
       );
     }
+  }
+
+  // The other direction: a flow nobody traced back to a case is coverage the
+  // matrix can't see. Only leaf flows count — page objects and commands are
+  // called by flows, never by cases. Silent in projects that keep no cases.
+  if (!cases.length) return problems;
+  for (const flow of known) {
+    if (covered.has(flow) || called.has(flow)) continue;
+    problems.push(
+      problem(flow, 1, "warning", "No test case covers this flow — link it from a case.", ""),
+    );
   }
   return problems;
 }

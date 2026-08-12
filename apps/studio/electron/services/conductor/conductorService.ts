@@ -72,11 +72,13 @@ function normalizeDevice(raw: unknown): DeviceInfo | null {
     : rawState.includes("shut") || rawState.includes("available")
       ? "shutdown"
       : "unknown";
+  const formFactor = r.formFactor === "tv" || r.formFactor === "handset" ? r.formFactor : undefined;
   return {
     id,
     name: String(r.name ?? r.model ?? id),
     platform,
     state,
+    ...(formFactor ? { formFactor } : {}),
   };
 }
 

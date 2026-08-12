@@ -1,10 +1,20 @@
-import { ipcMain } from "electron";
+import { dialog, ipcMain, shell } from "electron";
 
 import { appState } from "./state";
 
 import type {
   AgentStartResult,
   CaseMatrix,
+  CasePreview,
+  CaseResult,
+  CaseStats,
+  ImportResult,
+  PlanRun,
+  PlanRunEntry,
+  StepCoverage,
+  TestCaseInput,
+  TestPlan,
+  TestPlanInput,
   CaptureUiResult,
   CommandResult,
   DeviceInfo,
@@ -12,6 +22,7 @@ import type {
   EnvProfile,
   FileEntry,
   FlowCatalog,
+  FlowCatalogEntry,
   FlowReference,
   FlowSearchHit,
   LintProblem,
@@ -26,6 +37,8 @@ import type {
   SceneGraph,
   SceneGraphSummary,
   TestCase,
+  TestReport,
+  TestSession,
   ThemePreference,
   UpdaterState,
   VideoConfig,
@@ -38,8 +51,33 @@ import {
   startAgent,
   stopAgent,
 } from "./services/agent/agentService";
-import { buildMatrix, listCases, syncCases } from "./services/cases/casesService";
-import { listWorkflows, triggerWorkflow } from "./services/cases/ciService";
+import { buildMatrix, deleteCase, listCases, saveCase } from "./services/cases/casesService";
+import { exportCsv, importCsv, previewCsv, type ImportOptions } from "./services/cases/importService";
+import {
+  cancelPlanRun,
+  deletePlan,
+  listPlanRuns,
+  listPlans,
+  planEntries,
+  savePlan,
+  startPlanRun,
+} from "./services/cases/plansService";
+import { listResults, recordResult, statsFor } from "./services/cases/resultsService";
+import { automationBrief } from "./services/cases/automationBrief";
+import {
+  listStepPoms,
+  readFlowText,
+  scaffoldFlow,
+  stepCoverage,
+  type ScaffoldOptions,
+} from "./services/cases/pomBridge";
+import {
+  deleteReport,
+  listReports,
+  readReportHtml,
+  readReportMarkdown,
+} from "./services/report/reportService";
+import { clearTestSession, getTestSession } from "./services/report/testSession";
 import {
   appFingerprint,
   captureUi,
@@ -177,9 +215,12 @@ export function registerIpcHandlers(): void {
 
   // ── Flow running ──
   handle<void, MaestroStatus>("maestro_status", () => getMaestroStatus());
-  handle<{ path: string; deviceId?: string; options?: RunOptions }, { runId: string }>(
+  handle<
+    { path: string; deviceId?: string; options?: RunOptions; platform?: string },
+    { runId: string; deviceId?: string }
+  >(
     "flow_run",
-    (a) => runFlow(a.path, a.deviceId, a.options),
+    (a) => runFlow(a.path, a.deviceId, a.options, a.platform),
   );
   handle<{ dir?: string; deviceId?: string; options?: RunOptions }, { runId: string }>(
     "flow_run_folder",
@@ -217,11 +258,63 @@ export function registerIpcHandlers(): void {
   // ── Test case management ──
   handle<void, TestCase[]>("cases_list", () => listCases());
   handle<{ dimension?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.dimension));
-  handle<{ dimension?: string }, CaseMatrix>("cases_sync_ci", (a) => syncCases(a?.dimension));
-  handle<void, string[]>("ci_workflows", () => listWorkflows());
-  handle<{ workflow: string; ref?: string }, void>("ci_trigger", (a) =>
-    triggerWorkflow(a.workflow, a.ref),
+  handle<{ input: TestCaseInput }, TestCase>("case_save", (a) => saveCase(a.input));
+  handle<{ id: string }, void>("case_delete", (a) => deleteCase(a.id));
+  handle<void, CaseResult[]>("cases_results", () => listResults());
+  handle<{ caseId: string }, CaseStats>("case_stats", async (a) =>
+    statsFor(a.caseId, await listResults()),
   );
+  handle<{ result: Omit<CaseResult, "id" | "at"> }, CaseResult>("case_record_result", (a) =>
+    recordResult(a.result),
+  );
+  handle<void, string | null>("cases_pick_csv", async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: "Import test cases",
+      message: "Choose a CSV exported from your test management tool",
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+      properties: ["openFile"],
+    });
+    return canceled ? null : (filePaths[0] ?? null);
+  });
+  handle<void, string | null>("cases_pick_export", async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: "Export test cases",
+      defaultPath: "test-cases.csv",
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
+    return canceled ? null : (filePath ?? null);
+  });
+  handle<{ file: string }, CasePreview>("cases_import_preview", (a) => previewCsv(a.file));
+  handle<{ options: ImportOptions }, ImportResult>("cases_import", (a) => importCsv(a.options));
+  handle<{ file: string }, number>("cases_export", (a) => exportCsv(a.file));
+
+  // ── Test plans ──
+  handle<void, TestPlan[]>("plans_list", () => listPlans());
+  handle<{ plan: TestPlanInput }, TestPlan[]>("plan_save", (a) => savePlan(a.plan));
+  handle<{ id: string }, TestPlan[]>("plan_delete", (a) => deletePlan(a.id));
+  handle<{ id: string }, PlanRunEntry[]>("plan_preview", async (a) => {
+    const plan = (await listPlans()).find((p) => p.id === a.id);
+    return plan ? planEntries(plan, await listCases()) : [];
+  });
+  handle<{ id: string; deviceId?: string }, PlanRun>("plan_run", (a) =>
+    startPlanRun(a.id, a.deviceId),
+  );
+  handle<{ id: string }, void>("plan_run_cancel", (a) => cancelPlanRun(a.id));
+  handle<void, PlanRun[]>("plan_runs", () => listPlanRuns());
+
+  // ── Case ↔ flow (POM) bridge ──
+  handle<{ options: ScaffoldOptions }, { flow: string; todos: number }>("case_scaffold_flow", (a) =>
+    scaffoldFlow(a.options),
+  );
+  handle<{ caseId: string; column?: string }, StepCoverage>("case_step_coverage", (a) =>
+    stepCoverage(a.caseId, a.column),
+  );
+  handle<void, FlowCatalogEntry[]>("case_step_poms", () => listStepPoms());
+  handle<{ caseId: string; column?: string }, string>("case_automation_brief", (a) =>
+    automationBrief(a.caseId, a.column),
+  );
+  handle<{ flow: string }, string>("case_flow_text", (a) => readFlowText(a.flow));
+
 
   // ── Agentic writer ──
   handle<void, { available: boolean }>("agent_status", () => getAgentStatus());
@@ -248,6 +341,19 @@ export function registerIpcHandlers(): void {
   >("agent_permission_respond", (a) =>
     respondToAgentPermission(a.agentId, a.toolUseId, a.decision, a.toolName, a.allowAll),
   );
+
+  // ── Agentic test reports ──
+  handle<void, TestReport[]>("reports_list", () => listReports());
+  handle<{ id: string }, void>("report_delete", (a) => deleteReport(a.id));
+  handle<{ path: string }, void>("report_open", async (a) => {
+    const error = await shell.openPath(a.path);
+    if (error) throw new Error(error);
+  });
+  handle<{ path: string }, void>("report_reveal", (a) => shell.showItemInFolder(a.path));
+  handle<{ id: string }, string>("report_html", (a) => readReportHtml(a.id));
+  handle<{ id: string }, string>("report_markdown", (a) => readReportMarkdown(a.id));
+  handle<void, TestSession | null>("test_session", () => getTestSession());
+  handle<void, void>("test_session_clear", () => clearTestSession());
 
   // ── Settings / theme ──
   handle<void, ThemePreference>("theme_get", () => getTheme());

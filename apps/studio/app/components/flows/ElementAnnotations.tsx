@@ -1,7 +1,14 @@
 import { useMemo } from "react";
 
 import type { CaptureElement, CaptureUiResult } from "../../lib/types";
-import { elementsWithBounds, setHoveredRef, setSelectedRef, useHoveredRef, useSelectedRef } from "../../stores/inspectStore";
+import {
+  elementsWithBounds,
+  findElement,
+  setHoveredRef,
+  setSelectedRef,
+  useHoveredRef,
+  useSelectedRef,
+} from "../../stores/inspectStore";
 import styles from "./ElementAnnotations.module.css";
 
 /**
@@ -15,49 +22,45 @@ export function ElementAnnotations({ capture }: { capture: CaptureUiResult }) {
 
   // Largest first, so the smallest element ends up on top and wins the pointer.
   const elements = useMemo(() => elementsWithBounds(capture.root), [capture]);
+  const hovered = hoveredRef ? findElement(capture.root, hoveredRef) : null;
+  const selected = selectedRef ? findElement(capture.root, selectedRef) : null;
   if (!capture.width || !capture.height) return null;
 
   return (
     <div className={styles.layer}>
       {elements.map((el) => (
-        <Annotation
+        <button
           key={el.ref}
-          element={el}
-          screen={capture}
-          state={el.ref === selectedRef ? "selected" : el.ref === hoveredRef ? "hovered" : "idle"}
+          type="button"
+          className={styles.box}
+          style={frameStyle(el, capture)}
+          onPointerEnter={() => setHoveredRef(el.ref)}
+          onPointerLeave={() => setHoveredRef(null)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedRef(el.ref);
+          }}
+          aria-label={el.identifier || el.text || el.role || el.ref}
         />
       ))}
+      {/* Highlights live outside the hit boxes: a full-screen selection drawn
+          on top would otherwise swallow every click under it. */}
+      {selected?.bounds ? (
+        <div className={[styles.highlight, styles.selected].join(" ")} style={frameStyle(selected, capture)} />
+      ) : null}
+      {hovered?.bounds && hovered.ref !== selected?.ref ? (
+        <div className={styles.highlight} style={frameStyle(hovered, capture)} />
+      ) : null}
     </div>
   );
 }
 
-function Annotation({
-  element,
-  screen,
-  state,
-}: {
-  element: CaptureElement;
-  screen: CaptureUiResult;
-  state: "idle" | "hovered" | "selected";
-}) {
-  const b = element.bounds!;
-  return (
-    <button
-      type="button"
-      className={[styles.box, styles[state]].join(" ")}
-      style={{
-        left: `${(b.x / screen.width) * 100}%`,
-        top: `${(b.y / screen.height) * 100}%`,
-        width: `${(b.width / screen.width) * 100}%`,
-        height: `${(b.height / screen.height) * 100}%`,
-      }}
-      onPointerEnter={() => setHoveredRef(element.ref)}
-      onPointerLeave={() => setHoveredRef(null)}
-      onClick={(e) => {
-        e.stopPropagation();
-        setSelectedRef(element.ref);
-      }}
-      aria-label={element.identifier || element.text || element.role || element.ref}
-    />
-  );
+function frameStyle(el: CaptureElement, screen: CaptureUiResult): React.CSSProperties {
+  const b = el.bounds!;
+  return {
+    left: `${(b.x / screen.width) * 100}%`,
+    top: `${(b.y / screen.height) * 100}%`,
+    width: `${(b.width / screen.width) * 100}%`,
+    height: `${(b.height / screen.height) * 100}%`,
+  };
 }

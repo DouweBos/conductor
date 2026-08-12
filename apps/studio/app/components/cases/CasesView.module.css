@@ -46,16 +46,521 @@
   padding: var(--space-4) var(--space-6);
 }
 
-.ci {
+.filters {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  flex-wrap: wrap;
   padding: var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.count {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-left: var(--space-2);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+/* The thing you actually scan down a column. */
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.cell[data-tone="passed"] .dot { background: var(--success); }
+.cell[data-tone="failed"] .dot { background: var(--error); }
+.cell[data-tone="blocked"] .dot { background: var(--warning); }
+.cell[data-tone="running"] .dot { background: var(--accent); }
+.cell[data-tone="skipped"] .dot { background: var(--text-muted); }
+
+/* Automated but never executed: a ring, not a fill — there is no result here. */
+.cell[data-state="pending"] .dot {
+  background: transparent;
+  border: 1px solid var(--text-muted);
+}
+
+.cellLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  /* Text stays high-contrast in both themes and the dot carries the state.
+     The status colours only reach ~3:1 on the light background, so tinting
+     13px labels with them would trade legibility for decoration. */
+  color: var(--text-primary);
+}
+
+/* Everything without a verdict steps back one level — still readable, just not
+   competing with the rows that have a result. */
+.cell[data-state="pending"] .cellLabel,
+.cell[data-state="manual"] .cellLabel {
+  color: var(--text-secondary);
+}
+
+/* The dot doubles as the run button: same spot, same size, so the row doesn't
+   reflow when it turns into a play triangle. */
+.indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.indicator .dot {
+  position: absolute;
+}
+
+.playIcon {
+  position: absolute;
+  display: none;
+  color: var(--accent);
+}
+
+tr:hover .indicator .dot {
+  display: none;
+}
+
+tr:hover .playIcon {
+  display: block;
+}
+
+.indicator:hover .playIcon {
+  color: var(--accent-hover, var(--accent));
+  transform: scale(1.2);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot[data-legend="verdict"] { background: var(--success); }
+
+.dot[data-legend="pending"] {
+  background: transparent;
+  border: 1px solid var(--text-muted);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.detailIds {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.detailTitle {
+  margin: 2px 0 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.detailBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.flowRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.flowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.flowColumn {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.flowPath {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.flowActions {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.prose {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.steps {
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.tagRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.tagDim {
+  width: 72px;
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.tagValues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.detailActions {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.statRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.verdictRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.historyRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px 0;
+}
+
+.historyMeta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.planHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.link {
+  color: var(--accent-primary, var(--text-secondary));
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.textarea {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.importBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.mapGrid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mapRow {
+  display: grid;
+  grid-template-columns: 1fr 160px 1fr;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mapHeader {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.mapSample {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
-.ciNote {
+.wizardStep {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.wizardStepText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wizardStepAction {
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.wizardExpected {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* Teaches the cell vocabulary once, using the cells' own chrome. */
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* The device, beside the matrix: starting a case never means leaving it. */
+.deviceRail {
+  display: flex;
+  flex-direction: column;
+  width: 360px;
+  flex-shrink: 0;
+  min-height: 0;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.streamPane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 55%;
+  min-height: 0;
+}
+
+.streamHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.streamName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceStream {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+}
+
+/* The run takes the top half of the rail: every step of the test, not a
+   window onto the last few. The stream keeps the rest. */
+.runStatus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  flex: 1 1 45%;
+  min-height: 0;
+}
+
+.runProgress {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.runFlowPath {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.runSteps {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 calc(var(--space-2) * -1);
+  padding: 0 var(--space-2);
+}
+
+.outputToggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.runTail {
+  margin: 0;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
   color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* The column header doubles as "which device does this platform run on". */
+.colHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.colDevice {
+  max-width: 160px;
+  font-size: var(--text-xs);
 }

@@ -31,7 +31,7 @@ export async function listTags(): Promise<{ tag: string; count: number }[]> {
 }
 
 /** Keys of the header's `tags:` list. */
-function tagsOf(content: string): string[] {
+export function tagsOf(content: string): string[] {
   const header = content.split(/^---\s*$/m)[0] ?? "";
   const lines = header.split(/\r?\n/);
   const tags: string[] = [];

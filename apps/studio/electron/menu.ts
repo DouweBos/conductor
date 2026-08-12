@@ -7,7 +7,7 @@ import { pickProject } from "./services/file/fileService";
 // Project…, so ⌘O works like every other editor.
 export function installOpenProjectMenuItem(): void {
   const menu = Menu.getApplicationMenu();
-  const file = menu?.items.find((item) => item.role === "filemenu" || item.label === "File");
+  const file = menu?.items.find((item) => item.label === "File");
   if (!file?.submenu) return;
 
   file.submenu.insert(

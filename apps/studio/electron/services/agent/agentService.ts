@@ -8,6 +8,7 @@ import type {
   AgentStatus,
 } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
+import { appState } from "../../state";
 import { getProjectInfo } from "../file/fileService";
 import { getMcpAuthToken, getMcpPort } from "../mcp/server";
 import { which } from "../util/exec";
@@ -93,10 +94,13 @@ export async function startAgent(deviceId?: string, autoApprove?: boolean): Prom
     sessions.delete(agentId);
     // However the agent ended, the device goes back to the pool.
     if (deviceId) void endReservation(deviceId);
+    if (appState.agentDevice?.id === deviceId) appState.agentDevice = null;
   });
 
   sessions.set(agentId, agent);
   meta.set(agentId, { agent, deviceId: deviceId ?? null, status: "starting" });
+  // Reports stamp the device from here rather than trusting the model to retype it.
+  appState.agentDevice = device;
   agent.start();
   setStatus(agentId, "running");
   return { agentId };

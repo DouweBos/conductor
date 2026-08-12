@@ -18,6 +18,7 @@
 import path from 'path';
 import { runAll, TestSuite } from './runner.js';
 import { parser } from './parser.test.js';
+import { cases } from './cases.test.js';
 import { iosExec } from './executor-ios.test.js';
 import { androidExec } from './executor-android.test.js';
 import { fileBased } from './file-based.test.js';
@@ -80,7 +81,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, cdpDiscovery, snapshotRef, flowRecorder, vega, inputStreaming, videoStreaming, maestroParity, pathAliases];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, cdpDiscovery, snapshotRef, flowRecorder, vega, inputStreaming, videoStreaming, maestroParity, pathAliases, cases];
 
   if (device) {
     console.log(`\nDevice: ${device}`);

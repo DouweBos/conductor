@@ -10,6 +10,8 @@ export interface ResolvedBin {
   prefixArgs: string[];
   /** Where it was found, for display. */
   source: "path" | "workspace" | "env";
+  /** Env the CLI must run under — always pass this when spawning it. */
+  env: NodeJS.ProcessEnv;
 }
 
 let conductorCache: ResolvedBin | null = null;
@@ -25,19 +27,26 @@ export async function resolveConductor(): Promise<ResolvedBin | null> {
 
   const envBin = process.env.CONDUCTOR_BIN;
   if (envBin && existsSync(envBin)) {
-    conductorCache = { bin: envBin, prefixArgs: [], source: "env" };
+    conductorCache = { bin: envBin, prefixArgs: [], source: "env", env: process.env };
     return conductorCache;
   }
 
   const onPath = await which("conductor");
   if (onPath) {
-    conductorCache = { bin: "conductor", prefixArgs: [], source: "path" };
+    conductorCache = { bin: "conductor", prefixArgs: [], source: "path", env: process.env };
     return conductorCache;
   }
 
   const workspaceEntry = findWorkspaceConductor();
   if (workspaceEntry) {
-    conductorCache = { bin: process.execPath, prefixArgs: [workspaceEntry], source: "workspace" };
+    // process.execPath is Electron — without this it boots a second Electron
+    // app instead of running the CLI script under Node.
+    conductorCache = {
+      bin: process.execPath,
+      prefixArgs: [workspaceEntry],
+      source: "workspace",
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    };
     return conductorCache;
   }
 
@@ -59,7 +68,10 @@ function findWorkspaceConductor(): string | null {
 
 async function version(resolved: ResolvedBin): Promise<string | undefined> {
   try {
-    const res = await run(resolved.bin, [...resolved.prefixArgs, "--version"], { timeout: 8000 });
+    const res = await run(resolved.bin, [...resolved.prefixArgs, "--version"], {
+      timeout: 8000,
+      env: resolved.env,
+    });
     const out = (res.stdout || res.stderr).trim();
     return out || undefined;
   } catch {

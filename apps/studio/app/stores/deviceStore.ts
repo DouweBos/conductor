@@ -51,6 +51,22 @@ export function selectDevice(id: string): void {
   store.setState({ selectedId: id });
 }
 
+/**
+ * Follow a device a run chose for us: make sure it's in the list, select it and
+ * bring the stream up. Without this a run started with no device selected plays
+ * out on a screen Studio isn't watching.
+ */
+export async function followDevice(id: string): Promise<void> {
+  if (!store.getState().devices.some((d) => d.id === id)) await refreshDevices();
+  const already = store.getState();
+  if (already.selectedId === id && already.streaming) return;
+  if (already.streaming && already.selectedId && already.selectedId !== id) {
+    await disconnectSelectedDevice();
+  }
+  selectDevice(id);
+  await connectSelectedDevice();
+}
+
 export async function connectSelectedDevice(): Promise<void> {
   const device = getSelectedDevice();
   if (!device) return;

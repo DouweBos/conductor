@@ -129,7 +129,10 @@ holds is refused rather than raced.
 - A **Logs** tab streaming `conductor logs` for the connected device.
 - **Run changed** runs only the flows you touched against `main` (committed and
   working-tree alike).
-- **Run options** carry saved **profiles**, so the env a suite always needs
+- **Run options** live in the title bar, not in the open flow: env variables,
+  tags and the chosen profile belong to the session, so a single flow, a folder
+  run and a case run all carry the same setup, and they survive closing the last
+  tab. They carry saved **profiles**, so the env a suite always needs
   (`APP_ID`, platform) is picked rather than retyped; a **tag picker** built from
   the tags the flows declare; a **shard count** (`--shard-split` on maestro,
   `run-parallel` on conductor); and a **flakiness check** that runs one flow N
@@ -203,31 +206,218 @@ or a swipe — upserts a screen node keyed by a signature of the hierarchy, and 
 preceding action becomes a transition edge. It's persisted to
 `.conductor-studio/scenegraph.json` and fed into the agent's system prompt.
 
+### Agentic testing & reports
+
+The agent's other job is verifying a described behaviour — "check that adding a
+movie to the watchlist shows it on the Watchlist screen" — without writing a
+flow for it. It turns the sentence into a plan (preconditions, actions,
+expectations), drives the device, and proves each expectation with a structured
+check.
+
+**You watch the test, not the transcript.** The plan goes up as a live checklist
+beside the device the moment the agent declares it (`start_test_report`), and
+each expectation ticks over as it resolves (`record_expectation`) — pending,
+checking, ✓/✗ with the evidence line under it. The conversation below is the
+transcript; the checklist is the test.
+
+**Studio takes the evidence, the agent doesn't.** Recording an expectation
+captures the device there and then, and naming the element the check was about
+outlines it in that screenshot — so the report shows *"Remove from Watchlist"
+was visible* with the button ringed, not a screen the reader has to search.
+Nothing depends on the agent remembering to screenshot at the right moment.
+
+The run ends as a **report** on the Reports screen: a filmstrip of every
+captured moment, each expectation with the verbatim tool output that decided it
+and its outlined screenshot, the step timeline, and a PASS / FAIL / BLOCKED
+verdict. It opens **in Studio** (a sandboxed frame — the HTML is self-contained
+and script-free), with **Copy as Markdown** for a PR or an issue, plus the PDF
+and the raw folder when you want them. PDFs are printed by Electron's own
+Chromium, so there's no headless-browser dependency.
+
+**The report has to survive its own evidence.** Studio stamps the start/finish
+times and the device from what it knows, because a model asked for a timestamp
+invents one and an invented timestamp in an evidence document is worse than
+none. It then reconciles the verdict: a PASS over a failed expectation becomes a
+FAIL, and a PASS with nothing asserted becomes BLOCKED — the correction is
+printed at the top of the report and returned to the agent.
+
+It closes the loop with test cases. Handing a case to the agent (**Verify with
+the agent**, on the case detail) sends it the business rule and steps; the
+report it files records an execution on the matrix, so a case with no flow still
+gets a result. From a report you can send the agent back for a re-run or ask it
+to transcribe the run into a reusable flow.
+
+Reports live in `~/.conductor/studio/reports/<project>/<test>-<timestamp>/`
+alongside `run-log.json` and the screenshots — a run artefact, not something to
+commit.
+
 ## 3. Test case management
 
-Qase-inspired. Test cases are **git-tracked YAML files** under `test-cases/`,
-each mapping a user story to the Maestro flow that implements it and tagged by
-vertical / platform / product. The Cases screen renders them as a matrix, with a
-switchable tag dimension for the columns.
+A **case** is the spec — id, title, business rule, steps, tags, owner, the
+ticket it traces to — kept as a YAML file under
+`~/.conductor/studio/cases/<project>/`, scoped by the project's path and shared
+with the `conductor cases` CLI. Studio does not write cases, results or plans
+into the repo under test: the flows a case names are the tests, and those are
+what belong in git. The Cases screen is the matrix over them: a switchable tag
+dimension for the columns, filters per dimension, search, and per-column
+automation coverage.
 
 ```yaml
 id: TC-001
 title: User can log in with valid credentials
 userStory: As a returning user, I can sign in…
+description: |-
+  Open the app
+  Enter valid credentials
+  Verify the home screen loads
 tags:
   platform: [ios, android]
   vertical: [fintech]
-  product: [wallet]
+owner: sam
+links: [https://linear.app/acme/issue/ABC-12]
 flow: login.yaml
 ```
 
-**Sync CI** pulls the latest GitHub Actions run through the `gh` CLI (so it uses
-your existing `gh auth login`) and fills in each case's status. It prefers the
-**JUnit report** the run uploads, which names every flow and carries the failure
-message; where there's no report it falls back to matching job names against the
-case id (`TC-001`) or its flow file, and where a run has no job detail at all
-every case shows the run's own result and the UI says so. Workflows can also be
-**triggered** from here.
+One user story is one case even when each platform implements it separately:
+use `flows` instead of `flow` to name a flow per column, and `altIds` when the
+platforms are tracked under different ids upstream. Each column then reports its
+own result, and the case's own status is the worst of them.
+
+```yaml
+id: DT-1
+altIds: [DM-101]
+tags:
+  platform: [tv, mobile]
+flows:
+  tv: flows/features/player/vod-playback.tv.yaml
+  mobile: flows/features/player/vod-playback.responsive.yaml
+```
+
+**Authoring.** Cases are created, edited, renamed and deleted from the screen.
+Edits go through yaml's Document API, so comments and key order in a
+hand-written case survive a round trip. **Import** reads a CSV out of whatever
+tool you're leaving — columns it recognises map to case fields, and the ones it
+doesn't become tag dimensions, which is how a "Priority" column turns into a
+matrix filter. **Export** writes the whole matrix back out, automation status
+and last verdict included.
+
+**Executions.** A case is only as good as its evidence, so every verification
+is appended to `results.jsonl` beside the cases. Four things write to it:
+
+- **Flow runs** — finishing any run, anywhere in Studio, files a result for
+  every case that names that flow.
+- **People** — a case with no automation gets pass / fail / blocked / skipped
+  with a note, straight from the case panel.
+- **The agent** — its MCP tools (`list_test_cases`, `describe_test_case`,
+  `record_case_result`) let it find unautomated cases, read the steps as a
+  script, and file what it found; `write_test_report` takes a `caseId` so a
+  report doubles as that case's result.
+
+The panel shows the history, pass rate and a flaky flag (recent runs
+disagreeing) per case.
+
+**Steps are the bridge to automation.** A case's steps carry the page object
+that performs them, which is what makes the human-readable case and the Maestro
+flow behind it two views of one thing:
+
+```yaml
+preconditions: [Signed in with a fresh account]
+steps:
+  - action: Open the show's details page
+    expected: The details screen loads
+    pom: pages/details/open.yaml
+    env: { path: show/3rd-rock, expectScreen: screen-show }
+  - action: Play the first episode
+    expected: Playback starts
+    pom: pages/actionBar/markWatched.yaml
+postconditions: [Delete the account]
+```
+
+From that, Studio can **scaffold the flow**: each step with a page object becomes
+a `runFlow` call (in the project's `@alias` form) carrying its env, each step
+without one becomes a TODO in the file, and the new flow is linked back onto the
+case. Where the project keeps drafts out of CI with a `*-draft` tag, the scaffold
+follows that convention rather than enrolling an unverified flow into the suite.
+
+It reads the other way too: the case panel marks each step **automated**, **not
+in flow** or **manual** by checking whether the linked flow reaches that page
+object transitively, and says so when the flow calls page objects no step
+accounts for. A step naming a page object that doesn't exist is a lint error,
+like a case pointing at a missing flow.
+
+**Writing the missing flow.** A case with no flow on a platform has a button
+that hands it to the agent with a brief assembled from the repo rather than a
+one-line instruction: the case (steps, expectations, pre/postconditions), **the
+same case's flow on the other platform** in full — same assertions and test
+data, only the interaction model differs — or a neighbouring flow for the house
+style, every page object with its `env` parameters, and what the scene graph
+knows about the app's screens. It's told to `scaffold_case_flow` first (skeleton
+from the steps, page objects become `runFlow` calls, gaps become TODOs, linked
+to the case), fill the gaps, run it until it's green twice, keep the draft tag
+until then, and file a result. Two MCP tools back it: `scaffold_case_flow` and
+`link_case_flow`.
+
+**Grouping.** 150 rows is a list, not a table you can read, so the matrix bands
+by a tag dimension — **area** by default, which is how a matrix is usually
+written — with each band collapsible and carrying its own coverage
+(`Community · 32 · 6/32 automated · 1 failing`). Inside a band, rows cluster by
+sub-area, so a big group still has shape. Group by any dimension you tag with
+(priority, owner, status), or turn it off for a flat list; collapsed bands are
+remembered.
+
+**Running stays here.** The ▶ on a cell runs that platform's flow and opens the
+device rail beside the matrix: the flow's status, its current step, the tail of
+its output, and the screen it's happening on. Nothing jumps to the editor — the
+case is what you're working on, not the file behind it.
+
+Which device a flow runs on comes from the flow's own `tags:` — the same thing
+the suite configs select on, so a `tv`-tagged flow wants a TV and a
+`responsive`-tagged one wants a phone (`-draft` variants count; `common` flows
+defer to the column you clicked). Because Android reports TVs, phones and
+tablets all as `android`, conductor now also reports a form factor, so "tv"
+means tvOS **or** Android TV and never an Android phone. Each column header
+carries a device picker — that's where you choose between an Apple TV and an
+Android TV, and it's remembered per project; **Auto** takes the first booted
+device of the right kind.
+
+The rail is a stream and nothing else: no device picker, no boot or install, no
+taps. It doesn't need them, because the run names its device. When a run starts
+without one selected, `runFlow` resolves the first free booted device itself
+rather than letting the runner pick silently, reserves it under that id, and
+returns it — so Studio attaches to the same screen the test is driving instead
+of showing "no device" while maestro works away on a simulator.
+
+**Running by hand.** The run wizard walks a filtered selection case by case:
+preconditions, each step with its expected result, pass/fail/skip per step,
+a note and the build under test, then a verdict — and on to the next case. A
+case with a flow can hand off to it mid-session.
+
+**From CI, without Studio.** The CLI speaks the same files:
+
+```bash
+conductor cases report --junit report.xml --build "$GITHUB_SHA"
+conductor cases result DT-1 --verdict failed --column tv --note "…"
+conductor cases list --json
+```
+
+`report` binds each `<testcase>` to a case by the flow it names (recording
+against that platform's column) or by a case id appearing as a whole word in the
+test name, and says how many entries matched nothing.
+
+**Test plans** are the named selections a team actually runs — "release smoke",
+"everything high-priority on tv". They're YAML in the same store, built from whatever the matrix is currently filtered to, and a plan run walks
+its cases in order on one device, recording each outcome against its case. Cases
+with no flow are reported as skipped rather than quietly dropped.
+
+**Coverage** is checked both ways: a case pointing at a missing flow is an
+error, and a flow no case traces back to is a warning — coverage the matrix
+can't see.
+
+Results are local: what ran on your machine, what you recorded by hand, what the
+agent verified. Nothing is pulled from CI — a run's outcome comes from the
+execution log and nowhere else. The `conductor cases report --junit` command can
+still file a report a CI job produced, but that's a file you hand it, not a
+service Studio talks to.
 
 ---
 

@@ -11,7 +11,7 @@ import { useState } from "react";
 import { useIpcEvent } from "../../hooks/useIpcEvent";
 import { cancelRun, runCommand, runFlowInline } from "../../lib/ipc";
 import { getCurrentRoute } from "../../lib/router";
-import type { FlowRun, FlowRunStatus, FlowStep, RunLogLine } from "../../lib/types";
+import type { FlowRunStatus, RunLogLine } from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
 import { useFlowBuffers } from "../../stores/flowStore";
 import {
@@ -23,11 +23,7 @@ import {
 } from "../../stores/logsStore";
 import {
   appendReplLines,
-  appendRunLine,
   beginRun,
-  setRunScreenshot,
-  setRunStatus,
-  setRunSteps,
   useRunId,
   useRunLines,
   useRunScreenshot,
@@ -74,10 +70,7 @@ export function RunConsole() {
   const [mode, setMode] = useState<ReplMode>("cmd");
   const [command, setCommand] = useState("");
 
-  useIpcEvent<RunLogLine>(runId ? `flow_run_output:${runId}` : null, appendRunLine);
-  useIpcEvent<FlowRun>(runId ? `flow_run_status:${runId}` : null, (run) => setRunStatus(run.status));
-  useIpcEvent<FlowStep[]>(runId ? `flow_run_steps:${runId}` : null, setRunSteps);
-  useIpcEvent<string>(runId ? `flow_run_screenshot:${runId}` : null, setRunScreenshot);
+  // Run events are subscribed app-wide in useRunEvents; this view only reads.
   useIpcEvent<RunLogLine>(deviceId ? `device_logs:${deviceId}` : null, appendLog);
 
   const submit = async () => {

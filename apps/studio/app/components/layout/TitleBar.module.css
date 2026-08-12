@@ -27,7 +27,22 @@
 }
 
 .project {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.project:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .right {

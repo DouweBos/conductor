@@ -16,10 +16,16 @@
 .rowHead,
 .cell {
   border-bottom: 1px solid var(--border-subtle);
-  border-right: 1px solid var(--border-subtle);
-  padding: var(--space-2) var(--space-3);
+  padding: 6px var(--space-3);
   text-align: left;
   vertical-align: middle;
+}
+
+/* Only the row header is fenced off; status columns read as one band, so a
+   vertical rule between every one of them is just noise. */
+.corner,
+.rowHead {
+  border-right: 1px solid var(--border-subtle);
 }
 
 .corner,
@@ -44,8 +50,8 @@
   left: 0;
   z-index: 1;
   background: var(--bg-secondary);
-  min-width: 220px;
-  max-width: 320px;
+  min-width: 320px;
+  font-weight: 400;
 }
 
 .rowLabel {
@@ -56,16 +62,18 @@
 
 .rowSub {
   display: block;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: var(--text-xs);
   margin-top: 2px;
 }
 
 .cell {
-  text-align: center;
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 
+/* Not applicable here — the quietest thing in the table, but an em dash the
+   eye can still find, so an empty cell doesn't read as a rendering bug. */
 .blank {
   color: var(--text-muted);
 }
@@ -76,4 +84,51 @@
 .clickable:hover .rowHead,
 .clickable:hover .cell {
   background: var(--surface-overlay);
+}
+
+/* A group band: the table's spine once there are more rows than fit a screen. */
+.groupRow {
+  cursor: pointer;
+}
+
+.groupHead {
+  position: sticky;
+  left: 0;
+  padding: 5px var(--space-3);
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.groupHead > * {
+  vertical-align: middle;
+}
+
+.groupLabel {
+  margin-left: 6px;
+}
+
+.groupCount {
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.groupMeta {
+  margin-left: 10px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.groupRow:hover .groupHead {
+  background: var(--bg-hover);
 }

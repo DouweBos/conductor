@@ -1,0 +1,179 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: var(--text-xl);
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 640px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-secondary);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cardTitle {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.meta {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.summary {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.counts {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.notice {
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.caseLink {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.caseLink:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.adjusted {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--warning);
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* The whole card is the target; the action row sits above it. */
+.card {
+  position: relative;
+}
+
+.cardOpen {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+}
+
+.cardOpen:hover {
+  background: var(--surface-overlay);
+}
+
+.cardHead,
+.summary,
+.adjusted,
+.actions {
+  position: relative;
+}
+
+.viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.viewerHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.frameWrap {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-inset);
+  display: flex;
+}
+
+.frame {
+  flex: 1;
+  border: 0;
+  background: #fff;
+}

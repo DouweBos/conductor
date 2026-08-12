@@ -44,7 +44,7 @@ export async function startDeviceStream(
     resolved.bin,
     [...resolved.prefixArgs, "stream-server", "--device", deviceId, "--json"],
     // A cold daemon has to boot the driver first, which outlasts a short timeout.
-    { timeout: 180_000 },
+    { timeout: 180_000, env: resolved.env },
   );
   if (res.code !== 0) {
     throw new Error(res.stderr.trim() || "conductor stream-server failed");

@@ -27,48 +27,17 @@
   flex-direction: column;
 }
 
-.optionsSection {
-  margin-bottom: var(--space-4);
-}
 
-.optionsLabel {
-  font-size: var(--text-sm);
-  font-weight: 550;
-  color: var(--text-secondary);
-  margin-bottom: var(--space-2);
-}
 
-.envRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-  align-items: center;
-}
 
-.tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-top: var(--space-2);
-}
 
-.tag {
-  padding: 2px var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  cursor: pointer;
-}
 
-.tagOn {
-  border-color: var(--accent);
-  background: var(--accent-subtle);
-  color: var(--text-primary);
-}
 
-.tagCount {
-  color: var(--text-muted);
-}
+
+
+
+
+
+
+
+

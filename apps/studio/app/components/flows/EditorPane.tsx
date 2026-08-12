@@ -1,16 +1,13 @@
 import {
   Button,
   ContextMenu,
-  Dialog,
   Editor,
   EmptyState,
   IconButton,
-  Select,
   SplitPane,
   Spinner,
   StatusPill,
   Tabs,
-  TextField,
   Toolbar,
   ToolbarDivider,
   ToolbarSpacer,
@@ -21,14 +18,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   changedFlows,
-  deleteEnvProfile,
-  envProfiles,
   getMaestroStatus,
   lintFlowContent,
   listEnvNames,
-  listTags,
-  runRepeat,
-  saveEnvProfile,
   loadFlowCatalog,
   runFlow,
   runFlowInline,
@@ -38,13 +30,7 @@ import { referenceOnLine, resolveReference } from "../../lib/flowRefs";
 import { flowForSteps, parseSteps, stepAt, stepsUntil } from "../../lib/flowSteps";
 import { maestroCompletion } from "../../lib/maestroCompletion";
 import { selectFlow } from "../../lib/router";
-import type {
-  EnvProfile,
-  FlowCatalog,
-  LintProblem,
-  MaestroStatus,
-  RunOptions,
-} from "../../lib/types";
+import type { FlowCatalog, LintProblem, MaestroStatus } from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
 import {
   closeFile,
@@ -55,15 +41,16 @@ import {
   useFlowBuffers,
   useOpenTabs,
 } from "../../stores/flowStore";
+import {
+  getRunOptions,
+  openRunOptions,
+  useActiveProfile,
+  useHasRunOptions,
+} from "../../stores/runOptionsStore";
 import { beginRun } from "../../stores/runStore";
 import { useResolvedTheme } from "../../stores/themeStore";
 import { RunConsole } from "./RunConsole";
 import styles from "./EditorPane.module.css";
-
-interface EnvRow {
-  key: string;
-  value: string;
-}
 
 function extractAppId(content: string | undefined): string | undefined {
   return content?.match(/^appId:\s*(.+)$/m)?.[1]?.trim();
@@ -75,18 +62,12 @@ export function EditorPane({ activePath }: { activePath?: string }) {
   const buffer = useBuffer(activePath);
   const theme = useResolvedTheme();
   const deviceId = useSelectedDeviceId();
+  const hasRunOptions = useHasRunOptions();
+  const activeProfile = useActiveProfile();
   const [status, setStatus] = useState<MaestroStatus | null>(null);
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const [envRows, setEnvRows] = useState<EnvRow[]>([]);
-  const [includeTags, setIncludeTags] = useState("");
-  const [excludeTags, setExcludeTags] = useState("");
   const editorApi = useRef<EditorApi | null>(null);
   const [stepMenu, setStepMenu] = useState<{ line: number; x: number; y: number } | null>(null);
   const [problems, setProblems] = useState<LintProblem[]>([]);
-  const [profiles, setProfiles] = useState<EnvProfile[]>([]);
-  const [profileName, setProfileName] = useState("");
-  const [tags, setTags] = useState<{ tag: string; count: number }[]>([]);
-  const [repeatTimes, setRepeatTimes] = useState("1");
   // The project's env vocabulary, read through a ref so the completion source
   // stays stable while the names refresh underneath it.
   const envNames = useRef<string[]>([]);
@@ -123,20 +104,10 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     dirty: buffers[path]?.dirty ?? false,
   }));
 
-  const options = (): RunOptions => {
-    const env: Record<string, string> = {};
-    for (const row of envRows) if (row.key.trim()) env[row.key.trim()] = row.value;
-    return {
-      env: Object.keys(env).length ? env : undefined,
-      includeTags: includeTags.trim() || undefined,
-      excludeTags: excludeTags.trim() || undefined,
-    };
-  };
-
   const run = async () => {
     if (!activePath) return;
     try {
-      const { runId } = await runFlow(activePath, deviceId ?? undefined, options());
+      const { runId } = await runFlow(activePath, deviceId ?? undefined, getRunOptions());
       beginRun(runId, activePath);
     } catch {
       /* surfaced in console */
@@ -151,7 +122,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
         snippet,
         deviceId ?? undefined,
         extractAppId(buffer?.content),
-        options(),
+        getRunOptions(),
       );
       beginRun(runId, `${activePath ?? "selection"} (selection)`);
     } catch {
@@ -159,46 +130,14 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     }
   };
 
-  useEffect(() => {
-    void envProfiles().then(setProfiles).catch(() => {});
-    void listTags().then(setTags).catch(() => {});
-  }, []);
-
-  const applyProfile = (profile: EnvProfile) => {
-    setEnvRows(Object.entries(profile.env).map(([key, value]) => ({ key, value })));
-    setIncludeTags(profile.includeTags ?? "");
-    setExcludeTags(profile.excludeTags ?? "");
-    setProfileName(profile.name);
-  };
-
-  const storeProfile = async () => {
-    const name = profileName.trim();
-    if (!name) return;
-    const { env = {}, includeTags: include, excludeTags: exclude } = options();
-    setProfiles(await saveEnvProfile({ name, env, includeTags: include, excludeTags: exclude }));
-  };
-
-  const toggleTag = (tag: string) => {
-    const current = includeTags.split(",").map((t) => t.trim()).filter(Boolean);
-    const next = current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag];
-    setIncludeTags(next.join(", "));
-  };
-
   // Everything I touched since main — the set worth running before pushing.
   const runChanged = async () => {
     const changed = await changedFlows();
     if (changed.length === 0) return;
     for (const flow of changed) {
-      const { runId } = await runFlow(flow, deviceId ?? undefined, options());
+      const { runId } = await runFlow(flow, deviceId ?? undefined, getRunOptions());
       beginRun(runId, flow);
     }
-  };
-
-  const runFlaky = async () => {
-    if (!activePath) return;
-    const times = Math.max(1, Number(repeatTimes) || 1);
-    setOptionsOpen(false);
-    await runRepeat(activePath, times, deviceId ?? undefined, options());
   };
 
   // Lint the buffer as it settles, so mistakes surface before a run does.
@@ -224,7 +163,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
         flowForSteps(content, chosen),
         deviceId ?? undefined,
         undefined,
-        options(),
+        getRunOptions(),
       );
       beginRun(runId, `${activePath ?? "flow"} (${label})`);
     } catch {
@@ -263,7 +202,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
 
   const runAll = async () => {
     try {
-      const { runId } = await runFolder(undefined, deviceId ?? undefined, options());
+      const { runId } = await runFolder(undefined, deviceId ?? undefined, getRunOptions());
       beginRun(runId, "all flows");
     } catch {
       /* surfaced in console */
@@ -280,6 +219,12 @@ export function EditorPane({ activePath }: { activePath?: string }) {
           <Button variant="ghost" size="sm" icon="flow" onClick={() => void runChanged()} disabled={!status}>
             Run changed
           </Button>
+          <IconButton
+            icon="settings"
+            active={hasRunOptions}
+            label={hasRunOptions ? `Run options — ${activeProfile || "custom"}` : "Run options"}
+            onClick={openRunOptions}
+          />
           <ToolbarSpacer />
           {status ? (
             <StatusPill tone={status.activeEngine === "maestro" ? "info" : "running"}>
@@ -316,7 +261,12 @@ export function EditorPane({ activePath }: { activePath?: string }) {
         <Button variant="ghost" size="sm" icon="flow" onClick={() => void runAll()}>
           Run all
         </Button>
-        <IconButton icon="settings" label="Run options" onClick={() => setOptionsOpen(true)} />
+        <IconButton
+          icon="settings"
+          active={hasRunOptions}
+          label={hasRunOptions ? `Run options — ${activeProfile || "custom"}` : "Run options"}
+          onClick={openRunOptions}
+        />
         <ToolbarDivider />
         <Button
           variant="secondary"
@@ -378,124 +328,6 @@ export function EditorPane({ activePath }: { activePath?: string }) {
         />
       ) : null}
 
-      <Dialog
-        open={optionsOpen}
-        title="Run options"
-        onClose={() => setOptionsOpen(false)}
-        footer={
-          <Button variant="primary" onClick={() => setOptionsOpen(false)}>
-            Done
-          </Button>
-        }
-      >
-        <div className={styles.optionsSection}>
-          <div className={styles.optionsLabel}>Profile</div>
-          <div className={styles.envRow}>
-            <Select
-              options={[
-                { value: "", label: profiles.length ? "Load a profile…" : "No saved profiles" },
-                ...profiles.map((p) => ({ value: p.name, label: p.name })),
-              ]}
-              value=""
-              onChange={(e) => {
-                const profile = profiles.find((p) => p.name === e.target.value);
-                if (profile) applyProfile(profile);
-              }}
-            />
-            <TextField
-              placeholder="Name to save as"
-              value={profileName}
-              onChange={(e) => setProfileName(e.target.value)}
-            />
-            <IconButton icon="check" label="Save profile" onClick={() => void storeProfile()} />
-            <IconButton
-              icon="close"
-              label="Delete profile"
-              onClick={() =>
-                profileName && void deleteEnvProfile(profileName).then(setProfiles)
-              }
-            />
-          </div>
-        </div>
-        <div className={styles.optionsSection}>
-          <div className={styles.optionsLabel}>Environment variables</div>
-          {envRows.map((row, i) => (
-            <div key={i} className={styles.envRow}>
-              <TextField
-                placeholder="KEY"
-                value={row.key}
-                onChange={(e) =>
-                  setEnvRows((rows) => rows.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
-                }
-              />
-              <TextField
-                placeholder="value"
-                value={row.value}
-                onChange={(e) =>
-                  setEnvRows((rows) => rows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))
-                }
-              />
-              <IconButton
-                icon="close"
-                label="Remove"
-                onClick={() => setEnvRows((rows) => rows.filter((_, j) => j !== i))}
-              />
-            </div>
-          ))}
-          <Button
-            size="sm"
-            variant="ghost"
-            icon="plus"
-            onClick={() => setEnvRows((rows) => [...rows, { key: "", value: "" }])}
-          >
-            Add variable
-          </Button>
-        </div>
-        <div className={styles.optionsSection}>
-          <TextField
-            label="Include tags (comma-separated, maestro only)"
-            placeholder="smoke, checkout"
-            value={includeTags}
-            onChange={(e) => setIncludeTags(e.target.value)}
-          />
-          <div className={styles.tags}>
-            {tags.map(({ tag, count }) => (
-              <button
-                key={tag}
-                type="button"
-                className={[
-                  styles.tag,
-                  includeTags.includes(tag) ? styles.tagOn : "",
-                ].join(" ")}
-                onClick={() => toggleTag(tag)}
-              >
-                {tag} <span className={styles.tagCount}>{count}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className={styles.optionsSection}>
-          <TextField
-            label="Exclude tags (maestro only)"
-            placeholder="flaky"
-            value={excludeTags}
-            onChange={(e) => setExcludeTags(e.target.value)}
-          />
-        </div>
-        <div className={styles.optionsSection}>
-          <div className={styles.optionsLabel}>Flakiness check</div>
-          <div className={styles.envRow}>
-            <TextField
-              placeholder="times"
-              value={repeatTimes}
-              onChange={(e) => setRepeatTimes(e.target.value)}
-            />
-            <Button size="sm" variant="secondary" icon="play" disabled={!activePath} onClick={() => void runFlaky()}>
-              Run this flow N times
-            </Button>
-          </div>
-        </div>
-      </Dialog>
     </div>
   );
 }

@@ -67,7 +67,7 @@ export function RunHistory() {
     return (
       <div className={styles.detail}>
         <header className={styles.detailHead}>
-          <Button size="sm" variant="ghost" icon="chevronRight" onClick={() => setSelected(null)}>
+          <Button size="sm" variant="ghost" icon="chevronLeft" onClick={() => setSelected(null)}>
             Back
           </Button>
           <StatusPill tone={TONE[selected.status]}>{selected.status}</StatusPill>

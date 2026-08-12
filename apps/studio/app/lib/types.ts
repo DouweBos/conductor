@@ -27,6 +27,8 @@ export interface DeviceInfo {
   state: "booted" | "shutdown" | "unknown";
   /** Who holds this device in conductor's pool, when someone does. */
   reservedBy?: string;
+  /** Android reports TVs and phones alike as `android`; this tells them apart. */
+  formFactor?: "tv" | "handset";
 }
 
 export interface DeviceStreamInfo {
@@ -174,6 +176,8 @@ export interface CommandResult {
 // ── Test case management (git-tracked) ────────────────────────────────────
 export interface TestCase {
   id: string;
+  /** Other matrix ids for the same case — e.g. the mobile row of a TV case. */
+  altIds?: string[];
   title: string;
   description?: string;
   userStory?: string;
@@ -181,36 +185,186 @@ export interface TestCase {
   tags: Record<string, string[]>;
   /** Path (relative to flowsDir) of the Maestro flow implementing this case. */
   flow?: string;
-  /** Latest CI status, when synced. */
-  ciStatus?: FlowRunStatus;
+  /**
+   * Per-platform implementations, when a case is covered by one flow per
+   * platform: `platform` tag value -> flow path.
+   */
+  flows?: Record<string, string>;
+  /** Who owns keeping this case true. */
+  owner?: string;
+  /** Requirement / ticket / spec URLs this case traces back to. */
+  links?: string[];
+  /** Free-form state the team drives manually, e.g. `draft` / `review` / `ready`. */
+  state?: string;
+  /** What must be true before the steps make sense. */
+  preconditions?: string[];
+  /** Cleanup the case is responsible for. */
+  postconditions?: string[];
+  /** Structured steps; `description` stays as the free-text form. */
+  steps?: CaseStep[];
+  /** Most recent execution of any kind, filled in by the results log. */
+  lastResult?: CaseResult;
+  /** Executions recorded for this case, newest first. */
+  results?: CaseResult[];
   filePath: string; // relative to project root
 }
 
-/** Result of a GitHub Actions CI sync for the test cases. */
-export interface CiSync {
-  repo?: string;
-  runUrl?: string;
-  runName?: string;
-  branch?: string;
-  syncedAt: number;
-  /** How many cases got a status, out of how many exist. */
-  matched: number;
+/**
+ * One human-readable step. `pom` is the bridge to automation: the page object
+ * that performs this step, so a case can be scaffolded into a flow and a flow
+ * can be checked against the case it claims to implement.
+ */
+export interface CaseStep {
+  action: string;
+  /** Test data the step uses, in Qase's action/data/expected shape. */
+  data?: string;
+  expected?: string;
+  /** Page object implementing the step, relative to the flows dir. */
+  pom?: string;
+  /** Values for that page object's `env:` parameters. */
+  env?: Record<string, string>;
+}
+
+/** Per-step outcome inside one manual execution. */
+export interface CaseStepResult {
+  index: number;
+  status: "passed" | "failed" | "skipped";
+  note?: string;
+}
+
+/** Which of a case's steps the flow behind it actually performs. */
+export interface StepCoverage {
+  caseId: string;
+  column?: string;
+  flow?: string;
+  steps: { index: number; action: string; pom?: string; backed: boolean }[];
+  /** Page objects the flow calls that no step accounts for. */
+  extra: string[];
+}
+
+/** Fields a case editor may write; everything else in the file is preserved. */
+export interface TestCaseInput {
+  id: string;
+  altIds?: string[];
+  title: string;
+  description?: string;
+  userStory?: string;
+  tags: Record<string, string[]>;
+  flow?: string;
+  flows?: Record<string, string>;
+  owner?: string;
+  links?: string[];
+  state?: string;
+  preconditions?: string[];
+  postconditions?: string[];
+  steps?: CaseStep[];
+  /** Set when renaming an existing case; absent when creating. */
+  previousId?: string;
+}
+
+export type CaseVerdict = "passed" | "failed" | "blocked" | "skipped";
+
+/** Where a verdict came from — automation, a person, the agent, or CI. */
+export type CaseResultSource = "run" | "manual" | "report" | "ci";
+
+/** One execution of one case, appended to the project's results log. */
+export interface CaseResult {
+  id: string;
+  caseId: string;
+  /** Column (platform) the execution covered, when the case has several. */
+  column?: string;
+  verdict: CaseVerdict;
+  source: CaseResultSource;
+  at: number;
+  note?: string;
+  /** Local flow run that produced this, for the run history / artifacts. */
+  runId?: string;
+  flow?: string;
+  deviceId?: string;
+  /** Agentic report that produced this. */
+  reportId?: string;
+  /** Plan execution this belonged to. */
+  planRunId?: string;
+  author?: string;
+  /** Per-step outcomes, when the run wizard walked the steps. */
+  steps?: CaseStepResult[];
+  /** App build / version under test, so a failure can be pinned to one. */
+  build?: string;
+  /** Environment the execution ran against, e.g. `staging`. */
+  environment?: string;
+}
+
+/** Rolled-up execution health for one case. */
+export interface CaseStats {
+  caseId: string;
   total: number;
-  /** True when the run had no job detail, so every case shows the run's result. */
-  fallbackToRunStatus: boolean;
-  /** How many per-flow results came from the run's JUnit report. */
-  fromReport: number;
-  statuses: Record<string, FlowRunStatus>;
-  /** Failure text per case, when the report carried one. */
-  details: Record<string, string>;
+  passed: number;
+  failed: number;
+  /** Pass rate over the recorded executions, 0–1. */
+  passRate: number;
+  /** True when the recent runs disagree — passed and failed within the window. */
+  flaky: boolean;
+  lastAt?: number;
+}
+
+/** A named selection of cases to execute together. */
+export interface TestPlan {
+  id: string;
+  name: string;
+  description?: string;
+  /** Explicit case ids, in execution order. */
+  caseIds?: string[];
+  /** Or a tag filter: dimension -> accepted values (AND across dimensions). */
+  filter?: Record<string, string[]>;
+  /** Only run these columns of each case; all of them when absent. */
+  columns?: string[];
+  filePath: string;
+}
+
+export interface TestPlanInput extends Omit<TestPlan, "filePath"> {
+  previousId?: string;
+}
+
+export interface PlanRunEntry {
+  caseId: string;
+  title: string;
+  column?: string;
+  flow?: string;
+  status: "pending" | "running" | "passed" | "failed" | "skipped";
+  runId?: string;
+}
+
+/** One execution of a plan: every case in it, in order, with its outcome. */
+export interface PlanRun {
+  id: string;
+  planId: string;
+  planName: string;
+  startedAt: number;
+  finishedAt?: number;
+  status: "running" | "passed" | "failed" | "cancelled";
+  deviceId?: string;
+  entries: PlanRunEntry[];
+}
+
+/** A parsed CSV, ready to map onto case fields. */
+export interface CasePreview {
+  headers: string[];
+  rows: string[][];
+  /** Best-guess header -> case field, which the user can correct. */
+  mapping: Record<string, string>;
+}
+
+export interface ImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  ids: string[];
 }
 
 export interface CaseMatrix {
   dimension: string; // which tag dimension forms the columns
   columns: string[];
   cases: TestCase[];
-  /** The most recent CI sync, if one has run this session. */
-  ci?: CiSync;
 }
 
 // ── Agentic writer (scaffolded) ───────────────────────────────────────────
@@ -355,3 +509,103 @@ export type ConversationItem =
   | { kind: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { kind: "tool_result"; id: string; text: string; isError: boolean }
   | { kind: "result"; id: string; text: string; isError: boolean };
+
+// ── Agentic test reports ───────────────────────────────────────────────────
+export type TestVerdict = "PASS" | "FAIL" | "BLOCKED";
+export type TestStepStatus = "pass" | "fail" | "info";
+
+/** A box over a screenshot, normalized 0–1, outlining what was checked. */
+export interface Highlight {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface TestExpectation {
+  text: string;
+  status: TestStepStatus;
+  /** The tool output that decided it — copied verbatim, never paraphrased. */
+  evidence?: string;
+  /** Evidence Studio captured at the moment it resolved. */
+  screenshot?: string;
+  highlight?: Highlight;
+  at?: number;
+}
+
+export interface TestStep {
+  n?: number;
+  kind?: "action" | "assert";
+  title: string;
+  status?: TestStepStatus;
+  detail?: string;
+  evidence?: string;
+  /** Absolute path, or relative to the report directory. */
+  screenshot?: string;
+  highlight?: Highlight;
+}
+
+/** What the agent records while testing; the report is rendered from it. */
+export interface TestRunLog {
+  title: string;
+  description?: string;
+  platform?: string;
+  device?: string;
+  verdict: TestVerdict;
+  startedAt?: string;
+  finishedAt?: string;
+  summary?: string;
+  plan?: {
+    preconditions?: string[];
+    actions?: string[];
+    expectations?: string[];
+  };
+  expectations?: TestExpectation[];
+  steps?: TestStep[];
+  /** Corrections Studio made because the verdict didn't match the evidence. */
+  adjustments?: string[];
+}
+
+/**
+ * A test the agent is running right now: the plan it declared up front and the
+ * expectations that have resolved so far. Studio renders it live beside the
+ * device, so a run reads as a test rather than as a chat log.
+ */
+export interface TestSession {
+  id: string;
+  dir: string;
+  title: string;
+  description?: string;
+  plan?: {
+    preconditions?: string[];
+    actions?: string[];
+    expectations?: string[];
+  };
+  expectations: TestExpectation[];
+  startedAt: number;
+  device?: string;
+  /** Set once the report is written — the panel then links to it. */
+  reportId?: string;
+  verdict?: TestVerdict;
+}
+
+/** A rendered report on disk, as listed in the Reports view. */
+export interface TestReport {
+  id: string;
+  dir: string;
+  title: string;
+  verdict: TestVerdict;
+  createdAt: number;
+  summary?: string;
+  platform?: string;
+  device?: string;
+  htmlPath: string;
+  pdfPath?: string;
+  /** Test case this report verified, when the agent was pointed at one. */
+  caseId?: string;
+  /** Corrections Studio made because the verdict didn't match the evidence. */
+  adjustments?: string[];
+  /** Counts for the pass/fail line in the list. */
+  passed: number;
+  failed: number;
+}

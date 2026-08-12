@@ -23,6 +23,8 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
   const platform = await detectPlatform(deviceId);
 
   let appIds: string[];
+  // Display names, where the platform gives them up cheaply (iOS/tvOS only).
+  const appNames: Record<string, string> = {};
 
   if (platform === 'web') {
     printError(
@@ -43,8 +45,12 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
       return 1;
     }
     try {
-      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      const parsed = JSON.parse(result.stdout) as Record<string, Record<string, unknown>>;
       appIds = Object.keys(parsed).sort();
+      for (const id of appIds) {
+        const name = parsed[id]?.CFBundleDisplayName ?? parsed[id]?.CFBundleName;
+        if (typeof name === 'string' && name) appNames[id] = name;
+      }
     } catch {
       printError('Failed to parse app list from simctl', opts);
       return 1;
@@ -67,7 +73,10 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
   }
 
   if (opts.json) {
-    printData({ status: 'ok', apps: appIds }, opts);
+    printData(
+      { status: 'ok', apps: appIds, ...(Object.keys(appNames).length ? { appNames } : {}) },
+      opts
+    );
   } else {
     for (const id of appIds) console.log(id);
   }

@@ -7,6 +7,7 @@ import { startMcpServer, stopMcpServer } from "./services/mcp/server";
 import { getMainWindow, setMainWindow } from "./mainWindow";
 import { disposeAllDeviceStreams } from "./services/device/deviceService";
 import { releaseAllReservations } from "./services/device/reservations";
+import { stopAllRuns } from "./services/flow/flowRunner";
 import { stopAllLogs } from "./services/logs/logsService";
 import { initUpdater } from "./services/updater/updaterService";
 import { fixProcessPath } from "./shellEnv";
@@ -100,6 +101,7 @@ process.on("unhandledRejection", (err) => console.error("[studio] unhandled reje
 app.on("before-quit", () => {
   disposeAllDeviceStreams();
   stopAllLogs();
+  stopAllRuns();
   stopMcpServer();
   // Quitting shouldn't leave a device claimed against a PID that's gone.
   void releaseAllReservations();

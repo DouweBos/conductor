@@ -30,6 +30,7 @@ import {
 } from "../../stores/agentStore";
 import { getSelectedDevice, refreshDevices } from "../../stores/deviceStore";
 import { DevicePanel } from "../flows/DevicePanel";
+import { TestRunPanel } from "./TestRunPanel";
 import styles from "./AgentView.module.css";
 
 const STATUS_TONE: Record<AgentStatus, StatusTone> = {
@@ -129,6 +130,9 @@ export function AgentView() {
             </Button>
           ) : null}
         </header>
+
+        {/* The plan, ticking over — above the transcript, because it's the result. */}
+        <TestRunPanel />
 
         <div className={styles.conversation}>
           {!agentId && items.length === 0 ? (

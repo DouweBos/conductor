@@ -1,4 +1,4 @@
-import type { FlowRun } from "../app/lib/types";
+import type { AppFingerprint, DeviceInfo, FlowRun } from "../app/lib/types";
 import type { DeviceStreamSession } from "./services/device/deviceService";
 
 /**
@@ -8,6 +8,12 @@ import type { DeviceStreamSession } from "./services/device/deviceService";
 class AppState {
   /** Absolute path of the currently opened project (repo) root. */
   projectRoot: string | null = null;
+
+  /** App identified by the most recent capture — scopes the active scene graph. */
+  currentApp: AppFingerprint | null = null;
+
+  /** Device the running agent drives — reports read it instead of trusting the model. */
+  agentDevice: DeviceInfo | null = null;
 
   /** Active device stream sessions, keyed by device id. */
   readonly deviceStreams = new Map<string, DeviceStreamSession>();

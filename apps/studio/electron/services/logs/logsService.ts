@@ -16,7 +16,7 @@ export async function startLogs(deviceId: string): Promise<void> {
   const child = spawn(
     resolved.bin,
     [...resolved.prefixArgs, "logs", "--device", deviceId],
-    { env: process.env },
+    { env: resolved.env },
   );
   tails.set(deviceId, child);
 

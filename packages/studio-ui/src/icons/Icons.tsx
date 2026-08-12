@@ -8,6 +8,7 @@ import type { CSSProperties } from "react";
 export type IconName =
   | "file"
   | "folder"
+  | "copy"
   | "folderOpen"
   | "play"
   | "stop"
@@ -15,6 +16,7 @@ export type IconName =
   | "plus"
   | "close"
   | "search"
+  | "chevronLeft"
   | "chevronRight"
   | "chevronDown"
   | "device"
@@ -32,10 +34,12 @@ export type IconName =
   | "flow"
   | "dot"
   | "record"
-  | "camera";
+  | "camera"
+  | "trash";
 
 const PATHS: Record<IconName, string> = {
   file: "M7 3h7l5 5v13H7zM14 3v5h5",
+  copy: "M9 9V5.5A1.5 1.5 0 0 1 10.5 4h8A1.5 1.5 0 0 1 20 5.5v8a1.5 1.5 0 0 1-1.5 1.5H15M5.5 9h8A1.5 1.5 0 0 1 15 10.5v8a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 4 18.5v-8A1.5 1.5 0 0 1 5.5 9z",
   folder: "M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h7A1.5 1.5 0 0 1 19 9v9.5A1.5 1.5 0 0 1 17.5 20h-13A1.5 1.5 0 0 1 3 18.5z",
   folderOpen: "M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10M3 7.5V18a1 1 0 0 0 1 1h13.2a1 1 0 0 0 .95-.68L21 11H6.2a1 1 0 0 0-.95.68z",
   play: "M8 5.5v13l11-6.5z",
@@ -44,6 +48,7 @@ const PATHS: Record<IconName, string> = {
   plus: "M12 5v14M5 12h14",
   close: "M6 6l12 12M18 6L6 18",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4",
+  chevronLeft: "M15 6l-6 6 6 6",
   chevronRight: "M9 6l6 6-6 6",
   chevronDown: "M6 9l6 6 6-6",
   device: "M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3zM11 18h2",
@@ -63,6 +68,7 @@ const PATHS: Record<IconName, string> = {
   // A record button reads as a solid circle; `dot` is the 4px list bullet.
   record: "M12 5.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z",
   camera: "M3.5 9h3.1l1.4-2h8l1.4 2h3.1v9.5H3.5zM12 11a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z",
+  trash: "M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7M10.5 10.5v6M13.5 10.5v6",
 };
 
 const FILLED: Partial<Record<IconName, boolean>> = {

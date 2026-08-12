@@ -7,22 +7,30 @@ import { parse as parseYaml } from "yaml";
 
 import type {
   CommandResult,
+  DeviceInfo,
   FlowEngine,
   FlowRun,
   FlowStep,
   MaestroStatus,
   RunLogLine,
   RunOptions,
+  RunRecord,
 } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { appState } from "../../state";
-import { captureUi, runCommandLine } from "../conductor/conductorService";
+import { captureUi, listDevices, runCommandLine } from "../conductor/conductorService";
 import { getProjectInfo } from "../file/fileService";
 import { detectConductor, detectMaestro, resolveConductor } from "../maestro/maestroService";
+import { deviceMatches, wantedPlatforms } from "../../../app/lib/platforms";
+import { tagsOf } from "./suite";
 import { endReservation, reserveDevice } from "../device/reservations";
+import { listCases } from "../cases/casesService";
+import { recordRunResult } from "../cases/resultsService";
 import { artifactDirFor, recordRun } from "./history";
 
 const processes = new Map<string, ChildProcess>();
+/** Callers waiting on a run's outcome — plan execution runs flows in sequence. */
+const waiters = new Map<string, ((status: FlowRun["status"]) => void)[]>();
 /** Tail of each run's output, kept for the history record. */
 const outputTail = new Map<string, string[]>();
 const OUTPUT_TAIL = 400;
@@ -67,9 +75,36 @@ function optionArgs(engine: FlowEngine, options?: RunOptions): string[] {
   return args;
 }
 
-/** Parse the top-level Maestro steps out of a flow body into human labels. */
+/**
+ * The flow's top-level steps, hooks included. `onFlowStart` usually does the
+ * heavy lifting (launch, sign-in, seeding) and takes most of a run's wall
+ * clock, so leaving it out of the checklist meant staring at "step 1/18" for a
+ * minute. It also keeps the list aligned with maestro's output, which reports
+ * hook steps at the same level as the body's.
+ */
 function parseStepLabels(source: string): string[] {
-  const body = source.includes("---") ? source.slice(source.indexOf("---") + 3) : source;
+  const separator = source.indexOf("\n---");
+  const header = separator >= 0 ? source.slice(0, separator) : "";
+  const body = separator >= 0 ? source.slice(separator + 4) : source;
+  return [
+    ...hookLabels(header, "onFlowStart"),
+    ...bodyLabels(body),
+    ...hookLabels(header, "onFlowComplete"),
+  ];
+}
+
+function hookLabels(header: string, hook: "onFlowStart" | "onFlowComplete"): string[] {
+  try {
+    const doc = parseYaml(header) as Record<string, unknown> | null;
+    const entries = doc?.[hook];
+    if (!Array.isArray(entries)) return [];
+    return entries.map((step) => `${hook}: ${labelForStep(step)}`);
+  } catch {
+    return [];
+  }
+}
+
+function bodyLabels(body: string): string[] {
   try {
     const doc = parseYaml(body);
     if (Array.isArray(doc)) return doc.map(labelForStep);
@@ -84,13 +119,20 @@ function parseStepLabels(source: string): string[] {
 
 function labelForStep(step: unknown): string {
   if (typeof step === "string") return step;
-  if (step && typeof step === "object") {
-    const key = Object.keys(step as Record<string, unknown>)[0];
-    const val = (step as Record<string, unknown>)[key];
-    if (typeof val === "string") return `${key}: ${val}`;
-    return key ?? "step";
+  if (!step || typeof step !== "object") return "step";
+  const key = Object.keys(step as Record<string, unknown>)[0];
+  const val = (step as Record<string, unknown>)[key];
+  if (typeof val === "string") return `${key}: ${val}`;
+  // `tapOn: { id: foo }` reads as "tapOn" on its own — carry the selector.
+  if (val && typeof val === "object") {
+    const detail = Object.entries(val as Record<string, unknown>)
+      .filter(([, v]) => typeof v === "string" || typeof v === "number")
+      .slice(0, 2)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(", ");
+    return detail ? `${key}: ${detail}` : (key ?? "step");
   }
-  return "step";
+  return key ?? "step";
 }
 
 // ── Public entry points ─────────────────────────────────────────────────────
@@ -99,13 +141,81 @@ export async function runFlow(
   relPath: string,
   deviceId?: string,
   options?: RunOptions,
-): Promise<{ runId: string }> {
+  /** Which platform this flow is for, when the caller knows (a case column). */
+  platform?: string,
+): Promise<{ runId: string; deviceId?: string }> {
   const status = await getMaestroStatus();
   const absPath = flowAbsolutePath(relPath);
   const engine = status.activeEngine;
-  const args = buildFlowArgs(engine, absPath, deviceId, options);
-  const steps = safeReadSteps(absPath);
-  return launch({ engine, ...args, flowPath: relPath, deviceId, steps });
+  // Pick the device here rather than letting the runner choose one silently:
+  // the caller has to know which screen to watch, the device has to be reserved
+  // under the id it runs on, and a tv flow on a phone simulator fails in ways
+  // that look like the flow's fault.
+  const source = safeRead(absPath);
+  // The flow's tags are what the suite configs select on, so they decide the
+  // device; the caller's column only breaks ties for `common` flows.
+  const target = await resolveDevice(deviceId, platformFromTags(source) ?? platform ?? "");
+  const args = buildFlowArgs(engine, absPath, target, options);
+  const steps = parseStepLabels(source).map(toStep);
+  const { runId } = await launch({ engine, ...args, flowPath: relPath, deviceId: target, steps });
+  if (target && deviceId && target !== deviceId) {
+    emitLine(runId, {
+      id: `${runId}-device`,
+      tone: "warning",
+      text: `Running on ${target}: the selected device is the wrong platform for this flow.`,
+    });
+  }
+  return { runId, deviceId: target };
+}
+
+/**
+ * Device platforms a flow is asking for. The hint is either a case's platform
+ * column or the flow's own path — both encode the same thing here
+ * (`.tv.yaml` / `.responsive.yaml`), so neither needs configuring.
+ */
+/**
+ * Which platform a flow is for, from its own `tags:` — the same thing the suite
+ * configs select on (`includeTags: [common, tv]`), so a flow that runs in the
+ * tv suite is a flow that wants a tv device. Draft variants count: `tv-draft`
+ * is still a tv flow, it just isn't in the suite yet.
+ *
+ * `common` flows say nothing about platform, so the caller's hint decides.
+ */
+function platformFromTags(source: string): string | null {
+  for (const tag of tagsOf(source)) {
+    const base = tag.replace(/-draft$/, "").toLowerCase();
+    if (wantedPlatforms(base)) return base;
+  }
+  return null;
+}
+
+/**
+ * The device a run lands on. A device the caller named wins — unless it's the
+ * wrong platform for the flow, which is never what anyone meant.
+ */
+async function resolveDevice(
+  deviceId: string | undefined,
+  hint: string,
+): Promise<string | undefined> {
+  let devices: DeviceInfo[] = [];
+  try {
+    devices = await listDevices();
+  } catch {
+    // No conductor, no device list — trust the caller, or let the runner pick.
+    return deviceId;
+  }
+  const named = devices.find((d) => d.id === deviceId);
+  if (named && deviceMatches(named, hint)) return deviceId;
+
+  const booted = devices.filter((d) => d.state === "booted");
+  const matching = booted.filter((d) => deviceMatches(d, hint));
+  return (
+    matching.find((d) => !d.reservedBy)?.id ??
+    matching[0]?.id ??
+    deviceId ??
+    booted.find((d) => !d.reservedBy)?.id ??
+    booted[0]?.id
+  );
 }
 
 /** Run all flows in a directory (default: the flows root). */
@@ -241,12 +351,16 @@ function flowFilesIn(dir: string): string[] {
   return out;
 }
 
-function safeReadSteps(absPath: string): FlowStep[] {
+function safeRead(absPath: string): string {
   try {
-    return parseStepLabels(readFileSync(absPath, "utf8")).map(toStep);
+    return readFileSync(absPath, "utf8");
   } catch {
-    return [];
+    return "";
   }
+}
+
+function safeReadSteps(absPath: string): FlowStep[] {
+  return parseStepLabels(safeRead(absPath)).map(toStep);
 }
 
 function toStep(label: string, i: number): FlowStep {
@@ -304,28 +418,25 @@ async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
   broadcastToRenderers(`flow_run_status:${runId}`, record);
   broadcastToRenderers(`flow_run_steps:${runId}`, steps);
 
-  let cursor = 0;
   let lineSeq = 0;
-  const advance = (passed: boolean) => {
-    if (cursor >= steps.length) return;
-    steps[cursor].status = passed ? "passed" : "failed";
-    cursor += 1;
-    if (passed && cursor < steps.length) steps[cursor].status = "running";
-    broadcastToRenderers(`flow_run_steps:${runId}`, steps.map((s) => ({ ...s })));
-  };
+  const tracker = new StepTracker(steps, () =>
+    broadcastToRenderers(`flow_run_steps:${runId}`, steps.map((s) => ({ ...s }))),
+  );
   if (steps.length) {
     steps[0].status = "running";
     broadcastToRenderers(`flow_run_steps:${runId}`, steps.map((s) => ({ ...s })));
   }
 
   const pump = (chunk: Buffer, fallback: RunLogLine["tone"]) => {
+    // A killed process group can still flush buffered output; a cancelled run
+    // must stop growing its log.
+    if (appState.flowRuns.get(runId)?.status === "cancelled") return;
     for (const raw of chunk.toString().split(/\r?\n/)) {
       if (!raw.length) continue;
       lineSeq += 1;
       const tone = toneForLine(raw, fallback);
       emitLine(runId, { id: `${runId}-${lineSeq}`, text: raw, tone });
-      const outcome = stepOutcome(raw);
-      if (outcome) advance(outcome === "passed");
+      tracker.consume(raw);
     }
   };
 
@@ -337,19 +448,28 @@ async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
       tone: "command",
       text: `$ ${spec.engine} ${argSet.join(" ")}`,
     });
-    const child = spawn(bin, [...prefix, ...argSet], { env });
+    // Own process group: maestro is a shell wrapper around java, so signalling
+    // only the direct child leaves the real runner alive and still logging.
+    const child = spawn(bin, [...prefix, ...argSet], { env, detached: true });
     processes.set(runId, child);
     child.stdout?.on("data", (c: Buffer) => pump(c, "default"));
     child.stderr?.on("data", (c: Buffer) => pump(c, "muted"));
 
     child.on("error", (err) => {
-      emitLine(runId, { id: `${runId}-err-${index}`, tone: "error", text: err.message });
       processes.delete(runId);
+      if (appState.flowRuns.get(runId)?.status === "cancelled") {
+        settle(runId, "cancelled");
+        cleanup(spec);
+        return;
+      }
+      emitLine(runId, { id: `${runId}-err-${index}`, tone: "error", text: err.message });
       finish(runId, "error", spec);
     });
     child.on("close", (code) => {
       processes.delete(runId);
+      tracker.end(code === 0);
       if (appState.flowRuns.get(runId)?.status === "cancelled") {
+        settle(runId, "cancelled");
         cleanup(spec);
         return;
       }
@@ -363,6 +483,20 @@ async function launch(spec: LaunchArgs): Promise<{ runId: string }> {
   return { runId };
 }
 
+/** Resolves when a run ends, so a plan can run its cases one after another. */
+export function awaitRun(runId: string): Promise<FlowRun["status"]> {
+  const record = appState.flowRuns.get(runId);
+  if (record && record.status !== "running") return Promise.resolve(record.status);
+  return new Promise((resolve) => {
+    waiters.set(runId, [...(waiters.get(runId) ?? []), resolve]);
+  });
+}
+
+function settle(runId: string, status: FlowRun["status"]): void {
+  for (const resolve of waiters.get(runId) ?? []) resolve(status);
+  waiters.delete(runId);
+}
+
 function finish(runId: string, status: FlowRun["status"], spec: LaunchArgs): void {
   const record = appState.flowRuns.get(runId);
   if (record) {
@@ -370,7 +504,7 @@ function finish(runId: string, status: FlowRun["status"], spec: LaunchArgs): voi
     record.finishedAt = Date.now();
     broadcastToRenderers(`flow_run_status:${runId}`, record);
     // Maestro writes its debug output as it goes, so it exists by now.
-    recordRun({
+    const finished: RunRecord = {
       runId,
       flowPath: record.flowPath,
       engine: record.engine,
@@ -381,9 +515,16 @@ function finish(runId: string, status: FlowRun["status"], spec: LaunchArgs): voi
       artifactDir: record.engine === "maestro" ? artifactDirFor(record.startedAt) : undefined,
       output: outputTail.get(runId) ?? [],
       repeatGroup: spec.repeatGroup,
-    });
+    };
+    recordRun(finished);
+    // Any flow run counts as an execution of the cases that claim that flow,
+    // wherever in Studio it was started from.
+    void listCases()
+      .then((cases) => recordRunResult(finished, cases))
+      .catch(() => {});
     broadcastToRenderers("runs:updated", runId);
   }
+  settle(runId, status);
   outputTail.delete(runId);
   // Capture a screenshot of the current screen when a run fails, for triage.
   if ((status === "failed" || status === "error") && spec.deviceId) {
@@ -408,21 +549,80 @@ function cleanup(spec: LaunchArgs): void {
 }
 
 /**
- * Per-step result lines, which drive the step checklist. maestro prints
- * `<description>... COMPLETED|FAILED`; conductor prints `  → <step> ... ok|FAILED`.
- * Run summaries ("✓ run-flow … done") deliberately don't match.
+ * Turns maestro's output into per-step results.
+ *
+ * Indentation is what makes this possible: maestro announces a top-level step
+ * at column 0 (`Tap on id: foo...`) and everything a subflow does underneath it
+ * is indented. Counting every `... COMPLETED` — which is what this used to do —
+ * marked the whole checklist done inside the first subflow, because one
+ * `runFlow` can emit dozens of them.
+ *
+ * A leaf step's status arrives on the *next* line (a bare ` COMPLETED`), while
+ * a subflow step is repeated at column 0 with its status appended. So a step is
+ * resolved either by its own repeat or by the next top-level announcement,
+ * using the last status seen since it started.
  */
-function stepOutcome(line: string): "passed" | "failed" | null {
-  const maestro = /\.\.\.\s*(COMPLETED|FAILED|SKIPPED|WARNED)\s*$/.exec(line);
-  if (maestro) return maestro[1] === "FAILED" ? "failed" : "passed";
-  const conductor = /^\s*→\s.*\.\.\.\s*(ok|FAILED|skipped)\s*$/.exec(line);
-  if (conductor) return conductor[1] === "FAILED" ? "failed" : "passed";
-  return null;
+const STATUS = /(COMPLETED|FAILED|SKIPPED|WARNED|ERROR)/;
+
+class StepTracker {
+  private cursor = 0;
+  /** Most recent status seen since the current step started. */
+  private pending: "passed" | "failed" | null = null;
+
+  constructor(
+    private readonly steps: FlowStep[],
+    private readonly publish: () => void,
+  ) {}
+
+  consume(line: string): void {
+    const topLevel = /^\S/.test(line);
+    const status = STATUS.exec(line);
+    const verdict = status ? (status[1] === "FAILED" || status[1] === "ERROR" ? "failed" : "passed") : null;
+
+    if (topLevel) {
+      // `Run x.yaml... COMPLETED` — the running step's own result.
+      if (verdict && /\.\.\.\s*\w+\s*$/.test(line)) {
+        this.resolve(verdict);
+        return;
+      }
+      // `Tap on id: foo...` — a new top-level step; the previous one is over.
+      if (/\.\.\.\s*$/.test(line)) {
+        this.resolve(this.pending ?? "passed");
+        this.start();
+        return;
+      }
+      return;
+    }
+    // Nested: only worth remembering as the outcome of whatever is running.
+    if (verdict) this.pending = verdict;
+  }
+
+  /** The process is done; nothing more will report, so close the open step. */
+  end(ok: boolean): void {
+    if (this.cursor < this.steps.length && this.steps[this.cursor].status === "running") {
+      this.resolve(ok ? (this.pending ?? "passed") : "failed");
+    }
+    this.publish();
+  }
+
+  private start(): void {
+    if (this.cursor >= this.steps.length) return;
+    this.steps[this.cursor].status = "running";
+    this.pending = null;
+    this.publish();
+  }
+
+  private resolve(verdict: "passed" | "failed"): void {
+    const step = this.steps[this.cursor];
+    if (!step || step.status !== "running") return;
+    step.status = verdict;
+    this.cursor += 1;
+    this.pending = null;
+    this.publish();
+  }
 }
 
 function toneForLine(line: string, fallback: RunLogLine["tone"]): RunLogLine["tone"] {
-  const outcome = stepOutcome(line);
-  if (outcome) return outcome === "passed" ? "success" : "error";
   if (/(✓|✅|\bpassed\b|\bsuccess\b|\bcompleted\b|COMPLETED)/.test(line)) return "success";
   if (/(✗|✘|❌|\bfailed\b|\berror\b|\bexception\b|timed out|FAILED)/i.test(line)) return "error";
   if (/\bwarn/i.test(line)) return "warning";
@@ -446,11 +646,32 @@ export function cancelRun(runId: string): void {
     broadcastToRenderers(`flow_run_status:${runId}`, record);
   }
   if (child) {
-    child.kill("SIGTERM");
+    signalGroup(child, "SIGTERM");
     setTimeout(() => {
-      if (!child.killed) child.kill("SIGKILL");
+      if (child.exitCode === null && child.signalCode === null) signalGroup(child, "SIGKILL");
     }, 2000);
+    child.stdout?.destroy();
+    child.stderr?.destroy();
     processes.delete(runId);
+  }
+}
+
+/** Quitting must not orphan detached runner process groups. */
+export function stopAllRuns(): void {
+  for (const runId of [...processes.keys()]) cancelRun(runId);
+}
+
+/** Signal the child's whole process group, falling back to the child alone. */
+function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  try {
+    if (child.pid) process.kill(-child.pid, signal);
+    else child.kill(signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // already gone
+    }
   }
 }
 

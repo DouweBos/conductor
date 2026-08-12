@@ -1,6 +1,16 @@
 // Typed IPC wrappers — the ONLY place the renderer calls window.conductorStudio.
 // Components import these named functions; they never touch the bridge directly.
 import type {
+  CasePreview,
+  CaseResult,
+  CaseStats,
+  ImportResult,
+  PlanRun,
+  PlanRunEntry,
+  StepCoverage,
+  TestCaseInput,
+  TestPlan,
+  TestPlanInput,
   AgentStartResult,
   CaseMatrix,
   CaptureUiResult,
@@ -10,6 +20,7 @@ import type {
   EnvProfile,
   FileEntry,
   FlowCatalog,
+  FlowCatalogEntry,
   FlowReference,
   FlowSearchHit,
   LintProblem,
@@ -24,6 +35,8 @@ import type {
   SceneGraph,
   SceneGraphSummary,
   TestCase,
+  TestReport,
+  TestSession,
   ThemePreference,
   UpdaterState,
   VideoConfig,
@@ -87,8 +100,12 @@ export const captureUi = (deviceId: string) => invoke<CaptureUiResult>("capture_
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");
-export const runFlow = (path: string, deviceId?: string, options?: RunOptions) =>
-  invoke<{ runId: string }>("flow_run", { path, deviceId, options });
+/**
+ * Resolves with the device the run actually landed on. `platform` is the case's
+ * column (`tv`, `mobile`), which decides what kind of device is right for it.
+ */
+export const runFlow = (path: string, deviceId?: string, options?: RunOptions, platform?: string) =>
+  invoke<{ runId: string; deviceId?: string }>("flow_run", { path, deviceId, options, platform });
 export const runFolder = (dir?: string, deviceId?: string, options?: RunOptions) =>
   invoke<{ runId: string }>("flow_run_folder", { dir, deviceId, options });
 export const runFlowInline = (
@@ -119,11 +136,56 @@ export const stopLogs = (deviceId: string) => invoke<void>("logs_stop", { device
 export const listCases = () => invoke<TestCase[]>("cases_list");
 export const casesMatrix = (dimension?: string) =>
   invoke<CaseMatrix>("cases_matrix", { dimension });
-export const listWorkflows = () => invoke<string[]>("ci_workflows");
-export const triggerWorkflow = (workflow: string, ref?: string) =>
-  invoke<void>("ci_trigger", { workflow, ref });
-export const syncCasesCi = (dimension?: string) =>
-  invoke<CaseMatrix>("cases_sync_ci", { dimension });
+export const saveCase = (input: TestCaseInput) => invoke<TestCase>("case_save", { input });
+export const deleteCase = (id: string) => invoke<void>("case_delete", { id });
+export const listCaseResults = () => invoke<CaseResult[]>("cases_results");
+export const caseStats = (caseId: string) => invoke<CaseStats>("case_stats", { caseId });
+export const recordCaseResult = (result: Omit<CaseResult, "id" | "at">) =>
+  invoke<CaseResult>("case_record_result", { result });
+export const pickCaseCsv = () => invoke<string | null>("cases_pick_csv");
+export const pickCaseExportPath = () => invoke<string | null>("cases_pick_export");
+export const previewCaseImport = (file: string) =>
+  invoke<CasePreview>("cases_import_preview", { file });
+export const importCases = (options: {
+  file: string;
+  mapping: Record<string, string>;
+  stamp?: Record<string, string>;
+  overwrite?: boolean;
+}) => invoke<ImportResult>("cases_import", { options });
+export const exportCases = (file: string) => invoke<number>("cases_export", { file });
+
+export const listPlans = () => invoke<TestPlan[]>("plans_list");
+export const savePlan = (plan: TestPlanInput) => invoke<TestPlan[]>("plan_save", { plan });
+export const deletePlan = (id: string) => invoke<TestPlan[]>("plan_delete", { id });
+export const previewPlan = (id: string) => invoke<PlanRunEntry[]>("plan_preview", { id });
+export const runPlan = (id: string, deviceId?: string) =>
+  invoke<PlanRun>("plan_run", { id, deviceId });
+export const cancelPlanRun = (id: string) => invoke<void>("plan_run_cancel", { id });
+export const planRuns = () => invoke<PlanRun[]>("plan_runs");
+
+export const scaffoldFlowFromCase = (options: {
+  caseId: string;
+  column?: string;
+  target?: string;
+  tags?: string[];
+}) => invoke<{ flow: string; todos: number }>("case_scaffold_flow", { options });
+export const caseStepCoverage = (caseId: string, column?: string) =>
+  invoke<StepCoverage>("case_step_coverage", { caseId, column });
+export const listStepPoms = () => invoke<FlowCatalogEntry[]>("case_step_poms");
+export const caseAutomationBrief = (caseId: string, column?: string) =>
+  invoke<string>("case_automation_brief", { caseId, column });
+export const readCaseFlow = (flow: string) => invoke<string>("case_flow_text", { flow });
+
+
+// ── Agentic test reports ──
+export const listReports = () => invoke<TestReport[]>("reports_list");
+export const deleteReport = (id: string) => invoke<void>("report_delete", { id });
+export const openReport = (path: string) => invoke<void>("report_open", { path });
+export const revealReport = (path: string) => invoke<void>("report_reveal", { path });
+export const reportHtml = (id: string) => invoke<string>("report_html", { id });
+export const reportMarkdown = (id: string) => invoke<string>("report_markdown", { id });
+export const currentTestSession = () => invoke<TestSession | null>("test_session");
+export const clearTestSession = () => invoke<void>("test_session_clear");
 
 // ── Agentic writer ──
 export const agentStatus = () => invoke<{ available: boolean }>("agent_status");

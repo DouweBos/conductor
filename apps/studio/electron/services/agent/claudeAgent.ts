@@ -17,6 +17,8 @@ export interface ClaudeAgentInit {
   debugLogPath: string;
   /** Auto-approve every tool call (no interactive prompts). */
   autoApprove?: boolean;
+  /** MCP servers to inject, keyed by name (passed via --mcp-config). */
+  mcpServers?: Record<string, unknown>;
 }
 
 /**
@@ -63,6 +65,10 @@ export class ClaudeAgent extends EventEmitter {
       "--permission-prompt-tool",
       "stdio",
     ];
+    const mcpServers = this.init.mcpServers ?? {};
+    if (Object.keys(mcpServers).length) {
+      args.push("--mcp-config", JSON.stringify({ mcpServers }));
+    }
     const child = spawn(CLAUDE_BIN, args, {
       cwd: this.init.cwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -176,7 +182,14 @@ export class ClaudeAgent extends EventEmitter {
     };
     const { tool_name, input, tool_use_id } = payload;
 
-    if (this.autoApprove || AUTO_ALLOW_TOOLS.has(tool_name) || this.sessionAllow.has(tool_name)) {
+    // Studio's own MCP tools are read-only scene-graph queries — never prompt.
+    const isStudioMcp = tool_name.startsWith("mcp__studio__");
+    if (
+      this.autoApprove ||
+      isStudioMcp ||
+      AUTO_ALLOW_TOOLS.has(tool_name) ||
+      this.sessionAllow.has(tool_name)
+    ) {
       this.writeLine(this.buildResponse(req.request_id, { behavior: "allow", updatedInput: input }));
       return;
     }

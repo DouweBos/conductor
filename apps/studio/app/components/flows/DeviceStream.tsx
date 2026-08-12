@@ -14,7 +14,14 @@ interface Point {
   y: number;
 }
 
-export function DeviceStream({ deviceId }: { deviceId: string | null }) {
+export function DeviceStream({
+  deviceId,
+  interactive = true,
+}: {
+  deviceId: string | null;
+  /** False for a watch-only view: no taps, no swipes, no element overlay. */
+  interactive?: boolean;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const downRef = useRef<{ point: Point; t: number } | null>(null);
@@ -57,7 +64,15 @@ export function DeviceStream({ deviceId }: { deviceId: string | null }) {
   };
 
   if (!deviceId) {
-    return <EmptyState icon="device" title="No device selected" description="Pick a device above." />;
+    return interactive ? (
+      <EmptyState icon="device" title="No device selected" description="Pick a device above." />
+    ) : (
+      <EmptyState
+        icon="device"
+        title="Nothing running"
+        description="Run a case and its device appears here."
+      />
+    );
   }
 
   return (
@@ -76,7 +91,7 @@ export function DeviceStream({ deviceId }: { deviceId: string | null }) {
         )
       }
       overlay={
-        inspecting ? (
+        !interactive ? null : inspecting ? (
           capture ? <ElementAnnotations capture={capture} /> : null
         ) : (
           <div
