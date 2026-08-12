@@ -23,6 +23,10 @@ import {
   getHidBinaryPath,
   getCaptureBinaryPath,
   installDriver,
+  detectDeviceKind,
+  resolveDriverHost,
+  startDeviceDriver,
+  stopDeviceDriver,
   startIOSDriver,
   startAndroidDriver,
   startTvOSDriver,
@@ -104,6 +108,19 @@ function dlog(msg: string): void {
 
 let driverPort = 1075;
 let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku' = 'ios';
+
+/**
+ * Host the driver is reachable on. Simulators and every non-Apple platform use
+ * the host's loopback; a physical device runs the driver on its own, so we talk
+ * to it over the network. Memoised — resolution goes through mDNS.
+ */
+let _driverHost: string | null = null;
+async function driverHost(): Promise<string> {
+  if (_driverHost) return _driverHost;
+  if (driverPlatform !== 'ios' && driverPlatform !== 'tvos') return '127.0.0.1';
+  _driverHost = await resolveDriverHost(sessionName).catch(() => '127.0.0.1');
+  return _driverHost;
+}
 let logCollector: LogCollector | null = null;
 let inputServer: InputServerHandle | null = null;
 let inputPort: number | null = null;
@@ -128,7 +145,13 @@ async function startInputServerForPlatform(): Promise<void> {
     await driver.connect();
     makeBackend = () => androidBackend(driver);
   } else {
-    const driver = new IOSDriver(driverPort, '127.0.0.1', sessionName, driverPlatform);
+    const driver = new IOSDriver(
+      driverPort,
+      await driverHost(),
+      sessionName,
+      driverPlatform,
+      (await detectDeviceKind(sessionName)) === 'physical'
+    );
     makeBackend = () => iosBackend(driver);
     // Opt-in native held-touch backend for live drags (iOS only; single-touch).
     if (driverPlatform === 'ios' && process.env.CONDUCTOR_IOS_HID === '1') {
@@ -171,6 +194,12 @@ async function startInputServerForPlatform(): Promise<void> {
 async function startVideoServerForPlatform(): Promise<void> {
   if (videoServer) return;
   if (driverPlatform !== 'ios' && driverPlatform !== 'tvos') return;
+  // Capture attaches to the Simulator's framebuffer via SimulatorKit, which has
+  // no counterpart on real hardware.
+  if ((await detectDeviceKind(sessionName)) === 'physical') {
+    dlog('video capture is simulator-only — stream server disabled for this device');
+    return;
+  }
 
   const binary = await getCaptureBinaryPath();
   if (!binary) {
@@ -209,13 +238,15 @@ async function ensureDriverRunning(): Promise<void> {
     alive = await probe.isAlive().catch(() => false);
     probe.close();
   } else {
-    // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive
-    alive = await isPortOpen(driverPort);
+    // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive.
+    // Physical devices answer on the LAN rather than the host's loopback.
+    alive = await isPortOpen(driverPort, await driverHost());
   }
 
   if (!alive) {
     if (
       (driverPlatform === 'ios' || driverPlatform === 'tvos') &&
+      (await detectDeviceKind(sessionName)) === 'simulator' &&
       !(await isSimulatorBooted(sessionName))
     ) {
       dlog(`Simulator ${sessionName} is not booted — skipping driver restart`);
@@ -224,7 +255,12 @@ async function ensureDriverRunning(): Promise<void> {
     _restartInProgress = true;
     dlog(`Driver on port ${driverPort} not responding — restarting`);
     try {
-      if (driverPlatform === 'ios') {
+      if (
+        (driverPlatform === 'ios' || driverPlatform === 'tvos') &&
+        (await detectDeviceKind(sessionName)) === 'physical'
+      ) {
+        await startDeviceDriver(sessionName, driverPlatform, driverPort);
+      } else if (driverPlatform === 'ios') {
         await startIOSDriver(sessionName, driverPort);
       } else if (driverPlatform === 'tvos') {
         // Health-check restart — don't dismiss, to avoid disrupting user's app
@@ -345,7 +381,9 @@ async function main(): Promise<void> {
       } else {
         dlog(`Stopping driver on port ${driverPort}`);
         try {
-          if (driverPlatform === 'ios') {
+          if (driverPlatform === 'ios' && (await detectDeviceKind(sessionName)) === 'physical') {
+            await stopDeviceDriver(sessionName, 'ios');
+          } else if (driverPlatform === 'ios') {
             await stopIOSDriver(sessionName);
           } else {
             await stopAndroidDriver(sessionName, driverPort);
@@ -541,7 +579,7 @@ async function startDriverForPlatform(platform: 'ios' | 'android' | 'tvos' | 'we
     probe.close();
   } else {
     // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive
-    driverAlive = await isPortOpen(driverPort);
+    driverAlive = await isPortOpen(driverPort, await driverHost());
   }
   if (driverAlive) {
     _driverStarted = true;
@@ -565,7 +603,12 @@ async function startDriverForPlatform(platform: 'ios' | 'android' | 'tvos' | 'we
 
   dlog(`Starting ${platform} driver on port ${driverPort}`);
   try {
-    if (platform === 'ios') {
+    if (
+      (platform === 'ios' || platform === 'tvos') &&
+      (await detectDeviceKind(sessionName)) === 'physical'
+    ) {
+      await startDeviceDriver(sessionName, platform, driverPort);
+    } else if (platform === 'ios') {
       await startIOSDriver(sessionName, driverPort);
     } else if (platform === 'tvos') {
       // First install — the runner takes foreground; ask it to hand

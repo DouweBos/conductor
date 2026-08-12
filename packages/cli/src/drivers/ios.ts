@@ -10,6 +10,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+import * as devicectl from './devicectl.js';
 
 export interface AXFrame {
   X: number;
@@ -76,8 +77,23 @@ export class IOSDriver {
     private readonly port = 1075,
     private readonly host = '127.0.0.1',
     readonly deviceId?: string,
-    readonly platform: 'ios' | 'tvos' = 'ios'
+    readonly platform: 'ios' | 'tvos' = 'ios',
+    /**
+     * Physical devices route app lifecycle through devicectl instead of simctl,
+     * and can't offer the simulator-only conveniences (clipboard, location,
+     * TCC pre-approval, video capture).
+     */
+    readonly isPhysical = false
   ) {}
+
+  /** Reject a simulator-only operation with a message that names the alternative. */
+  private unsupportedOnDevice(operation: string, alternative?: string): never {
+    throw new Error(
+      `${operation} is not supported on physical ${this.platform === 'tvos' ? 'tvOS' : 'iOS'} devices` +
+        (alternative ? ` — ${alternative}` : '') +
+        '.'
+    );
+  }
 
   private request(
     method: 'GET' | 'POST',
@@ -278,7 +294,22 @@ export class IOSDriver {
       argPairs.push(`-${key}`, value);
     }
 
-    if (inject) {
+    if (this.isPhysical && (inject || argPairs.length > 0)) {
+      // devicectl is the device-side equivalent of `simctl launch`: it takes
+      // both launch arguments and an environment dictionary.
+      const deviceId = this.requireDeviceId();
+      await devicectl.launchApp(
+        deviceId,
+        bundleId,
+        argPairs,
+        inject
+          ? {
+              DYLD_INSERT_LIBRARIES: inject.dylibPath,
+              CONDUCTOR_INPROC_PORT: String(inject.inprocPort),
+            }
+          : undefined
+      );
+    } else if (inject) {
       // Injection requires simctl launch with SIMCTL_CHILD_ env — the XCTest
       // /launchApp path only activates and can't set environment.
       const deviceId = this.requireDeviceId();
@@ -308,6 +339,13 @@ export class IOSDriver {
 
   async clearAppState(bundleId: string): Promise<void> {
     const deviceId = this.requireDeviceId();
+    if (this.isPhysical) {
+      // No get_app_container on device, so there's no bundle to reinstall from;
+      // the caller has to supply the .app again via install-app.
+      await devicectl.uninstallApp(deviceId, bundleId);
+      this.invalidateHierarchyCache();
+      return;
+    }
     // Terminate first to prevent app from saving state after clear
     await this.simctl(['terminate', deviceId, bundleId]).catch(() => {});
     // Capture the .app bundle path before uninstalling — uninstall deletes the UUID directory
@@ -329,17 +367,25 @@ export class IOSDriver {
 
   async uninstallApp(bundleId: string): Promise<void> {
     const deviceId = this.requireDeviceId();
-    await this.simctl(['terminate', deviceId, bundleId]).catch(() => {});
-    await this.simctl(['uninstall', deviceId, bundleId]);
+    if (this.isPhysical) {
+      await devicectl.uninstallApp(deviceId, bundleId);
+    } else {
+      await this.simctl(['terminate', deviceId, bundleId]).catch(() => {});
+      await this.simctl(['uninstall', deviceId, bundleId]);
+    }
     this.invalidateHierarchyCache();
   }
 
   async clearKeychain(): Promise<void> {
+    if (this.isPhysical) this.unsupportedOnDevice('clear-keychain');
     const deviceId = this.requireDeviceId();
     await this.simctl(['keychain', deviceId, 'reset']);
   }
 
   async openLink(url: string): Promise<void> {
+    if (this.isPhysical) {
+      this.unsupportedOnDevice('open-link', 'devicectl has no openurl equivalent');
+    }
     const deviceId = this.requireDeviceId();
     await this.simctl(['openurl', deviceId, url]);
     this.invalidateHierarchyCache();
@@ -347,12 +393,14 @@ export class IOSDriver {
 
   /** Read the simulator's clipboard. Uses `xcrun simctl pbpaste <udid>`. */
   async clipboardRead(): Promise<string> {
+    if (this.isPhysical) this.unsupportedOnDevice('Reading the clipboard');
     const deviceId = this.requireDeviceId();
     return this.simctlCapture(['pbpaste', deviceId]);
   }
 
   /** Write to the simulator's clipboard. Uses `xcrun simctl pbcopy <udid>` over stdin. */
   async clipboardWrite(text: string): Promise<void> {
+    if (this.isPhysical) this.unsupportedOnDevice('Writing the clipboard');
     const deviceId = this.requireDeviceId();
     await new Promise<void>((resolve, reject) => {
       const proc = spawn('xcrun', ['simctl', 'pbcopy', deviceId], {
@@ -371,6 +419,7 @@ export class IOSDriver {
   }
 
   async setLocation(latitude: number, longitude: number): Promise<void> {
+    if (this.isPhysical) this.unsupportedOnDevice('set-location');
     const deviceId = this.requireDeviceId();
     await this.simctl(['location', deviceId, 'set', `${latitude},${longitude}`]);
   }
@@ -440,6 +489,13 @@ export class IOSDriver {
       siri: 'siri',
     };
 
+    // On device there's no TCC pre-approval path, so the runner's interruption
+    // monitor is the only thing that can answer permission dialogs.
+    if (this.isPhysical) {
+      await this.post('setPermissions', { permissions: expanded });
+      return;
+    }
+
     const deviceId = this.requireDeviceId();
 
     if (allValue !== undefined) {
@@ -472,6 +528,7 @@ export class IOSDriver {
   }
 
   async addMedia(filePath: string): Promise<void> {
+    if (this.isPhysical) this.unsupportedOnDevice('add-media');
     const deviceId = this.requireDeviceId();
     await this.simctl(['addmedia', deviceId, filePath]);
   }
@@ -485,6 +542,9 @@ export class IOSDriver {
   }
 
   async startRecording(outputPath: string): Promise<void> {
+    if (this.isPhysical) {
+      this.unsupportedOnDevice('Screen recording', 'capture stills with `conductor screenshot`');
+    }
     const deviceId = this.requireDeviceId();
     if (this._recordingProcess) await this.stopRecording();
     this._recordingProcess = spawn(

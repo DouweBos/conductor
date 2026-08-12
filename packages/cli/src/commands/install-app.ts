@@ -4,7 +4,8 @@ import { spawnCommand, detectFirstDevice } from '../runner.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { getSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
-import { detectPlatform } from '../drivers/bootstrap.js';
+import { detectPlatform, detectDeviceKind } from '../drivers/bootstrap.js';
+import { installApp as installPhysicalApp } from '../drivers/devicectl.js';
 import { VegaCli } from '../drivers/vega/cli.js';
 
 async function resolveDeviceId(sessionName: string): Promise<string | undefined> {
@@ -50,10 +51,19 @@ export async function installApp(
       return 1;
     }
   } else if (platform === 'ios' || platform === 'tvos') {
-    const result = await spawnCommand('xcrun', ['simctl', 'install', deviceId, appPath]);
-    if (!result.success) {
-      printError(`install-app failed: ${result.stderr}`, opts);
-      return 1;
+    if ((await detectDeviceKind(deviceId)) === 'physical') {
+      try {
+        await installPhysicalApp(deviceId, appPath);
+      } catch (e) {
+        printError(`install-app failed: ${e instanceof Error ? e.message : String(e)}`, opts);
+        return 1;
+      }
+    } else {
+      const result = await spawnCommand('xcrun', ['simctl', 'install', deviceId, appPath]);
+      if (!result.success) {
+        printError(`install-app failed: ${result.stderr}`, opts);
+        return 1;
+      }
     }
   } else {
     const result = await spawnCommand(

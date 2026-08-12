@@ -33,6 +33,7 @@ import {
   getDeviceDisplayName,
   selectTargetForDevice,
 } from '../drivers/log-sources/metro-discovery.js';
+import { detectDeviceKind } from '../drivers/bootstrap.js';
 
 const MAX_BUFFER = 5000;
 const RESTART_DELAY_MS = 2000;
@@ -169,6 +170,10 @@ export class LogCollector {
 
     try {
       if (this.platform === 'ios' || this.platform === 'tvos') {
+        // `simctl spawn ... log stream` has no devicectl equivalent, so OS logs
+        // are simulator-only. Metro still streams over the network below, which
+        // is the useful source for React Native apps anyway.
+        if ((await detectDeviceKind(this.deviceId)) === 'physical') return;
         this.source = new IOSLogSource(this.deviceId, this.appId);
       } else if (this.platform === 'android') {
         this.source = new AndroidLogSource(this.deviceId, this.appId);

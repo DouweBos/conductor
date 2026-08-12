@@ -33,11 +33,13 @@ struct ScreenSizeHelper {
     // callers that want the app window frame read it from the hierarchy.
     static func physicalScreenSize() -> (Float, Float) {
         #if os(tvOS)
-        let homescreenBundleId = "com.apple.HeadBoard"
+        // tvOS has no windowing, so the runner's own screen bounds are already
+        // the full screen. Querying HeadBoard's frame hangs indefinitely on
+        // physical Apple TVs, and it buys nothing here.
+        let size = UIScreen.main.bounds.size
         #else
-        let homescreenBundleId = "com.apple.springboard"
+        let size = XCUIApplication(bundleIdentifier: "com.apple.springboard").frame.size
         #endif
-        let size = XCUIApplication(bundleIdentifier: homescreenBundleId).frame.size
         return (Float(size.width), Float(size.height))
     }
 

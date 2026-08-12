@@ -19,6 +19,11 @@ import path from 'path';
 import { log } from '../verbose.js';
 import { sleep } from '../utils.js';
 import { resolveAndroidTool } from '../android/sdk.js';
+import {
+  findPhysicalDevice,
+  resolveDeviceHost,
+  terminateApp as terminateDeviceApp,
+} from './devicectl.js';
 
 // ── Platform detection ────────────────────────────────────────────────────────
 
@@ -48,9 +53,11 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
     return 'roku';
   }
 
-  // Check if it looks like an iOS/tvOS simulator UUID (8-4-4-4-12 hex chars)
-  const iosUuidRe = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
-  if (iosUuidRe.test(deviceId)) {
+  // Simulator UDIDs and CoreDevice identifiers share the 8-4-4-4-12 UUID shape;
+  // physical devices additionally answer to their 40-hex hardware UDID.
+  const appleUuidRe = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
+  const appleUdidRe = /^[0-9a-f]{40}$/i;
+  if (appleUuidRe.test(deviceId) || appleUdidRe.test(deviceId)) {
     // Query simctl to determine whether this UUID belongs to a tvOS runtime
     try {
       const out = await spawnCapture('xcrun', ['simctl', 'list', 'devices', '--json']);
@@ -59,12 +66,22 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
         if (sims.some((s) => s.udid === deviceId)) {
           const platform: Platform = runtime.includes('tvOS') ? 'tvos' : 'ios';
           _platformCache.set(deviceId, platform);
+          _kindCache.set(deviceId, 'simulator');
           return platform;
         }
       }
     } catch {
-      /* fall through to ios default */
+      /* fall through to devicectl */
     }
+
+    // Not a simulator — ask CoreDevice whether it's a paired physical device.
+    const physical = await findPhysicalDevice(deviceId);
+    if (physical) {
+      _platformCache.set(deviceId, physical.platform);
+      _kindCache.set(deviceId, 'physical');
+      return physical.platform;
+    }
+
     _platformCache.set(deviceId, 'ios');
     return 'ios';
   }
@@ -72,6 +89,42 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
   // Otherwise assume Android (serial like emulator-5554 or real device)
   _platformCache.set(deviceId, 'android');
   return 'android';
+}
+
+export type DeviceKind = 'simulator' | 'physical';
+
+/** Cache: deviceId → simulator vs physical. Populated as a side effect of detectPlatform. */
+const _kindCache = new Map<string, DeviceKind>();
+
+/**
+ * Whether the device is a real one rather than a simulator. Only meaningful for
+ * iOS/tvOS; everything else reports 'simulator' since the distinction is either
+ * absent (web) or already encoded in the driver (Android adb, Vega).
+ */
+export async function detectDeviceKind(deviceId: string): Promise<DeviceKind> {
+  if (_kindCache.has(deviceId)) return _kindCache.get(deviceId)!;
+  const platform = await detectPlatform(deviceId);
+  if (platform !== 'ios' && platform !== 'tvos') {
+    _kindCache.set(deviceId, 'simulator');
+    return 'simulator';
+  }
+  // detectPlatform records the kind for Apple devices it recognised; anything
+  // still unset never matched simctl or devicectl, so treat it as a simulator.
+  const kind = _kindCache.get(deviceId) ?? 'simulator';
+  _kindCache.set(deviceId, kind);
+  return kind;
+}
+
+/**
+ * Host the XCTest driver for this device is reachable on. Simulators share the
+ * host's loopback; physical devices run the driver on their own loopback, so we
+ * reach them over the LAN instead.
+ */
+export async function resolveDriverHost(deviceId: string): Promise<string> {
+  if ((await detectDeviceKind(deviceId)) !== 'physical') return '127.0.0.1';
+  const device = await findPhysicalDevice(deviceId);
+  if (!device) throw new Error(`Physical device ${deviceId} is no longer paired`);
+  return resolveDeviceHost(device);
 }
 
 // ── Port management ───────────────────────────────────────────────────────────
@@ -795,6 +848,199 @@ export async function startTvOSDriver(
  */
 export async function stopTvOSDriver(deviceId: string): Promise<void> {
   await spawnAndWait('xcrun', ['simctl', 'terminate', deviceId, TVOS_RUNNER_BUNDLE_ID]);
+}
+
+// ── Physical device bootstrap ─────────────────────────────────────────────────
+
+const DEVICE_STARTUP_TIMEOUT_MS = 300000;
+const DEVICE_STARTUP_POLL_MS = 1000;
+
+/**
+ * Resolve the Apple Developer team to sign the driver with.
+ *
+ * Unlike simulators, a real device only runs code signed for a team it's
+ * provisioned against, and we can't ship a signed driver — it has to be built
+ * on the user's machine with their credentials.
+ */
+export async function resolveTeamId(): Promise<string> {
+  const fromEnv = process.env.CONDUCTOR_TEAM_ID?.trim();
+  if (fromEnv) return fromEnv;
+
+  // Fall back to the keychain when there's exactly one development team, which
+  // is the common single-account setup.
+  let identities: string;
+  try {
+    identities = await spawnCapture('security', ['find-identity', '-v', '-p', 'codesigning']);
+  } catch {
+    identities = '';
+  }
+  const teams = new Set(
+    [...identities.matchAll(/"Apple Development:[^"]*\(([A-Z0-9]{10})\)"/g)].map((m) => m[1])
+  );
+  if (teams.size === 1) return [...teams][0];
+
+  throw new Error(
+    teams.size === 0
+      ? 'No "Apple Development" signing identity found. Running on a physical device needs one — ' +
+          'sign in to Xcode ▸ Settings ▸ Accounts, then set CONDUCTOR_TEAM_ID=<team> if you have several teams.'
+      : `Multiple development teams found (${[...teams].join(', ')}). ` +
+          'Set CONDUCTOR_TEAM_ID=<team> to pick one.'
+  );
+}
+
+/** Where the signed device driver for a given platform + team is cached. */
+function deviceDriverCache(platform: 'ios' | 'tvos', teamId: string): string {
+  return path.join(os.homedir(), '.conductor', `${platform}-driver-device`, teamId);
+}
+
+/**
+ * Build and sign the XCTest driver for a physical device.
+ *
+ * The bundled simulator builds are unsigned and the wrong slice, so the driver
+ * is compiled from the sources shipped alongside them. Building against the
+ * device (rather than a generic destination) lets Xcode register it with the
+ * team's provisioning profile on first run.
+ */
+async function setupDeviceDriver(
+  deviceId: string,
+  platform: 'ios' | 'tvos',
+  teamId: string
+): Promise<string> {
+  const driversDir = await getDriversDir();
+  const projectDir = path.join(driversDir, 'ios-driver-src');
+  const project = path.join(projectDir, 'conductor-driver-ios.xcodeproj');
+  if (!fs.existsSync(project)) {
+    throw new Error(
+      `Conductor driver sources not found at ${projectDir}.\n` +
+        `Physical devices need a locally signed driver build. Run 'make package-drivers-tarball' ` +
+        `from the repo root, or reinstall conductor to fetch a driver bundle that includes sources.`
+    );
+  }
+
+  const cache = deviceDriverCache(platform, teamId);
+  const scheme = platform === 'tvos' ? 'conductor-driver-tvos' : 'conductor-driver-ios';
+
+  // Rebuild when the sources or the signing team change; the xctestrun naming
+  // is derived from the SDK so glob for it rather than hardcoding a version.
+  const stamp = path.join(cache, '.version');
+  const sourceMtime = String(fs.statSync(path.join(project, 'project.pbxproj')).mtimeMs);
+  let cached = '';
+  try {
+    cached = fs.readFileSync(stamp, 'utf-8').trim();
+  } catch {
+    /* first run */
+  }
+  if (cached === sourceMtime && findDeviceXctestrun(cache)) return findDeviceXctestrun(cache)!;
+
+  log(`Building signed ${platform} driver for team ${teamId} (first run takes a few minutes)...`);
+  await spawnAndWait('xcodebuild', [
+    'build-for-testing',
+    '-project',
+    project,
+    '-scheme',
+    scheme,
+    '-destination',
+    `id=${deviceId}`,
+    '-derivedDataPath',
+    cache,
+    '-allowProvisioningUpdates',
+    `DEVELOPMENT_TEAM=${teamId}`,
+  ]);
+
+  const xctestrun = findDeviceXctestrun(cache);
+  if (!xctestrun) {
+    throw new Error(`Driver build for ${platform} produced no xctestrun under ${cache}`);
+  }
+  fs.writeFileSync(stamp, sourceMtime);
+  log(`${platform} device driver ready`);
+  return xctestrun;
+}
+
+/** Locate the xctestrun a device build produced — its name embeds the SDK version. */
+function findDeviceXctestrun(cache: string): string | null {
+  const products = path.join(cache, 'Build', 'Products');
+  try {
+    const match = fs.readdirSync(products).find((f) => f.endsWith('.xctestrun'));
+    return match ? path.join(products, match) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Start the XCTest driver on a physical iOS/tvOS device.
+ *
+ * Mirrors startIOSDriver, with two differences forced by real hardware: the
+ * driver is built and signed locally, and it binds every interface because the
+ * device's loopback isn't shared with the host.
+ */
+export async function startDeviceDriver(
+  deviceId: string,
+  platform: 'ios' | 'tvos',
+  port: number
+): Promise<void> {
+  const host = await resolveDriverHost(deviceId);
+  if (await isPortOpen(port, host)) {
+    log(`${platform} device driver already running on ${host}:${port}`);
+    return;
+  }
+
+  const device = await findPhysicalDevice(deviceId);
+  if (device && !device.developerModeEnabled) {
+    throw new Error(
+      `Developer Mode is disabled on "${device.name}". ` +
+        `Enable it in Settings ▸ Privacy & Security ▸ Developer Mode and re-pair the device.`
+    );
+  }
+
+  const teamId = await resolveTeamId();
+  const xctestrun = await setupDeviceDriver(deviceId, platform, teamId);
+
+  const testTarget =
+    platform === 'tvos' ? 'conductor-driver-tvosUITests' : 'conductor-driver-iosUITests';
+  await spawnAndWait('plutil', [
+    '-replace',
+    `${testTarget}.EnvironmentVariables.PORT`,
+    '-string',
+    String(port),
+    xctestrun,
+  ]);
+  // The host reaches the driver over the network, so it can't bind loopback-only.
+  await spawnAndWait('plutil', [
+    '-replace',
+    `${testTarget}.EnvironmentVariables.BIND_ALL`,
+    '-string',
+    '1',
+    xctestrun,
+  ]);
+
+  log(`Starting ${platform} driver on ${device?.name ?? deviceId} (${host}:${port})`);
+  const proc = spawn(
+    'xcodebuild',
+    ['test-without-building', '-xctestrun', xctestrun, '-destination', `id=${deviceId}`],
+    { detached: true, stdio: ['ignore', 'ignore', 'ignore'] }
+  );
+  proc.unref();
+
+  const deadline = Date.now() + DEVICE_STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(DEVICE_STARTUP_POLL_MS);
+    if (await isPortOpen(port, host)) {
+      log(`${platform} device driver ready on ${host}:${port}`);
+      return;
+    }
+  }
+
+  throw new Error(
+    `${platform} XCTest driver did not start within ${DEVICE_STARTUP_TIMEOUT_MS / 1000}s ` +
+      `on ${host}:${port}. Check that the device is awake and on the same network.`
+  );
+}
+
+/** Stop the driver on a physical device by killing the runner process. */
+export async function stopDeviceDriver(deviceId: string, platform: 'ios' | 'tvos'): Promise<void> {
+  const bundleId = platform === 'tvos' ? TVOS_RUNNER_BUNDLE_ID : IOS_RUNNER_BUNDLE_ID;
+  await terminateDeviceApp(deviceId, bundleId).catch(() => {});
 }
 
 // ── Android bootstrap ─────────────────────────────────────────────────────────

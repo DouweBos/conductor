@@ -53,9 +53,15 @@ struct ViewHierarchyHandler: HTTPHandler {
         let appHierarchy = try getHierarchyWithFallback(foregroundApp)
         await SystemPermissionHelper.handleSystemPermissionAlertIfNeeded(appHierarchy: appHierarchy, foregroundApp: foregroundApp)
                 
+        // tvOS has no status bar, and probing HeadBoard for one hangs on
+        // physical Apple TVs.
+        #if os(tvOS)
+        let statusBars: [AXElement] = []
+        #else
         let statusBars = logger.measure(message: "Fetch status bar hierarchy") {
             fullStatusBars(homescreenApplication)
         } ?? []
+        #endif
 
         // Fetch Safari WebView hierarchy for iOS 26+ (runs in separate SafariViewService process). Skip on tvOS.
         #if os(tvOS)
@@ -80,12 +86,16 @@ struct ViewHierarchyHandler: HTTPHandler {
         let appHeight = appFrame["Height"] ?? 0
         var windowOriginX: Double = 0
         var windowOriginY: Double = 0
+        // Windowing is iPadOS-only; on tvOS this would just be another HeadBoard
+        // snapshot, which hangs on physical Apple TVs.
+        #if !os(tvOS)
         if appWidth > 0, appHeight > 0 {
             if let origin = findWindowOriginInSpringBoard(width: appWidth, height: appHeight) {
                 windowOriginX = origin.x
                 windowOriginY = origin.y
             }
         }
+        #endif
         NSLog("Resolved windowOrigin=(\(windowOriginX),\(windowOriginY)) for appSize=(\(appWidth),\(appHeight))")
 
         let appHierarchyForResponse: AXElement

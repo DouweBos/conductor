@@ -4,7 +4,8 @@ import { spawnCommand, detectFirstDevice } from '../runner.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { getSession } from '../session.js';
 import { printData, printError, OutputOptions } from '../output.js';
-import { detectPlatform } from '../drivers/bootstrap.js';
+import { detectPlatform, detectDeviceKind } from '../drivers/bootstrap.js';
+import { listApps as listPhysicalApps } from '../drivers/devicectl.js';
 import { VegaCli } from '../drivers/vega/cli.js';
 
 async function resolveDeviceId(sessionName: string): Promise<string | undefined> {
@@ -42,6 +43,16 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
   } else if (platform === 'vega') {
     // Vega is driven through Amazon's CLI, not adb; strip the `vega:` id prefix.
     appIds = (await new VegaCli(deviceId.replace(/^vega:/, '')).listInstalledApps()).sort();
+  } else if (
+    (platform === 'ios' || platform === 'tvos') &&
+    (await detectDeviceKind(deviceId)) === 'physical'
+  ) {
+    try {
+      appIds = (await listPhysicalApps(deviceId)).map((a) => a.id).sort();
+    } catch (e) {
+      printError(`list-apps failed: ${e instanceof Error ? e.message : String(e)}`, opts);
+      return 1;
+    }
   } else if (platform === 'ios' || platform === 'tvos') {
     const result = await spawnCommand('bash', [
       '-c',

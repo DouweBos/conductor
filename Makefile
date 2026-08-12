@@ -1,4 +1,4 @@
-.PHONY: build build-cli build-ios-driver build-ios-inproc build-ios-capture build-tvos-driver build-android-driver package-cli package-drivers-tarball
+.PHONY: build build-cli build-ios-driver build-ios-inproc build-ios-capture build-tvos-driver build-android-driver package-cli package-driver-sources package-drivers-tarball
 
 DRIVERS_TARBALL_DIR = dist-drivers
 
@@ -39,7 +39,7 @@ build-tvos-driver:
 build-android-driver:
 	cd packages/android-driver && ./gradlew :conductor-android:assembleDebug :conductor-android:assembleAndroidTest
 
-package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-android-driver
+package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-android-driver package-driver-sources
 	mkdir -p $(CLI_DRIVERS)/android $(CLI_DRIVERS)/ios $(CLI_DRIVERS)/tvos
 	cp $(ANDROID_OUT)/debug/conductor-android-debug.apk \
 		$(CLI_DRIVERS)/android/conductor-app.apk
@@ -54,6 +54,20 @@ package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-android-d
 	cp $$(find $(TVOS_DERIVED)/Build/Products -name "*.xctestrun" | head -1) \
 		$(CLI_DRIVERS)/tvos/conductor-driver-tvos-config.xctestrun
 
-package-drivers-tarball:
+# Driver sources for physical devices. Real hardware only runs code signed for
+# the user's team, so the driver is compiled locally on first use rather than
+# shipped prebuilt like the simulator slices.
+IOS_DRIVER_SRC = $(CLI_DRIVERS)/ios-driver-src
+package-driver-sources:
+	rm -rf $(IOS_DRIVER_SRC)
+	mkdir -p $(IOS_DRIVER_SRC)
+	cd packages/ios-driver && tar -cf - \
+		--exclude derived-data --exclude derived-data-tvos --exclude .DS_Store \
+		--exclude .build --exclude xcuserdata \
+		conductor-driver-ios.xcodeproj conductor-driver-ios conductor-driver-iosUITests \
+		conductor-driver-iosTests ConductorDriverLib packages \
+		| tar -xf - -C $(CURDIR)/$(IOS_DRIVER_SRC)
+
+package-drivers-tarball: package-driver-sources
 	mkdir -p $(DRIVERS_TARBALL_DIR)
-	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc ios-capture tvos
+	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc ios-capture tvos ios-driver-src
