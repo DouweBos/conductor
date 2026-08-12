@@ -172,22 +172,40 @@ const _hostCache = new Map<string, string>();
 
 /**
  * The mDNS name a device advertises itself under, derived from its display name
- * the same way the device does: non-alphanumerics collapse to single dashes.
+ * the same way the device does: apostrophes are dropped outright (so "Douwe's
+ * iPhone" is "Douwes-iPhone", not "Douwe-s-iPhone") and every other run of
+ * non-alphanumerics collapses to a single dash.
  */
 export function bonjourHostname(deviceName: string): string {
   return (
     deviceName
+      .replace(/['’]/g, '')
       .replace(/[^A-Za-z0-9-]+/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '') + '.local'
   );
 }
 
+/**
+ * Candidate LAN addresses, best first. devicectl's `potentialHostnames` already
+ * contain Apple's own sanitization of the device name, so re-pointing those at
+ * `.local` is more reliable than our derivation — we keep both because the
+ * hostname list is occasionally absent.
+ */
+export function deviceHostCandidates(device: PhysicalDevice): string[] {
+  const fromDevicectl = device.potentialHostnames
+    .filter((h) => h.endsWith('.coredevice.local'))
+    .map((h) => h.replace(/\.coredevice\.local$/, '.local'));
+  return [
+    ...new Set([bonjourHostname(device.name), ...fromDevicectl, ...device.potentialHostnames]),
+  ];
+}
+
 export async function resolveDeviceHost(device: PhysicalDevice): Promise<string> {
   const cached = _hostCache.get(device.identifier);
   if (cached) return cached;
 
-  const candidates = [bonjourHostname(device.name), ...device.potentialHostnames];
+  const candidates = deviceHostCandidates(device);
 
   for (const host of candidates) {
     try {

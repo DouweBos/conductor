@@ -56,6 +56,16 @@ struct ScreenSizeHelper {
             return DeviceOrientation.portrait
         }
 
+        // A physical device resting on a desk reports .faceUp/.faceDown, which a
+        // simulator never does. Those say nothing about how the UI is laid out,
+        // so treat them as portrait — matching what actualScreenSize() already
+        // does for them. (A device held flat while the app is in landscape will
+        // map coordinates as portrait; device orientation is all XCUIDevice
+        // exposes here.)
+        if unwrappedOrientation == .faceUp || unwrappedOrientation == .faceDown {
+            return DeviceOrientation.portrait
+        }
+
         return unwrappedOrientation
     }
 
@@ -91,7 +101,13 @@ struct ScreenSizeHelper {
             CGPoint(x: CGFloat(width) - point.y, y: CGFloat(point.x))
         case .landscapeRight:
             CGPoint(x: CGFloat(point.y), y: CGFloat(height) - point.x)
-        default: fatalError("Not implemented yet")
+        // Never crash the driver over an orientation we don't map: an untranslated
+        // point is a recoverable mis-tap, a fatalError kills every later request.
+        default:
+            {
+                NSLog("orientationAwarePoint: unmapped orientation \(orientation), using point as-is")
+                return point
+            }()
         }
     }
 }

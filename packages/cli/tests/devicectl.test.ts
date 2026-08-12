@@ -8,6 +8,7 @@ import { TestSuite, assert } from './runner.js';
 import {
   parseDevicectlDevices,
   bonjourHostname,
+  deviceHostCandidates,
   type DevicectlDevice,
 } from '../src/drivers/devicectl.js';
 
@@ -101,7 +102,45 @@ devicectlSuite.test('tolerates empty and malformed payloads', async () => {
 
 devicectlSuite.test('derives the Bonjour hostname the way the device advertises it', async () => {
   assert(bonjourHostname('Livingroom TV') === 'Livingroom-TV.local', 'spaces become dashes');
-  assert(bonjourHostname("Douwe's iPhone") === 'Douwe-s-iPhone.local', 'punctuation collapses');
   assert(bonjourHostname('Apple  TV   4K') === 'Apple-TV-4K.local', 'runs collapse to one dash');
   assert(bonjourHostname('(Test)') === 'Test.local', 'no leading/trailing dash');
+  // Apostrophes are dropped, not dashed — a real iPhone advertises
+  // "Douwes-iPhone-14-Pro.local", so dashing here makes the device unreachable.
+  assert(
+    bonjourHostname('Douwe\u2019s iPhone 14 Pro') === 'Douwes-iPhone-14-Pro.local',
+    'curly apostrophe is dropped'
+  );
+  assert(bonjourHostname("Douwe's iPhone") === 'Douwes-iPhone.local', 'straight apostrophe too');
+});
+
+devicectlSuite.test('prefers devicectl hostnames re-pointed at .local', async () => {
+  const [d] = parseDevicectlDevices({
+    result: {
+      devices: [
+        device({
+          deviceProperties: { name: 'Douwe\u2019s iPhone 14 Pro' },
+          connectionProperties: {
+            pairingState: 'paired',
+            tunnelState: 'connected',
+            transportType: 'localNetwork',
+            potentialHostnames: [
+              'Douwes-iPhone-14-Pro.coredevice.local',
+              '00008120-001979643C9B401E.coredevice.local',
+            ],
+          },
+        }),
+      ],
+    },
+  });
+  const candidates = deviceHostCandidates(d);
+  assert(candidates[0] === 'Douwes-iPhone-14-Pro.local', `first: ${candidates[0]}`);
+  assert(
+    candidates.includes('00008120-001979643C9B401E.local'),
+    'udid hostname is re-pointed too'
+  );
+  assert(
+    candidates.includes('Douwes-iPhone-14-Pro.coredevice.local'),
+    'original hostnames stay as fallbacks'
+  );
+  assert(new Set(candidates).size === candidates.length, 'no duplicates');
 });

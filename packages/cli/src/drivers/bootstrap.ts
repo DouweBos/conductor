@@ -933,7 +933,7 @@ async function setupDeviceDriver(
   if (cached === sourceMtime && findDeviceXctestrun(cache)) return findDeviceXctestrun(cache)!;
 
   log(`Building signed ${platform} driver for team ${teamId} (first run takes a few minutes)...`);
-  await spawnAndWait('xcodebuild', [
+  const args = [
     'build-for-testing',
     '-project',
     project,
@@ -945,7 +945,25 @@ async function setupDeviceDriver(
     cache,
     '-allowProvisioningUpdates',
     `DEVELOPMENT_TEAM=${teamId}`,
-  ]);
+  ];
+
+  // The first build for a team creates provisioning profiles as a side effect,
+  // and Xcode regularly references one before it lands on disk ("Build input
+  // file cannot be found: ….mobileprovision"). The profile exists by the retry.
+  try {
+    await spawnCaptureAll('xcodebuild', args);
+  } catch (first) {
+    log(`Driver build failed, retrying once: ${first instanceof Error ? first.message : first}`);
+    try {
+      await spawnCaptureAll('xcodebuild', args);
+    } catch (retry) {
+      throw new Error(
+        `Could not build the ${platform} driver for team ${teamId}.\n` +
+          `${retry instanceof Error ? retry.message : String(retry)}\n` +
+          `Check that the device is registered to the team and that Xcode has an account for it.`
+      );
+    }
+  }
 
   const xctestrun = findDeviceXctestrun(cache);
   if (!xctestrun) {
@@ -1355,6 +1373,32 @@ function spawnAndWait(cmd: string, args: string[]): Promise<void> {
     proc.on('close', (code) =>
       code === 0 ? resolve() : reject(new Error(`${cmd} ${args.join(' ')} exited ${code}`))
     );
+    proc.on('error', reject);
+  });
+}
+
+/**
+ * Run a command, and on failure reject with the tail of its output. Used for
+ * xcodebuild, where the exit code alone tells the user nothing actionable.
+ */
+function spawnCaptureAll(cmd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    const append = (chunk: Buffer) => {
+      out += chunk.toString();
+    };
+    proc.stdout?.on('data', append);
+    proc.stderr?.on('data', append);
+    proc.on('close', (code) => {
+      if (code === 0) return resolve(out);
+      const errors = out
+        .split('\n')
+        .filter((l) => l.includes('error:'))
+        .slice(0, 5)
+        .join('\n');
+      reject(new Error(`${cmd} exited ${code}${errors ? `:\n${errors}` : ''}`));
+    });
     proc.on('error', reject);
   });
 }
