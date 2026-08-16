@@ -77,15 +77,47 @@ export function findElement(root: CaptureElement, ref: string): CaptureElement |
   return null;
 }
 
-/** Every element that has bounds, smallest last so hit-testing prefers it. */
-export function elementsWithBounds(root: CaptureElement): CaptureElement[] {
+/**
+ * Every element that has bounds, smallest last so hit-testing prefers it.
+ * `a11yOnly` keeps the device overlay to the handful of elements a screen reader
+ * sees; the full hierarchy is hundreds of boxes and mostly layout containers.
+ */
+export function elementsWithBounds(root: CaptureElement, a11yOnly = false): CaptureElement[] {
   const out: CaptureElement[] = [];
   const visit = (el: CaptureElement) => {
-    if (el.bounds && el.bounds.width > 0 && el.bounds.height > 0) out.push(el);
+    const wanted = !a11yOnly || el.a11y;
+    if (wanted && el.bounds && el.bounds.width > 0 && el.bounds.height > 0) out.push(el);
     for (const child of el.children ?? []) visit(child);
   };
   for (const child of root.children ?? []) visit(child);
   return out.sort((a, b) => area(b) - area(a));
+}
+
+/**
+ * The hierarchy under a point in capture coordinates, innermost first — what a
+ * right-click offers so you can reach a parent the smallest box hides.
+ */
+export function elementsAtPoint(root: CaptureElement, x: number, y: number): CaptureElement[] {
+  return elementsWithBounds(root)
+    .filter((el) => {
+      const b = el.bounds!;
+      return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
+    })
+    .reverse();
+}
+
+/**
+ * Whether the element's box actually lands on the screen. A capture holds the
+ * whole hierarchy, so a scroller's offscreen rows and collapsed views are in
+ * there too — and asserting on one that isn't visible is a flaky test.
+ */
+export function isInView(
+  el: CaptureElement,
+  screen: { width: number; height: number },
+): boolean {
+  const b = el.bounds;
+  if (!b || b.width <= 0 || b.height <= 0 || !screen.width || !screen.height) return false;
+  return b.x < screen.width && b.y < screen.height && b.x + b.width > 0 && b.y + b.height > 0;
 }
 
 function area(el: CaptureElement): number {

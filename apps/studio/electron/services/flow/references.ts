@@ -7,6 +7,7 @@ import {
   renderReference,
   resolveReference,
 } from "../../../app/lib/flowRefs";
+import { FLOW_SEARCH_LIMIT } from "../../../app/lib/types";
 import type { FileEntry, FlowReference, FlowSearchHit } from "../../../app/lib/types";
 import { getProjectInfo, listFlows } from "../file/fileService";
 import { readAliases } from "./catalog";
@@ -55,14 +56,16 @@ export async function findUsages(target: string): Promise<FlowReference[]> {
 }
 
 /**
- * Rewrite every reference to `from` so it points at `to`. Returns the files
- * touched — the caller renames the file itself.
+ * Repoint every reference to a moved file — `moves` maps old path to new path.
+ * Whole sets move at once when a folder is renamed, so a relative reference
+ * between two moved files stays correct. Returns the files touched; the caller
+ * moves the files themselves.
  */
-export async function updateReferences(from: string, to: string): Promise<string[]> {
+export async function updateReferencesForMoves(moves: Map<string, string>): Promise<string[]> {
   const project = getProjectInfo();
   if (!project) return [];
   const aliases = readAliases(project.flowsDir);
-  const usages = (await indexReferences()).filter((ref) => ref.to === from);
+  const usages = (await indexReferences()).filter((ref) => moves.has(ref.to));
 
   const byFile = new Map<string, FlowReference[]>();
   for (const usage of usages) {
@@ -77,8 +80,13 @@ export async function updateReferences(from: string, to: string): Promise<string
       const line = lines[ref.line - 1];
       const match = REFERENCE_LINE.exec(line);
       if (!match) continue;
-      // A file that moved is still referred to from its own (unchanged) location.
-      const replacement = renderReference(to, file === from ? to : file, ref.style, aliases);
+      // A referring file that is itself moving is rendered from where it lands.
+      const replacement = renderReference(
+        moves.get(ref.to)!,
+        moves.get(file) ?? file,
+        ref.style,
+        aliases,
+      );
       lines[ref.line - 1] = line.replace(
         `${match[1]}${match[2]}${match[3]}`,
         `${match[1]}${match[2]}${replacement}`,
@@ -91,7 +99,7 @@ export async function updateReferences(from: string, to: string): Promise<string
 }
 
 /** Plain substring search across the flows directory. */
-export async function searchFlows(query: string, limit = 200): Promise<FlowSearchHit[]> {
+export async function searchFlows(query: string, limit = FLOW_SEARCH_LIMIT): Promise<FlowSearchHit[]> {
   const project = getProjectInfo();
   if (!project || !query.trim()) return [];
   const needle = query.toLowerCase();

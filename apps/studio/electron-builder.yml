@@ -15,6 +15,10 @@ files:
 
 asar: true
 
+# Copies native/conductor/ into Resources — a hook, not extraResources,
+# because electron-builder's matcher strips nested node_modules.
+afterPack: ./scripts/electron-after-pack.cjs
+
 mac:
   category: public.app-category.developer-tools
   identity: null

@@ -10,6 +10,7 @@ import { releaseAllReservations } from "./services/device/reservations";
 import { stopAllRuns } from "./services/flow/flowRunner";
 import { stopAllLogs } from "./services/logs/logsService";
 import { initUpdater } from "./services/updater/updaterService";
+import { initConductorOverride } from "./services/conductor/override";
 import { fixProcessPath } from "./shellEnv";
 
 const isDev = !app.isPackaged;
@@ -71,6 +72,9 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     await fixProcessPath();
+    // Before any IPC can resolve the CLI, so a pinned version is active (or
+    // provisioning in the background) from the first invocation.
+    initConductorOverride();
     registerIpcHandlers();
     installOpenProjectMenuItem();
     // Agents reach the scene graph through this; a failure here must not stop

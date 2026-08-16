@@ -1,4 +1,5 @@
 import { Button, IconButton } from "@conductor/studio-ui";
+import { useState } from "react";
 
 import {
   openRunOptions,
@@ -6,11 +7,13 @@ import {
   useHasRunOptions,
 } from "../../stores/runOptionsStore";
 import { toggleTheme, useResolvedTheme } from "../../stores/themeStore";
+import { SettingsDialog } from "../settings/SettingsDialog";
 import { ProjectMenu } from "./ProjectMenu";
 import { UpdaterBadge } from "./UpdaterBadge";
 import styles from "./TitleBar.module.css";
 
 export function TitleBar() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const theme = useResolvedTheme();
   const hasRunOptions = useHasRunOptions();
   const activeProfile = useActiveProfile();
@@ -39,7 +42,9 @@ export function TitleBar() {
           label="Toggle theme"
           onClick={toggleTheme}
         />
+        <IconButton icon="settings" label="Settings" onClick={() => setSettingsOpen(true)} />
       </div>
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </header>
   );
 }

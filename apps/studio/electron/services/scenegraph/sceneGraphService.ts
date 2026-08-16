@@ -158,7 +158,10 @@ function walk(element: CaptureElement, into: CaptureElement[] = []): CaptureElem
  * revisiting a screen dedups to one node.
  */
 export function signatureFor(capture: CaptureUiResult): string {
+  // A11y elements only: the rest of the hierarchy is layout that shifts between
+  // otherwise identical screens, and would split one screen into many.
   const tokens = walk(capture.root)
+    .filter((el) => el.a11y)
     .map((el) => ({ role: el.role ?? "", text: (el.text ?? "").trim().slice(0, 24) }))
     .filter(({ role, text }) => (role || text) && !isVolatile(text))
     .map(({ role, text }) => `${role}:${text}`)
@@ -166,11 +169,15 @@ export function signatureFor(capture: CaptureUiResult): string {
   return [...new Set(tokens)].join("|");
 }
 
-/** A screen's name: the first stable, short label a leaf carries. */
+/**
+ * A screen's name: the first stable, short label a screen reader would announce.
+ * An a11y element stands in for the old "leaf" test — in the full hierarchy even
+ * a button has children, so leaf-ness no longer means "carries its own text".
+ */
 function labelFor(capture: CaptureUiResult, index: number): string {
   const text = walk(capture.root).find(
     (el) =>
-      (el.children ?? []).length === 0 &&
+      el.a11y &&
       !!el.text?.trim() &&
       el.text.trim().length <= 24 &&
       !isVolatile(el.text.trim()),

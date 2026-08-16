@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { parse as parseYaml } from "yaml";
 
+import { aliasFor } from "../../../app/lib/flowRefs";
 import type { FileEntry, FlowCatalog, FlowCatalogEntry } from "../../../app/lib/types";
 import { getProjectInfo, listFlows } from "../file/fileService";
 
@@ -59,19 +60,6 @@ export function readAliases(flowsDir: string): Record<string, string> {
     }
   }
   return {};
-}
-
-/** The longest alias covering this file, e.g. `@pages/details/open.yaml`. */
-function aliasFor(relPath: string, aliases: Record<string, string>): string | undefined {
-  let best: { alias: string; dir: string } | null = null;
-  for (const [alias, dir] of Object.entries(aliases)) {
-    const prefix = dir === "." ? "" : `${dir}/`;
-    if (!relPath.startsWith(prefix)) continue;
-    if (!best || dir.length > best.dir.length) best = { alias, dir };
-  }
-  if (!best) return undefined;
-  const rest = best.dir === "." ? relPath : relPath.slice(best.dir.length + 1);
-  return `@${best.alias}/${rest}`;
 }
 
 /**

@@ -5,9 +5,21 @@
   padding: 0;
 }
 
+/*
+ * Size to the widest row so a deep tree scrolls horizontally instead of
+ * squeezing its labels away — indentation used to eat the row width until
+ * nothing but the twisty and the badge were left.
+ */
+.tree {
+  width: max-content;
+  min-width: 100%;
+}
+
 .row {
   display: flex;
   align-items: center;
+  /* Full content width, so hover and selection span the scrolled row. */
+  width: 100%;
   gap: var(--space-1);
   height: 26px;
   padding-right: var(--space-2);
@@ -47,13 +59,13 @@
 }
 
 .label {
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
+  flex: none;
 }
 
 .meta {
+  margin-left: auto;
+  padding-left: var(--space-3);
   font-size: var(--text-xs);
   color: var(--text-muted);
   flex-shrink: 0;

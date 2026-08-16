@@ -2,12 +2,18 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 
 import styles from "./SplitPane.module.css";
 
+/** A pixel count, or a percentage of the container (e.g. `"25%"`). */
+export type PaneSize = number | string;
+
 export interface SplitPaneProps {
   /** Panels to lay out. Two or more; N-1 draggable gutters are inserted. */
   children: ReactNode[];
   direction?: "horizontal" | "vertical";
-  /** Size (px) of each panel. The entry for {@link flexIndex} is ignored. */
-  initialSizes?: number[];
+  /**
+   * Size of each panel — prefer percentages so the initial layout scales with
+   * the window. The entry for {@link flexIndex} is ignored.
+   */
+  initialSizes?: PaneSize[];
   /** Which panel absorbs the leftover space. Defaults to the last. */
   flexIndex?: number;
   minSize?: number;
@@ -16,7 +22,7 @@ export interface SplitPaneProps {
   className?: string;
 }
 
-function loadSizes(key: string | undefined, fallback: number[]): number[] {
+function loadSizes(key: string | undefined, fallback: PaneSize[]): PaneSize[] {
   if (!key) return fallback;
   try {
     const raw = window.localStorage.getItem(`splitpane:${key}`);
@@ -38,15 +44,28 @@ export function SplitPane({
 }: SplitPaneProps) {
   const panels = children.filter((child) => child != null);
   const flex = flexIndex ?? panels.length - 1;
-  const [sizes, setSizes] = useState<number[]>(() =>
-    loadSizes(storageKey, initialSizes ?? panels.map(() => 240)),
+  const [sizes, setSizes] = useState<PaneSize[]>(() =>
+    loadSizes(storageKey, initialSizes ?? panels.map(() => "25%")),
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const paneRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragIndex = useRef<number | null>(null);
-  const sizesRef = useRef(sizes);
-  sizesRef.current = sizes;
+  const sizesRef = useRef<number[]>([]);
+  if (sizes.every((size) => typeof size === "number")) sizesRef.current = sizes as number[];
 
   const horizontal = direction === "horizontal";
+
+  // Percentages are handed to CSS as-is so the first paint scales with the
+  // window; dragging needs numbers, so freeze the rendered sizes into px then.
+  const resolveToPixels = useCallback(() => {
+    const resolved = sizes.map((size, index) => {
+      if (typeof size === "number") return size;
+      const pane = paneRefs.current[index];
+      return pane ? (horizontal ? pane.offsetWidth : pane.offsetHeight) : minSize;
+    });
+    sizesRef.current = resolved;
+    setSizes(resolved);
+  }, [horizontal, minSize, sizes]);
 
   const onMove = useCallback(
     (clientPos: number) => {
@@ -109,6 +128,7 @@ export function SplitPane({
   }, [horizontal, onMove, storageKey]);
 
   const startDrag = (index: number) => {
+    resolveToPixels();
     dragIndex.current = index;
     document.body.style.cursor = horizontal ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
@@ -123,8 +143,13 @@ export function SplitPane({
       {panels.map((panel, index) => (
         <div
           key={index}
+          ref={(node) => {
+            paneRefs.current[index] = node;
+          }}
           className={[styles.pane, index === flex ? styles.flexing : ""].join(" ")}
-          style={index === flex ? undefined : sizeStyle(horizontal, sizes[index] ?? minSize)}
+          style={
+            index === flex ? undefined : sizeStyle(horizontal, sizes[index] ?? minSize, minSize)
+          }
         >
           {panel}
           {index < panels.length - 1 && (
@@ -141,8 +166,8 @@ export function SplitPane({
   );
 }
 
-function sizeStyle(horizontal: boolean, size: number) {
+function sizeStyle(horizontal: boolean, size: PaneSize, minSize: number) {
   return horizontal
-    ? { width: size, flex: "0 0 auto" as const }
-    : { height: size, flex: "0 0 auto" as const };
+    ? { width: size, minWidth: minSize, flex: "0 0 auto" as const }
+    : { height: size, minHeight: minSize, flex: "0 0 auto" as const };
 }

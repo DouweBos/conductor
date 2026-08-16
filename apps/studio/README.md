@@ -19,8 +19,10 @@ or pick one from the title bar). It then finds the flows directory by searching
 keep flows per-app (`apps/plex/.maestro`) are found. The sidebar names the
 directory it settled on, and offers a picker when a repo has more than one.
 
-Set `CONDUCTOR_BIN` to point at a specific conductor CLI; otherwise Studio uses
-`conductor` on `PATH`, then the workspace build at `packages/cli/dist/index.js`.
+Studio ships its own conductor CLI, so nothing needs to be installed globally —
+and a stray `conductor` on `PATH` is never used. Settings → **Conductor version**
+pins a different published version, which Studio installs on demand. See
+[Bundled conductor CLI](#bundled-conductor-cli).
 
 ## 1. The Maestro workbench
 
@@ -31,8 +33,10 @@ panel's inspector vertically — and the sizes are remembered between sessions.
 ### Flow tree
 
 The project's flows, with a right-click menu to **rename / duplicate / delete /
-add folders / find usages**, **New flow** from a template, and a search box that
-greps the whole flows directory.
+add folders / find usages / copy paths / reveal in Finder**, **New flow** from a
+template, and a search box that greps the whole flows directory. Folders get the
+same menu, plus "new flow / new folder here"; renaming or duplicating one takes
+its contents with it.
 
 **Renaming repoints every caller.** A POM suite refers to a subflow from a dozen
 places (`commands/launch/launch.yaml` has 36 callers in the Plex suite), so a
@@ -40,6 +44,23 @@ rename rewrites each reference in the style that call site used — a config.yam
 alias stays an alias, a relative path stays relative. **Find usages** answers
 "what breaks if I change this", and Cmd/Ctrl-clicking a `runFlow`/`runScript`/
 `file` line in the editor opens what it names.
+
+#### Flow templates
+
+**New flow** scaffolds from a template. Studio ships a few (blank, page object
+subflow, tagged case); a project overrides or adds its own by dropping files in
+`<flowsDir>/.templates/<id>.yaml.tmpl`. The template's first `#` comment line is
+its description in the dialog.
+
+A template is a flow with `{{placeholders}}` — `${…}` is Maestro's at run time,
+so scaffolding needs its own syntax. `name`, `path`, `dir`, `date` and `appId`
+(inferred from what the suite's flows already declare) are filled in
+automatically; every other `{{var}}` becomes a field in the New-flow dialog.
+Placeholders left unanswered stay in the file, where they read as "fill me in".
+
+The `.tmpl` suffix is load-bearing: every flow scanner — maestro's workspace
+glob, Studio's folder runner, the file tree — matches on a `.yaml`/`.yml`/`.js`
+extension, so templates stay out of runs without any `config.yaml` exclusion.
 
 ### Editor
 
@@ -166,6 +187,14 @@ Two modes:
   a recording of nothing but taps passes against a completely broken app.
   **Boot** and **Install a build** run conductor's `start-device` and
   `install-app`, so getting a device ready doesn't mean leaving Studio.
+
+  On **tvOS** there is nothing to tap — a TV is focus-driven — so the stream
+  becomes a remote instead of a touch surface. It takes keyboard focus (arrow
+  keys → D-pad, Enter/Space → Select, Esc/Backspace → Menu) and each press
+  becomes a `pressKey` step. Auto-repeat is ignored: holding a key is one press
+  and one step, so the flow always matches what you did. Long presses aren't
+  recorded — the CLI can hold a button, but a flow's `pressKey` takes a bare key
+  and Maestro's is scalar-only, so a held press could never replay faithfully.
 - **Inspect** — Maestro-Studio-style element picking. Every captured element is
   outlined over the stream; hovering highlights the smallest one under the
   cursor, clicking it lists the commands that fit it — **tapOn / longPressOn /
@@ -438,8 +467,8 @@ pnpm storybook           # the design system at :6006
 | `pnpm dist` | Unsigned local `.app` (electron-builder.yml) |
 | `pnpm dist:release` | Signed + notarized, published to GitHub Releases |
 
-Environment: `STUDIO_PROJECT_ROOT` (which repo to open), `CONDUCTOR_BIN`
-(which conductor binary), `STUDIO_PORT` (dev server port).
+Environment: `STUDIO_PROJECT_ROOT` (which repo to open), `CONDUCTOR_LOCAL`
+(build the bundled CLI from a local checkout), `STUDIO_PORT` (dev server port).
 
 ### Layout
 
@@ -490,11 +519,100 @@ streams. Frames that arrive as a plain object from structured clone are rebuilt,
 deltas are dropped while the decoder is behind or awaiting a keyframe, and a
 decode error resyncs on the next keyframe rather than surfacing.
 
+## Bundled conductor CLI
+
+Studio ships its own conductor CLI rather than reaching for whatever is on
+`PATH` — a global install of an unrelated version is exactly the failure this
+avoids, and a Finder-launched `.app` can't see the user's shell `PATH` anyway.
+
+`scripts/prepare-conductor.ts` installs a pinned published version into
+`native/conductor/` with `npm install --prefix`, producing a flat, self-contained
+tree (`.version` marker, `bin/conductor` shim, `node_modules/`). It runs on
+`postinstall` and ahead of every `dist*` script. `scripts/electron-after-pack.cjs`
+then copies that tree into the packaged app's `Resources/` — a hook rather than
+`extraResources`, because electron-builder's matcher strips nested
+`node_modules` even when a filter asks for them.
+
+**The driver binaries are never bundled.** The npm package ships only `dist/`,
+`proto/` and `skills/`; the CLI downloads `drivers.tar.gz` from its own release
+tag on first use into `~/.conductor/drivers/<version>/`. So the tree Studio
+ships is ~32 MB of pure JavaScript with no Mach-O binaries in it — which is what
+keeps `Resources/` notarizable, since anything executable in there would need
+signing of its own.
+
+**A published version, not the workspace build.** That lazy download is keyed to
+the CLI's own version, and a workspace build carries an unreleased version whose
+tag doesn't exist yet — its drivers would 404.
+
+To develop against unpublished CLI changes, point `CONDUCTOR_LOCAL` at a
+checkout. The script installs from there and drops the version marker so the
+next run always picks up rebuilds. Build the drivers first: `npm install <dir>`
+packs the source per its `files` field, so `drivers/` isn't copied, and the
+script symlinks the locally built ones into the package root — where the CLI
+looks before it tries the network.
+
+```bash
+make build                                            # at the repo root, populates packages/cli/drivers/
+CONDUCTOR_LOCAL=../../packages/cli pnpm prepare-conductor
+```
+
+A local-mode tree points outside the app and must not be packaged for release;
+`dist:release` installs from the registry.
+
+### Version override
+
+Settings → **Conductor version** pins any published version at or above the
+bundled one. `electron/services/conductor/override.ts` installs it into
+`<userData>/conductor/<version>/` on demand and `paths.ts` prefers it, so no app
+update is needed. The pin lives in `<userData>/conductor.json` — its own file, so
+a corrupt settings blob can't strand the app on an uninstallable version.
+
+Provisioning needs `npm` on `PATH` (Electron's Node ships none) and registry
+access; a failure falls back to the bundled tree and surfaces in the picker.
+The shim source and npm args live in `electron/services/conductor/install.ts`,
+imported by both the build script and the runtime provisioner so they can't
+drift.
+
+Studio spawns the CLI's entry point directly under Electron-as-Node. The
+`bin/conductor` shim is what the **agent** gets, since it runs conductor from a
+Bash tool where an `electron --run-as-node <entry>` invocation wouldn't survive.
+
 ## Packaging
 
 - `electron-builder.yml` — unsigned local `dir` build.
 - `electron-builder.release.cjs` — signed + notarized dmg/zip, published to
-  GitHub Releases for the electron-updater feed. Notarization is
-  electron-builder-native (App Store Connect API key env vars); signing certs
-  come from the keychain (e.g. Fastlane match).
+  GitHub Releases. Notarization is electron-builder-native (App Store Connect
+  API key env vars); signing certs come from the keychain (e.g. Fastlane match).
 - `.github/workflows/studio-release.yml` runs the release on demand.
+
+### Releasing
+
+Studio shares the conductor repo with the CLI, so its releases are tagged
+`studio-v<version>` (`tagNamePrefix`) to keep them off the CLI's `v<version>`
+tags. **Bump `apps/studio/package.json` first, then run the workflow** — the
+version is the only input. A prerelease version publishes to that channel and
+is marked a GitHub prerelease; a plain one publishes to stable:
+
+| Version | Tag | Channel | GitHub |
+| --- | --- | --- | --- |
+| `0.2.0` | `studio-v0.2.0` | `latest` | release |
+| `0.2.0-beta.1` | `studio-v0.2.0-beta.1` | `beta` | prerelease |
+
+Artifacts are named `conductor-studio-<version>-<arch>.<ext>` rather than using
+`${productName}` — GitHub rewrites spaces in uploaded asset filenames, which
+would break the download URLs recorded in the channel yml.
+
+### Updates
+
+electron-updater runs on the **`generic`** provider against
+`https://houwert.dev/conductor/studio/updates`, not the `github` one. The github
+provider resolves the stable channel through a repo-wide `/releases/latest`,
+which in this repo returns a conductor CLI release that carries no channel yml.
+
+That URL is a Cloudflare Pages Function in the houwert.dev repo
+(`functions/conductor/studio/updates/[[path]].ts`), forked from the Argus
+updates proxy. It filters releases to the `studio-v` prefix, resolves
+`<channel>-mac.yml` to the newest release in that channel's tier (`alpha` ⊇
+`beta` ⊇ stable, so beta testers still get a stable cut that outpaces the last
+beta), and streams the asset back. Adding a route there also requires listing it
+in that repo's `public/_routes.json`.

@@ -23,6 +23,7 @@ import type {
   FlowCatalogEntry,
   FlowReference,
   FlowSearchHit,
+  FlowTemplate,
   LintProblem,
   RenameResult,
   MaestroStatus,
@@ -39,6 +40,7 @@ import type {
   TestSession,
   ThemePreference,
   UpdaterState,
+  ConductorStatus,
   VideoConfig,
 } from "./types";
 
@@ -60,6 +62,12 @@ export const writeFlow = (path: string, content: string) =>
   invoke<void>("flow_write", { path, content });
 export const createFlow = (path: string, content?: string) =>
   invoke<void>("flow_create", { path, content });
+export const listFlowTemplates = () => invoke<FlowTemplate[]>("flow_templates");
+export const createFlowFromTemplate = (
+  templateId: string,
+  path: string,
+  vars: Record<string, string>,
+) => invoke<void>("flow_create_from_template", { templateId, path, vars });
 export const deleteFlow = (path: string) => invoke<void>("flow_delete", { path });
 export const renameFlow = (from: string, to: string) =>
   invoke<RenameResult>("flow_rename", { from, to });
@@ -72,6 +80,8 @@ export const lintFlowContent = (path: string, content: string) =>
 export const duplicateFlow = (from: string, to: string) =>
   invoke<void>("flow_duplicate", { from, to });
 export const createFolder = (path: string) => invoke<void>("flow_mkdir", { path });
+/** Show an absolute path in Finder/Explorer. */
+export const revealPath = (path: string) => invoke<void>("path_reveal", { path });
 
 // ── Devices ──
 export const listDevices = () => invoke<DeviceInfo[]>("devices_list");
@@ -96,6 +106,8 @@ export const installApp = (deviceId: string, appPath: string) =>
   invoke<string>("device_install_app", { deviceId, appPath });
 export const deviceInputText = (deviceId: string, text: string) =>
   invoke<void>("device_input_text", { deviceId, text });
+export const devicePressKey = (deviceId: string, key: string) =>
+  invoke<void>("device_press_key", { deviceId, key });
 export const captureUi = (deviceId: string) => invoke<CaptureUiResult>("capture_ui", { deviceId });
 
 // ── Flow running ──
@@ -216,3 +228,11 @@ export const getUpdaterState = () => invoke<UpdaterState>("updater_state");
 export const updaterCheck = () => invoke<void>("updater_check");
 export const updaterDownload = () => invoke<void>("updater_download");
 export const updaterInstall = () => invoke<void>("updater_install");
+
+// Conductor version override — renderer reads status and pins a version; main
+// provisions it into <userData>/conductor/<version>/.
+export const getConductorStatus = () => invoke<ConductorStatus>("conductor_status");
+/** Published conductor versions >= the bundled one, newest first. */
+export const listConductorVersions = () => invoke<string[]>("conductor_versions");
+export const setConductorVersion = (version: string | null) =>
+  invoke<ConductorStatus>("conductor_set_version", { version });

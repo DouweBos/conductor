@@ -1,7 +1,7 @@
-import { Button, EmptyState, Icon, StatusPill } from "@conductor/studio-ui";
-import { useMemo } from "react";
+import { Button, EmptyState, Icon, StatusPill, Tabs } from "@conductor/studio-ui";
+import { useMemo, useState } from "react";
 
-import { commandSuggestions, describeElement } from "../../lib/commandSuggestions";
+import { commandSuggestions, describeElement, groupSuggestions } from "../../lib/commandSuggestions";
 import { getCurrentRoute } from "../../lib/router";
 import type { CaptureUiResult, Platform } from "../../lib/types";
 import { appendToBuffer } from "../../stores/flowStore";
@@ -22,10 +22,14 @@ export function CommandSuggestions({
 }) {
   const selectedRef = useSelectedRef();
   const element = selectedRef ? findElement(capture.root, selectedRef) : null;
-  const suggestions = useMemo(
-    () => (element ? commandSuggestions(element, capture, platform) : []),
+  const groups = useMemo(
+    () => groupSuggestions(element ? commandSuggestions(element, capture, platform) : []),
     [element, capture, platform],
   );
+  // The tab choice sticks across elements; a different element can offer a
+  // different set of tabs, so fall back to the first.
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const active = groups.find((g) => g.group === activeGroup) ?? groups[0];
 
   if (!element) {
     return (
@@ -44,6 +48,7 @@ export function CommandSuggestions({
       <header className={styles.header}>
         <span className={styles.name}>{describeElement(element)}</span>
         {element.role ? <StatusPill tone="neutral">{element.role}</StatusPill> : null}
+        {element.focused ? <StatusPill tone="success">focused</StatusPill> : null}
         <div className={styles.spacer} />
         <button
           type="button"
@@ -57,8 +62,13 @@ export function CommandSuggestions({
       {!flowPath ? (
         <div className={styles.hint}>Open a flow to insert these commands into it.</div>
       ) : null}
+      <Tabs
+        tabs={groups.map((g) => ({ id: g.group, label: g.group, closable: false }))}
+        activeId={active?.group ?? null}
+        onSelect={setActiveGroup}
+      />
       <ul className={styles.list}>
-        {suggestions.map((s) => (
+        {(active?.items ?? []).map((s) => (
           <li key={s.title} className={styles.item}>
             <div className={styles.itemHead}>
               <span className={styles.title}>{s.title}</span>

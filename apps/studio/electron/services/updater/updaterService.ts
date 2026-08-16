@@ -6,6 +6,12 @@ import { getUpdaterChannel } from "../settings/settingsService";
 
 const { autoUpdater } = electronUpdater;
 
+// Studio's releases sit in the conductor repo next to the CLI's, so the github
+// provider is unusable: it resolves the stable channel through a repo-wide
+// /releases/latest, which returns a CLI release with no channel yml attached.
+// houwert.dev proxies the feed instead and filters to `studio-v` tags.
+const UPDATE_FEED_URL = "https://houwert.dev/conductor/studio/updates";
+
 let state: UpdaterState = { phase: "idle" };
 let initialized = false;
 
@@ -24,11 +30,14 @@ export function initUpdater(): void {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+
+  let channel = "latest";
   try {
-    autoUpdater.channel = getUpdaterChannel();
+    channel = getUpdaterChannel();
   } catch {
-    // channel unsupported by provider; ignore
+    // unreadable settings; fall back to stable
   }
+  autoUpdater.setFeedURL({ provider: "generic", url: UPDATE_FEED_URL, channel });
 
   autoUpdater.on("checking-for-update", () => setState({ phase: "checking", error: undefined }));
   autoUpdater.on("update-available", (info) =>

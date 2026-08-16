@@ -9,6 +9,7 @@ import { basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
 
 import { iconElement } from "../../icons/Icons";
+import { searchPanel } from "./searchPanel";
 import styles from "./Editor.module.css";
 
 export type EditorLanguage = "yaml" | "javascript";
@@ -42,6 +43,10 @@ export interface EditorRunGutter {
 export interface EditorApi {
   getValue: () => string;
   getSelection: () => string;
+  /** 1-based line range of the selection, so a host can round it to whole units. */
+  getSelectedLines: () => { from: number; to: number };
+  /** Select a 1-based line and scroll it into view — for jumping to a search hit. */
+  revealLine: (line: number) => void;
 }
 
 export interface EditorProps {
@@ -58,6 +63,11 @@ export interface EditorProps {
   runGutter?: EditorRunGutter;
   /** Cmd/Ctrl-click on a line: the host decides whether it names something. */
   onFollowLine?: (lineText: string) => void;
+  /**
+   * Columns of the followable reference on a line, so Cmd/Ctrl-hover can
+   * underline just that token instead of leaving the link invisible.
+   */
+  followSpanOnLine?: (lineText: string) => { from: number; to: number } | null;
   /** Problems to underline in the text. */
   problems?: EditorProblem[];
   /** Receives an imperative API once mounted, and `null` on unmount. */
@@ -154,6 +164,25 @@ function runGutterExtension(config?: EditorRunGutter) {
   ];
 }
 
+/** The reference under a Cmd/Ctrl-held pointer, underlined so it reads as a link. */
+const setFollowLink = StateEffect.define<{ from: number; to: number } | null>();
+const followLinkMark = Decoration.mark({ class: styles.followLink });
+
+const followLinkField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    let next = value.map(tr.changes);
+    for (const effect of tr.effects) {
+      if (!effect.is(setFollowLink)) continue;
+      next = effect.value
+        ? Decoration.set([followLinkMark.range(effect.value.from, effect.value.to)])
+        : Decoration.none;
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 function lintExtension(problems?: EditorProblem[]) {
   if (!problems) return [];
   return linter((view: EditorView) => {
@@ -190,6 +219,7 @@ export function Editor({
   completions,
   runGutter,
   onFollowLine,
+  followSpanOnLine,
   problems,
   registerApi,
   className,
@@ -205,10 +235,34 @@ export function Editor({
   const onSaveRef = useRef(onSave);
   const onFollowRef = useRef(onFollowLine);
   onFollowRef.current = onFollowLine;
+  const followSpanRef = useRef(followSpanOnLine);
+  followSpanRef.current = followSpanOnLine;
   const registerApiRef = useRef(registerApi);
   onChangeRef.current = onChange;
   onSaveRef.current = onSave;
   registerApiRef.current = registerApi;
+
+  // The link under the pointer, if the modifier is held and it names something.
+  const linkAt = (view: EditorView, event: MouseEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || !onFollowRef.current) return null;
+    const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (pos === null) return null;
+    const line = view.state.doc.lineAt(pos);
+    const span = followSpanRef.current?.(line.text);
+    if (!span) return null;
+    const from = line.from + span.from;
+    const to = line.from + span.to;
+    return pos >= from && pos <= to ? { from, to } : null;
+  };
+
+  // Only dispatch on a real change, so plain mouse movement stays free.
+  const showLink = (view: EditorView, link: { from: number; to: number } | null) => {
+    const current = view.state.field(followLinkField, false);
+    const iter = current?.iter();
+    const shown = iter && iter.value ? { from: iter.from, to: iter.to } : null;
+    if (shown?.from === link?.from && shown?.to === link?.to) return;
+    view.dispatch({ effects: setFollowLink.of(link) });
+  };
 
   // Create the view once.
   useEffect(() => {
@@ -226,6 +280,9 @@ export function Editor({
       doc: value,
       extensions: [
         basicSetup,
+        // basicSetup binds Mod-f but never configures search, so it would fall
+        // back to the built-in panel without this.
+        searchPanel,
         saveKeymap,
         langCompartment.current.of(langExtension(language)),
         themeCompartment.current.of(theme === "dark" ? githubDark : githubLight),
@@ -234,13 +291,32 @@ export function Editor({
         lintCompartment.current.of(lintExtension(problems)),
         EditorView.editable.of(!readOnly),
         EditorState.readOnly.of(readOnly),
+        followLinkField,
         EditorView.domEventHandlers({
+          mousemove(event, view) {
+            showLink(view, linkAt(view, event));
+            return false;
+          },
+          mouseleave(_event, view) {
+            showLink(view, null);
+            return false;
+          },
+          keyup(event, view) {
+            if (event.key === "Meta" || event.key === "Control") showLink(view, null);
+            return false;
+          },
           mousedown(event, view) {
             if (!(event.metaKey || event.ctrlKey) || !onFollowRef.current) return false;
-            const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+            const link = linkAt(view, event);
+            // Without a span function the host follows whole lines, so any
+            // modified click on the line counts.
+            const pos = link ? link.from : followSpanRef.current
+              ? null
+              : view.posAtCoords({ x: event.clientX, y: event.clientY });
             if (pos === null) return false;
+            event.preventDefault();
             onFollowRef.current(view.state.doc.lineAt(pos).text);
-            return false;
+            return true;
           },
         }),
         EditorView.updateListener.of((update) => {
@@ -257,6 +333,19 @@ export function Editor({
       getSelection: () => {
         const { from, to } = view.state.selection.main;
         return view.state.sliceDoc(from, to);
+      },
+      getSelectedLines: () => {
+        const { from, to } = view.state.selection.main;
+        return { from: view.state.doc.lineAt(from).number, to: view.state.doc.lineAt(to).number };
+      },
+      revealLine: (line: number) => {
+        const { doc } = view.state;
+        const target = doc.line(Math.min(Math.max(1, line), doc.lines));
+        view.dispatch({
+          selection: { anchor: target.from, head: target.to },
+          effects: EditorView.scrollIntoView(target.from, { y: "center" }),
+        });
+        view.focus();
       },
     });
     return () => {

@@ -1,12 +1,12 @@
 import { dialog } from "electron";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { FileEntry, ProjectInfo, RenameResult } from "../../../app/lib/types";
 import { appState } from "../../state";
 import { addRecentProject, getRecentProjects } from "../settings/settingsService";
-import { updateReferences } from "../flow/references";
+import { updateReferencesForMoves } from "../flow/references";
 
 const FLOW_DIR_NAMES = new Set([".maestro", "maestro"]);
 const FLOW_EXTENSIONS = new Set([".yaml", ".yml", ".js", ".ts"]);
@@ -189,7 +189,8 @@ async function readTree(dir: string, base: string): Promise<FileEntry[]> {
     const rel = path.relative(base, abs);
     if (dirent.isDirectory()) {
       const children = await readTree(abs, base);
-      if (children.length > 0) {
+      // Keep empty folders — one the user just made has nothing in it yet.
+      if (children.length > 0 || (await readdir(abs)).length === 0) {
         entries.push({ path: rel, name: dirent.name, type: "dir", children });
       }
     } else if (FLOW_EXTENSIONS.has(path.extname(dirent.name))) {
@@ -237,18 +238,47 @@ export async function deleteFlow(relPath: string): Promise<void> {
 export async function renameFlow(from: string, to: string): Promise<RenameResult> {
   const absFrom = resolveInFlows(from);
   const absTo = resolveInFlows(to);
-  const updated = await updateReferences(from, to);
+  const updated = await updateReferencesForMoves(await movesFor(from, to, absFrom));
   await mkdir(path.dirname(absTo), { recursive: true });
   await rename(absFrom, absTo);
   return { updated };
 }
 
 export async function duplicateFlow(from: string, to: string): Promise<void> {
+  const absFrom = resolveInFlows(from);
   const absTo = resolveInFlows(to);
-  if (existsSync(absTo)) throw new Error(`File already exists: ${to}`);
-  const content = await readFile(resolveInFlows(from), "utf8");
+  if (existsSync(absTo)) throw new Error(`Already exists: ${to}`);
   await mkdir(path.dirname(absTo), { recursive: true });
-  await writeFile(absTo, content, "utf8");
+  if ((await stat(absFrom)).isDirectory()) {
+    await cp(absFrom, absTo, { recursive: true });
+    return;
+  }
+  await writeFile(absTo, await readFile(absFrom, "utf8"), "utf8");
+}
+
+/** Every file this rename moves, old path -> new path. A folder moves all of its own. */
+async function movesFor(from: string, to: string, absFrom: string): Promise<Map<string, string>> {
+  if (!existsSync(absFrom) || !(await stat(absFrom)).isDirectory()) {
+    return new Map([[from, to]]);
+  }
+  const moves = new Map<string, string>();
+  for (const file of flattenFiles(await readTree(absFrom, absFrom))) {
+    moves.set(path.posix.join(from, file.path), path.posix.join(to, file.path));
+  }
+  return moves;
+}
+
+/** Every file in a tree, directories dropped. */
+export function flattenFiles(entries: FileEntry[]): FileEntry[] {
+  const out: FileEntry[] = [];
+  const walk = (list: FileEntry[]) => {
+    for (const entry of list) {
+      if (entry.type === "file") out.push(entry);
+      if (entry.children) walk(entry.children);
+    }
+  };
+  walk(entries);
+  return out;
 }
 
 export async function createFolder(relPath: string): Promise<void> {

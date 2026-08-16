@@ -1,15 +1,10 @@
 name: Studio Release
 
+# The channel comes from apps/studio/package.json's version: a prerelease tag
+# (0.2.0-beta.0) publishes to beta, a plain version publishes to stable. Bump
+# the version in a commit first, then run this.
 on:
   workflow_dispatch:
-    inputs:
-      channel:
-        description: Release channel
-        type: choice
-        default: latest
-        options:
-          - latest
-          - beta
 
 permissions:
   contents: write
@@ -35,6 +30,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Resolve version and channel
+        run: |
+          VERSION=$(node -p "require('./apps/studio/package.json').version")
+          CHANNEL=$(node -p "/^\\d+\\.\\d+\\.\\d+-([a-z]+)/.exec('${VERSION}')?.[1] ?? 'latest'")
+          echo "Releasing Conductor Studio ${VERSION} as studio-v${VERSION} (${CHANNEL} channel)" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build Studio
         run: pnpm --filter conductor-studio build
         env:
@@ -44,7 +45,6 @@ jobs:
         working-directory: apps/studio
         run: pnpm electron-builder --config electron-builder.release.cjs --publish always
         env:
-          STUDIO_CHANNEL: ${{ github.event.inputs.channel }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Code signing: the Developer ID cert must be present in the keychain
           # (e.g. installed via Fastlane match in a prior step).

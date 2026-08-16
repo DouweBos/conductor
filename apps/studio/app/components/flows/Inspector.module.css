@@ -86,3 +86,19 @@
   color: var(--text-muted);
   flex-shrink: 0;
 }
+
+/* The capture holds offscreen elements too, so say which ones you can see. */
+.inView {
+  margin-right: var(--space-2);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--success-subtle);
+  color: var(--success);
+  font-size: var(--text-xs);
+}
+
+.size {
+  margin-right: var(--space-2);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}

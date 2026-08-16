@@ -37,6 +37,8 @@ export {
   ContextMenu,
   type ContextMenuProps,
   type ContextMenuItem,
+  type ContextMenuAction,
+  type ContextMenuSeparator,
 } from "./components/ContextMenu/ContextMenu";
 export {
   StepList,

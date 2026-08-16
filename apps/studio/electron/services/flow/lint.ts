@@ -216,12 +216,18 @@ async function lintCases(known: Set<string>, called: Set<string>): Promise<LintP
         );
       }
     }
+    // A draft case names the flow someone is going to write, so a missing file
+    // is the plan, not a break. Reporting those as errors buried the cases that
+    // claim to be automated and aren't.
+    const draft = (testCase.tags.status ?? []).includes("draft");
     const flows = [testCase.flow, ...Object.values(testCase.flows ?? {})].filter(Boolean);
     for (const flow of flows as string[]) {
       covered.add(flow);
       if (known.has(flow)) continue;
       problems.push(
-        problem(testCase.filePath, 1, "error", `Case points at a missing flow: ${flow}.`, ""),
+        draft
+          ? problem(testCase.filePath, 1, "info", `Draft case — flow not written yet: ${flow}.`, "")
+          : problem(testCase.filePath, 1, "error", `Case points at a missing flow: ${flow}.`, ""),
       );
     }
   }

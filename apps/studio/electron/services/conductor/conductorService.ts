@@ -20,7 +20,7 @@ async function runConductor(args: string[], timeout = 60_000) {
   const resolved = await resolveConductor();
   if (!resolved) {
     throw new Error(
-      "Conductor CLI not found. Install it globally, set CONDUCTOR_BIN, or build packages/cli.",
+      "Bundled conductor CLI is missing. Run `pnpm prepare-conductor` in apps/studio, or pick a different version in Settings.",
     );
   }
   return run(resolved.bin, [...resolved.prefixArgs, ...args], { timeout, env: resolved.env });
@@ -228,93 +228,152 @@ interface CaptureBundle {
   device?: { width?: number; height?: number; platform?: Platform };
   screenshot?: { encoding?: string; data?: string };
   a11ySnapshot?: A11yEntry[];
-  hierarchy?: { axElement?: unknown };
+  hierarchy?: { axElement?: unknown; elements?: unknown };
 }
 
 interface A11yEntry {
   nodeId?: string;
   ref: string;
-  label?: string;
-  value?: string;
-  role?: string;
-  hint?: string;
-  /** Conductor reports frames as x/y/w/h in device points. */
-  frame?: { x?: number; y?: number; w?: number; h?: number };
 }
 
+/**
+ * The inspector tree is the platform view hierarchy, not the flat a11y snapshot:
+ * the snapshot only holds nodes a screen reader stops on, so a container with an
+ * accessibility identifier — exactly what selectors target — was missing from
+ * Studio while `assert-visible` on it passed.
+ *
+ * `@eN` refs still come from the snapshot, joined on the `nodeId` dot-path both
+ * sides carry. Nodes without one are marked `a11y: false`, which is what keeps
+ * the device overlay and the scene-graph signature to the a11y elements alone.
+ */
 function mapBundle(deviceId: string, bundle: CaptureBundle): CaptureUiResult {
   const width = bundle.device?.width ?? 0;
   const height = bundle.device?.height ?? 0;
   const screenshot = bundle.screenshot?.data
     ? `data:image/${bundle.screenshot.encoding ?? "png"};base64,${bundle.screenshot.data}`
     : undefined;
-  const root: CaptureElement = { ref: "root", role: "Screen", text: "Screen", children: [] };
-  const ids = indexIdentifiers(bundle.hierarchy?.axElement);
-  const elements = (bundle.a11ySnapshot ?? []).map(toElement);
-  // The flat snapshot carries no accessibility id, so borrow it from the full
-  // hierarchy by frame — it's what selectors should prefer over text.
-  for (const el of elements) {
-    if (el.bounds) el.identifier = ids.get(frameKey(el.bounds)) || undefined;
+
+  const refs = new Map<string, string>();
+  for (const entry of bundle.a11ySnapshot ?? []) {
+    if (entry.nodeId !== undefined) refs.set(entry.nodeId, entry.ref);
   }
-  nest(root, elements);
+
+  const roots = hierarchyRoots(bundle.hierarchy);
+  const children = prune(roots.map((node) => toElement(node, refs)));
+  const root: CaptureElement = { ref: "root", role: "Screen", text: "Screen", a11y: true, children };
   return { deviceId, width, height, screenshot, root };
 }
 
-function toElement(e: A11yEntry): CaptureElement & { nodeId: string } {
-  return {
-    nodeId: e.nodeId ?? "",
-    ref: e.ref,
-    role: e.role || undefined,
-    text: e.label || e.value || e.hint || undefined,
-    bounds: e.frame
-      ? { x: e.frame.x ?? 0, y: e.frame.y ?? 0, width: e.frame.w ?? 0, height: e.frame.h ?? 0 }
-      : undefined,
-    children: [],
-  };
-}
-
-function frameKey(b: { x: number; y: number; width: number; height: number }): string {
-  return `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.width)},${Math.round(b.height)}`;
-}
-
-/** Map frame -> accessibility identifier, walking the platform view hierarchy. */
-function indexIdentifiers(node: unknown, into = new Map<string, string>()): Map<string, string> {
-  if (!node || typeof node !== "object") return into;
-  const n = node as Record<string, unknown>;
-  const id = String(n.identifier ?? n.resourceId ?? n["resource-id"] ?? "").trim();
-  const frame = n.frame as Record<string, number> | undefined;
-  if (id && frame) {
-    const x = frame.X ?? frame.x ?? 0;
-    const y = frame.Y ?? frame.y ?? 0;
-    const width = frame.Width ?? frame.width ?? 0;
-    const height = frame.Height ?? frame.height ?? 0;
-    const key = frameKey({ x, y, width, height });
-    if (!into.has(key)) into.set(key, id);
+/**
+ * Drop nodes that carry no identity — no id, no text, no a11y — by splicing
+ * their children up. A native hierarchy is mostly single-child layout wrappers,
+ * so without this the tree is hundreds of rows named after nothing but their
+ * own path. A wrapper that branches is kept: it's the only thing grouping its
+ * children.
+ */
+function prune(elements: CaptureElement[]): CaptureElement[] {
+  const out: CaptureElement[] = [];
+  for (const el of elements) {
+    const children = prune(el.children ?? []);
+    if (el.a11y || el.identifier || el.text || children.length > 1) {
+      out.push({ ...el, children });
+    } else {
+      out.push(...children);
+    }
   }
-  for (const child of (n.children as unknown[]) ?? []) indexIdentifiers(child, into);
-  return into;
+  return out;
+}
+
+/** capture-ui names the tree per platform: `axElement` on iOS/tvOS, `elements` elsewhere. */
+function hierarchyRoots(hierarchy: CaptureBundle["hierarchy"]): Record<string, unknown>[] {
+  const tree = hierarchy?.axElement ?? hierarchy?.elements;
+  if (Array.isArray(tree)) return tree.filter(isNode);
+  return isNode(tree) ? [tree] : [];
+}
+
+function isNode(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
 }
 
 /**
- * Rebuild the hierarchy from the flat snapshot: `nodeId` is a dot-path of child
- * indices, so the nearest ancestor already in the map is an element's parent.
+ * One enriched hierarchy node, in whichever platform's shape. The a11y builder
+ * gives every platform `nodeId`, so the field probing is only about names:
+ * iOS has `identifier`/`label`, Android `resourceId`/`text`, web `testId`/`name`.
  */
-function nest(root: CaptureElement, elements: (CaptureElement & { nodeId: string })[]): void {
-  const byPath = new Map<string, CaptureElement>();
-  for (const el of elements) {
-    const { nodeId, ...node } = el;
-    let parent = root;
-    const parts = nodeId.split(".");
-    for (let i = parts.length - 1; i > 0; i--) {
-      const found = byPath.get(parts.slice(0, i).join("."));
-      if (found) {
-        parent = found;
-        break;
-      }
-    }
-    parent.children!.push(node);
-    if (nodeId) byPath.set(nodeId, node);
+function toElement(node: Record<string, unknown>, refs: Map<string, string>): CaptureElement {
+  const nodeId = String(node.nodeId ?? "");
+  const ref = refs.get(nodeId);
+  const el: CaptureElement = {
+    // Non-a11y nodes have no `@eN`; the node path is stable within a capture,
+    // which is all a ref is used for here.
+    ref: ref ?? `#${nodeId}`,
+    a11y: ref !== undefined,
+    // iOS carries no `role` on the hierarchy node — only the snapshot entry has
+    // one, derived from the traits. Read the traits directly instead.
+    role: text(node.role) || roleTrait(node.traits) || text(node.class) || undefined,
+    focused: isFocused(node) || undefined,
+    text: text(node.accessibilityLabel) || text(node.label) || text(node.name) ||
+      text(node.title) || text(node.text) || text(node.contentDescription) ||
+      text(node.value) || undefined,
+    identifier: text(node.accessibilityIdentifier) || text(node.identifier) ||
+      text(node.resourceId) || text(node.testId) || undefined,
+    bounds: boundsOf(node),
+  };
+  const children = (node.children as unknown[]) ?? [];
+  el.children = children.filter(isNode).map((child) => toElement(child, refs));
+  return el;
+}
+
+/**
+ * `traits` is `[type?, ...states]`, so the first entry is a state whenever the
+ * element type has no mapping — which is how a plain container ended up
+ * labelled "disabled" or "focused" as though that were its role.
+ */
+const STATE_TRAITS = new Set(["selected", "disabled", "focused"]);
+
+function roleTrait(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  return value.map(text).find((trait) => trait && !STATE_TRAITS.has(trait)) ?? "";
+}
+
+/** iOS says `hasFocus`, web says `focused`, Android buries it in `state`. */
+function isFocused(node: Record<string, unknown>): boolean {
+  if (node.hasFocus === true || node.focused === true) return true;
+  const state = node.state as Record<string, unknown> | undefined;
+  return state?.focused === true;
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** iOS reports `frame: {X,Y,Width,Height}`, Android `bounds: {x1,y1,x2,y2}`, web `bounds`. */
+function boundsOf(node: Record<string, unknown>): CaptureElement["bounds"] {
+  const frame = node.frame as Record<string, number> | undefined;
+  if (frame) {
+    return {
+      x: frame.X ?? frame.x ?? 0,
+      y: frame.Y ?? frame.y ?? 0,
+      width: frame.Width ?? frame.width ?? 0,
+      height: frame.Height ?? frame.height ?? 0,
+    };
   }
+  const bounds = node.bounds as Record<string, number> | undefined;
+  if (!bounds) return undefined;
+  if (bounds.x1 !== undefined) {
+    return {
+      x: bounds.x1,
+      y: bounds.y1 ?? 0,
+      width: (bounds.x2 ?? 0) - bounds.x1,
+      height: (bounds.y2 ?? 0) - (bounds.y1 ?? 0),
+    };
+  }
+  return {
+    x: bounds.x ?? 0,
+    y: bounds.y ?? 0,
+    width: bounds.width ?? 0,
+    height: bounds.height ?? 0,
+  };
 }
 
 /** x/y are normalized 0..1 relative to the device screen. */
@@ -345,6 +404,21 @@ export async function swipe(
   );
   if (res.code !== 0) throw new Error(res.stderr.trim() || "swipe failed");
   appState.lastAction = `swipe ${x1},${y1} → ${x2},${y2}`;
+}
+
+/**
+ * Press a hardware or remote key — `press-key`. This is how a tvOS device is
+ * driven at all: it's focus-based, so there is nothing to tap.
+ *
+ * Deliberately no long-press option. `press-key --long-press` exists on the
+ * CLI, but a flow's `pressKey` step takes a bare key (flow-runner.ts) and
+ * Maestro's own `pressKey` is scalar-only — so a held press could be performed
+ * but never recorded faithfully, and the flow would replay as a short press.
+ */
+export async function pressKey(deviceId: string, key: string): Promise<void> {
+  const res = await runConductor(["press-key", key, ...deviceArgs(deviceId)], 20_000);
+  if (res.code !== 0) throw new Error(res.stderr.trim() || `press-key ${key} failed`);
+  appState.lastAction = `pressKey: ${key}`;
 }
 
 export async function inputText(deviceId: string, text: string): Promise<void> {

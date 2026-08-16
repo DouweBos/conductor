@@ -12,14 +12,26 @@ export interface FlowBuffer {
 interface FlowState {
   buffers: Record<string, FlowBuffer>;
   openOrder: string[];
+  /** A line to jump to once its file is open, from a global-search hit. */
+  reveal: { path: string; line: number } | null;
 }
 
-const store = create<FlowState>(() => ({ buffers: {}, openOrder: [] }));
+const store = create<FlowState>(() => ({ buffers: {}, openOrder: [], reveal: null }));
 
 export const useOpenTabs = () => store((s) => s.openOrder);
 export const useBuffer = (path: string | undefined) =>
   store((s) => (path ? s.buffers[path] : undefined));
 export const useFlowBuffers = () => store((s) => s.buffers);
+export const useReveal = () => store((s) => s.reveal);
+
+/** Ask the editor to jump to a line; the pane clears it once it has. */
+export function requestReveal(path: string, line: number): void {
+  store.setState({ reveal: { path, line } });
+}
+
+export function clearReveal(): void {
+  store.setState({ reveal: null });
+}
 
 /** Imperative read for non-React code (e.g. the gesture recorder). */
 export function getBuffer(path: string): FlowBuffer | undefined {
@@ -81,9 +93,18 @@ export async function saveFile(path: string): Promise<void> {
   }));
 }
 
-export function closeFile(path: string): void {
+/**
+ * Close a tab and report which one should take over — the tab to its left, or
+ * the right one when it was first. Undefined means nothing is left to show.
+ * The caller routes, since the open file lives in the URL, not here.
+ */
+export function closeFile(path: string): string | undefined {
+  const { openOrder } = store.getState();
+  const index = openOrder.indexOf(path);
   store.setState((s) => {
     const { [path]: _removed, ...rest } = s.buffers;
     return { buffers: rest, openOrder: s.openOrder.filter((p) => p !== path) };
   });
+  if (index < 0) return undefined;
+  return openOrder[index - 1] ?? openOrder[index + 1];
 }

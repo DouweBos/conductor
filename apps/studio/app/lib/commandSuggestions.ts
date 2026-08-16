@@ -9,7 +9,11 @@ import type { CaptureElement, CaptureUiResult, Platform } from "./types";
  * percentage coordinate that survives a resolution change.
  */
 
+/** How suggestions are tabbed, so a long list stays navigable. */
+export type CommandGroup = "Press" | "Tap" | "Assert" | "Scroll" | "Other";
+
 export interface CommandSuggestion {
+  group: CommandGroup;
   /** e.g. "Tap · Id" */
   title: string;
   /** The YAML step, ready to paste into a flow. */
@@ -50,6 +54,12 @@ function selectorsFor(element: CaptureElement, screen: CaptureUiResult): Selecto
   return selectors;
 }
 
+/** A selector plus state flags. Bare-string selectors become `text:` to fit one. */
+function withState(definition: unknown, state: Record<string, boolean>): unknown {
+  const base = typeof definition === "string" ? { text: definition } : definition;
+  return { ...(base as object), ...state };
+}
+
 /** Only tap-like commands can address a raw point; asserts need a matcher. */
 function coordinateSelector(element: CaptureElement, screen: CaptureUiResult): Selector | null {
   if (!element.bounds || !screen.width || !screen.height) return null;
@@ -81,6 +91,10 @@ const REMOTE_KEYS = [
   "Remote Menu",
 ];
 
+const SCROLL_DIRECTIONS = ["DOWN", "UP", "LEFT", "RIGHT"];
+
+const GROUP_ORDER: CommandGroup[] = ["Press", "Tap", "Assert", "Scroll", "Other"];
+
 export function commandSuggestions(
   element: CaptureElement,
   screen: CaptureUiResult,
@@ -92,28 +106,85 @@ export function commandSuggestions(
   const tv = platform === "tvos";
 
   const suggestions: CommandSuggestion[] = [];
-  const add = (command: string, selectors: Selector[], build: (s: Selector) => string) => {
-    for (const s of selectors) suggestions.push({ title: `${command} · ${s.title}`, content: build(s) });
+  const add = (
+    group: CommandGroup,
+    command: string,
+    selectors: Selector[],
+    build: (s: Selector) => string,
+  ) => {
+    for (const s of selectors) {
+      suggestions.push({ group, title: `${command} · ${s.title}`, content: build(s) });
+    }
   };
 
   if (tv) {
     // tvOS is focus-driven: there's nothing to tap, you move the remote.
     for (const key of REMOTE_KEYS) {
-      suggestions.push({ title: `Press · ${key}`, content: step({ pressKey: key }) });
+      suggestions.push({ group: "Press", title: `Press · ${key}`, content: step({ pressKey: key }) });
     }
   } else {
-    add("Tap", tappable, (s) => step({ tapOn: s.definition }));
-    add("Long press", tappable, (s) => step({ longPressOn: s.definition }));
-    add("Input text", tappable, (s) =>
+    add("Tap", "Tap", tappable, (s) => step({ tapOn: s.definition }));
+    add("Tap", "Long press", tappable, (s) => step({ longPressOn: s.definition }));
+    add("Tap", "Input text", tappable, (s) =>
       [step({ tapOn: s.definition }), step({ inputText: "TODO" })].join("\n"),
     );
   }
-  add("Assert", matchers, (s) => step({ assertVisible: s.definition }));
-  add("Copy text", matchers, (s) => step({ copyTextFrom: s.definition }));
-  add("Conditional", matchers, (s) =>
+  add("Assert", "Assert visible", matchers, (s) => step({ assertVisible: s.definition }));
+  add("Assert", "Assert not visible", matchers, (s) => step({ assertNotVisible: s.definition }));
+  // On a focus-driven UI "is it visible" is the weaker half of the check — the
+  // point of a D-pad flow is that focus landed where you meant it to.
+  if (element.focused) {
+    add("Assert", "Assert focused", matchers, (s) =>
+      step({ assertVisible: withState(s.definition, { focused: true }) }),
+    );
+  } else if (tv) {
+    // Only worth offering on a TV, where exactly one element holds focus and
+    // "not this one" is a real check. On touch almost nothing is focused, so
+    // the same assertion would pass without testing anything.
+    add("Assert", "Assert not focused", matchers, (s) =>
+      step({ assertVisible: withState(s.definition, { focused: false }) }),
+    );
+  }
+  // Scrolling is a swipe, so it's touch-only — a TV scrolls by moving focus.
+  if (!tv) {
+    for (const direction of SCROLL_DIRECTIONS) {
+      add("Scroll", `Scroll ${direction.toLowerCase()} until visible`, matchers.slice(0, 1), (s) =>
+        step({ scrollUntilVisible: { element: s.definition, direction } }),
+      );
+    }
+  }
+  add("Other", "Copy text", matchers, (s) => step({ copyTextFrom: s.definition }));
+  add("Other", "Conditional", matchers, (s) =>
     step({ runFlow: { when: { visible: s.definition }, file: "Subflow.yaml" } }),
   );
   return suggestions;
+}
+
+/** Suggestions bucketed into their tabs, empty groups dropped, in a fixed order. */
+export function groupSuggestions(
+  suggestions: CommandSuggestion[],
+): { group: CommandGroup; items: CommandSuggestion[] }[] {
+  return GROUP_ORDER.map((group) => ({
+    group,
+    items: suggestions.filter((s) => s.group === group),
+  })).filter((g) => g.items.length > 0);
+}
+
+/**
+ * The `assertVisible` step for an element, with state flags folded in. Goes
+ * through the same YAML writer as the suggestions, so a label carrying a colon
+ * or a quote comes out escaped rather than producing a broken step.
+ */
+export function assertVisibleStep(
+  element: CaptureElement,
+  state: Record<string, boolean> = {},
+): string | null {
+  const selector = element.identifier
+    ? { id: element.identifier }
+    : element.text
+      ? { text: element.text }
+      : null;
+  return selector ? step({ assertVisible: { ...selector, ...state } }) : null;
 }
 
 /** One-line description of an element, for hover hints and list rows. */

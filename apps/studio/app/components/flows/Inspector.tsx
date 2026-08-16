@@ -8,16 +8,18 @@ import {
   TreeView,
   type TreeNode,
 } from "@conductor/studio-ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useIpcEvent } from "../../hooks/useIpcEvent";
 import { loadSceneGraph } from "../../lib/ipc";
 import { getCurrentRoute } from "../../lib/router";
-import type { CaptureElement, SceneGraph } from "../../lib/types";
+import type { CaptureElement, CaptureUiResult, SceneGraph } from "../../lib/types";
 import { setBufferContent, useFlowBuffers } from "../../stores/flowStore";
 import {
   findElement,
+  isInView,
   refreshCapture,
+  setHoveredRef,
   setSelectedRef,
   useCapture,
   useCaptureError,
@@ -27,20 +29,24 @@ import {
 import { SceneGraphDialog } from "./SceneGraphDialog";
 import styles from "./Inspector.module.css";
 
-/** Text a search matches against: id, label, role, ref. */
+/** Text a search matches against: id, label, role, and the `@eN` ref if it has one. */
 function haystack(el: CaptureElement): string {
-  return [el.identifier, el.text, el.role, el.ref].filter(Boolean).join(" ").toLowerCase();
+  // A synthetic ref is a node path like `#0.1.2` — searching digits shouldn't hit it.
+  const ref = el.a11y ? el.ref : undefined;
+  return [el.identifier, el.text, el.role, ref].filter(Boolean).join(" ").toLowerCase();
 }
 
 /**
- * Keep elements matching the query, and the ancestors that lead to them — a
- * capture runs to hundreds of nodes, so the tree is only usable filtered.
+ * Just the matching elements — the ancestors leading to each hit are noise when
+ * you already know what you're after. A hit inside another hit keeps its
+ * nesting, though: only the non-matching nodes between them are dropped.
  */
-function filterTree(elements: CaptureElement[], needle: string): CaptureElement[] {
+function matchesFor(elements: CaptureElement[], needle: string): CaptureElement[] {
   const out: CaptureElement[] = [];
   for (const el of elements) {
-    const children = filterTree(el.children ?? [], needle);
-    if (children.length > 0 || haystack(el).includes(needle)) out.push({ ...el, children });
+    const children = matchesFor(el.children ?? [], needle);
+    if (haystack(el).includes(needle)) out.push({ ...el, children });
+    else out.push(...children);
   }
   return out;
 }
@@ -49,13 +55,43 @@ function countElements(elements: CaptureElement[]): number {
   return elements.reduce((sum, el) => sum + 1 + countElements(el.children ?? []), 0);
 }
 
-function toNodes(elements: CaptureElement[]): TreeNode[] {
+/**
+ * The identifier leads: it's what selectors should target, and a row showing
+ * only a role read as an anonymous "Element" even when it had one.
+ */
+function labelFor(el: CaptureElement): string {
+  const name = el.identifier ? `#${el.identifier}` : el.text ? `“${el.text}”` : "";
+  // What's left with no name is a grouping wrapper we kept because it branches.
+  const role = el.role || (name ? "Element" : "Group");
+  return name ? `${role} ${name}` : role;
+}
+
+/**
+ * Trailing badges: size, whether it's on screen, and the `@eN` ref if it has
+ * one. Size is what tells two rows apart when they carry the same label — a
+ * container and the text inside it are otherwise identical rows.
+ */
+function metaFor(el: CaptureElement, screen: CaptureUiResult): ReactNode {
+  const size = el.bounds ? `${Math.round(el.bounds.width)}×${Math.round(el.bounds.height)}` : null;
+  const inView = isInView(el, screen);
+  const ref = el.a11y ? el.ref : null;
+  if (!size && !inView && !ref) return undefined;
+  return (
+    <>
+      {size ? <span className={styles.size}>{size}</span> : null}
+      {inView ? <span className={styles.inView}>in view</span> : null}
+      {ref}
+    </>
+  );
+}
+
+function toNodes(elements: CaptureElement[], screen: CaptureUiResult): TreeNode[] {
   return elements.map((el, i) => ({
     id: el.ref || `el-${i}`,
-    label: el.text ? `${el.role ?? "Element"} “${el.text}”` : el.role || "Element",
+    label: labelFor(el),
     icon: "dot",
-    meta: el.ref,
-    children: el.children && el.children.length ? toNodes(el.children) : undefined,
+    meta: metaFor(el, screen),
+    children: el.children?.length ? toNodes(el.children, screen) : undefined,
   }));
 }
 
@@ -104,17 +140,24 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
   useEffect(() => {
     loadSceneGraph(deviceId ?? undefined).then(setGraph).catch(() => {});
   }, [deviceId]);
+
+  // The panel can swap out mid-hover (picking a row shows the commands), and a
+  // row that unmounts never fires mouseleave — the highlight would stick.
+  useEffect(() => () => setHoveredRef(null), []);
   useIpcEvent<SceneGraph>("scenegraph:updated", setGraph);
 
   const screenCount = graph?.nodes.length ?? 0;
 
   const [filter, setFilter] = useState("");
-  const matched = useMemo(() => {
-    const children = capture?.root.children ?? [];
-    const needle = filter.trim().toLowerCase();
-    return needle ? filterTree(children, needle) : children;
-  }, [capture, filter]);
-  const nodes = useMemo(() => toNodes(matched), [matched]);
+  const needle = filter.trim().toLowerCase();
+  const matches = useMemo(
+    () => (needle ? matchesFor(capture?.root.children ?? [], needle) : null),
+    [capture, needle],
+  );
+  const nodes = useMemo(() => {
+    if (!capture) return [];
+    return toNodes(matches ?? capture.root.children ?? [], capture);
+  }, [matches, capture]);
 
   const selectedEl = capture && selectedRef ? findElement(capture.root, selectedRef) : null;
 
@@ -166,9 +209,7 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
             icon="search"
             onChange={(e) => setFilter(e.target.value)}
           />
-          {filter.trim() ? (
-            <span className={styles.filterCount}>{countElements(matched)}</span>
-          ) : null}
+          {matches ? <span className={styles.filterCount}>{countElements(matches)}</span> : null}
         </div>
       ) : null}
       <div className={styles.body}>
@@ -192,7 +233,13 @@ export function Inspector({ deviceId }: { deviceId: string | null }) {
               description={`Nothing on screen matches “${filter}”.`}
             />
           ) : (
-            <TreeView nodes={nodes} selectedId={selectedRef} onSelect={setSelectedRef} expandAll />
+            <TreeView
+              nodes={nodes}
+              selectedId={selectedRef}
+              onSelect={setSelectedRef}
+              onHover={setHoveredRef}
+              expandAll
+            />
           )
         )}
       </div>

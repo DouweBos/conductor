@@ -59,6 +59,15 @@ export function stepsUntil(steps: StepRange[], line: number): StepRange[] {
   return index < 0 ? [] : steps.slice(0, index + 1);
 }
 
+/**
+ * Every step the line range touches, whole. Selecting down to `- assertVisible:`
+ * without its indented `id:` would otherwise run a command with no value, which
+ * the engine rejects outright.
+ */
+export function stepsInRange(steps: StepRange[], from: number, to: number): StepRange[] {
+  return steps.filter((s) => s.line <= to && s.endLine >= from);
+}
+
 export function stepAt(steps: StepRange[], line: number): StepRange | null {
   return steps.find((s) => s.line === line) ?? null;
 }

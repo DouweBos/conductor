@@ -2,7 +2,7 @@
   "name": "conductor-studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Conductor Studio \u2014 Maestro test workbench, agentic test writing, and test case management",
+  "description": "Conductor Studio — Maestro test workbench, agentic test writing, and test case management",
   "author": "Houwert",
   "license": "UNLICENSED",
   "type": "module",
@@ -14,10 +14,12 @@
     "build": "tsc --noEmit && pnpm typecheck:electron && vite build && pnpm build:electron",
     "typecheck:app": "tsc --noEmit",
     "typecheck:electron": "tsc -p tsconfig.main.json --noEmit",
-    "dist": "pnpm build && electron-builder --config electron-builder.yml",
-    "dist:dev": "pnpm build && electron-builder --config electron-builder.yml",
-    "dist:release": "pnpm build && electron-builder --config electron-builder.release.cjs --publish always",
-    "preview": "vite preview"
+    "dist": "pnpm prepare-conductor && pnpm build && electron-builder --config electron-builder.yml",
+    "dist:dev": "pnpm prepare-conductor && pnpm build && electron-builder --config electron-builder.yml",
+    "dist:release": "pnpm prepare-conductor && pnpm build && electron-builder --config electron-builder.release.cjs --publish always",
+    "preview": "vite preview",
+    "prepare-conductor": "tsx scripts/prepare-conductor.ts",
+    "postinstall": "tsx scripts/prepare-conductor.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.0",
@@ -43,6 +45,7 @@
     "electron": "^34.0.0",
     "electron-builder": "^26.0.0",
     "esbuild": "0.27.4",
+    "tsx": "^4.19.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

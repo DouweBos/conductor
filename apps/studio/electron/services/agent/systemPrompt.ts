@@ -23,11 +23,9 @@ export async function buildAgentSystemPrompt(device: DeviceInfo | null): Promise
     resolveConductor().catch(() => null),
   ]);
 
-  const conductorInvocation = conductor
-    ? conductor.prefixArgs.length
-      ? `${conductor.bin} ${conductor.prefixArgs.join(" ")}`
-      : conductor.bin
-    : "conductor";
+  // The shim, not `bin`+`prefixArgs`: the agent runs this from a Bash tool,
+  // where Studio's `electron --run-as-node <entry>` form wouldn't survive.
+  const conductorInvocation = conductor ? quoteForShell(conductor.shim) : "conductor";
 
   const deviceArg = device ? ` --device ${device.id}` : "";
   const lines: string[] = [];
@@ -126,4 +124,9 @@ export async function buildAgentSystemPrompt(device: DeviceInfo | null): Promise
   );
 
   return lines.join("\n");
+}
+
+/** Bundle paths contain a space ("Conductor Studio.app"), so quote them. */
+function quoteForShell(p: string): string {
+  return /[\s"']/.test(p) ? `'${p.replace(/'/g, "'\\''")}'` : p;
 }

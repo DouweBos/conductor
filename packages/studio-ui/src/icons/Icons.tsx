@@ -19,6 +19,7 @@ export type IconName =
   | "chevronLeft"
   | "chevronRight"
   | "chevronDown"
+  | "chevronUp"
   | "device"
   | "sun"
   | "moon"
@@ -51,6 +52,7 @@ const PATHS: Record<IconName, string> = {
   chevronLeft: "M15 6l-6 6 6 6",
   chevronRight: "M9 6l6 6-6 6",
   chevronDown: "M6 9l6 6 6-6",
+  chevronUp: "M6 15l6-6 6 6",
   device: "M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3zM11 18h2",
   sun: "M12 6.5v-3M12 20.5v-3M6.5 12h-3M20.5 12h-3M7 7L5 5M19 19l-2-2M17 7l2-2M5 19l2-2M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z",
   moon: "M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z",

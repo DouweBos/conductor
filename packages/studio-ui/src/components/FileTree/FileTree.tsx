@@ -15,7 +15,8 @@ export interface FileTreeProps {
   entries: FileEntry[];
   selectedPath?: string | null;
   onSelectFile?: (path: string) => void;
-  onContextMenu?: (path: string, x: number, y: number) => void;
+  /** `type` lets the host offer directory-only actions (new file, new folder). */
+  onContextMenu?: (path: string, x: number, y: number, type: "file" | "dir") => void;
 }
 
 function iconFor(entry: FileEntry): IconName {
@@ -45,7 +46,9 @@ export function FileTree({ entries, selectedPath, onSelectFile, onContextMenu }:
       onSelect={(id) => {
         if (filePaths.has(id)) onSelectFile?.(id);
       }}
-      onContextMenu={onContextMenu}
+      onContextMenu={(id, x, y) =>
+        onContextMenu?.(id, x, y, filePaths.has(id) ? "file" : "dir")
+      }
     />
   );
 }

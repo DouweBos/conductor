@@ -63,6 +63,10 @@ export interface CaptureElement {
   role?: string;
   text?: string;
   identifier?: string;
+  /** Whether a screen reader stops here — i.e. the node had an `@eN` ref. */
+  a11y?: boolean;
+  /** Set when the element holds focus — the whole story on a TV. */
+  focused?: boolean;
   bounds?: { x: number; y: number; width: number; height: number };
   children?: CaptureElement[];
 }
@@ -401,6 +405,21 @@ export interface LintProblem {
   text: string;
 }
 
+/** Cap on `searchFlows` results, shared so the UI can say when it truncated. */
+export const FLOW_SEARCH_LIMIT = 200;
+
+/** A scaffold for a new flow — see electron/services/flow/templates.ts. */
+export interface FlowTemplate {
+  id: string;
+  label: string;
+  /** The template's leading `#` comment. */
+  description?: string;
+  /** `{{placeholders}}` the caller has to answer; the automatic ones are omitted. */
+  vars: string[];
+  /** Shipped with Studio rather than living in the project. */
+  builtIn: boolean;
+}
+
 export interface FlowSearchHit {
   path: string;
   line: number;
@@ -486,6 +505,20 @@ export interface UpdaterState {
 }
 
 export type ThemePreference = "light" | "dark" | "system";
+
+// ── Conductor CLI version ──────────────────────────────────────────────────
+export type ProvisionState = "idle" | "installing" | "ready" | "error";
+
+export interface ConductorStatus {
+  /** Version pinned by the user, or null when using the bundled default. */
+  overrideVersion: string | null;
+  /** Version resolved for invocations right now (override when ready, else bundled). */
+  activeVersion: string | null;
+  /** Version baked into this app build. */
+  bundledVersion: string | null;
+  state: ProvisionState;
+  error: string | null;
+}
 
 // ── Agentic writer (live) ──────────────────────────────────────────────────
 export type AgentStatus = "idle" | "starting" | "running" | "awaiting-input" | "stopped" | "error";

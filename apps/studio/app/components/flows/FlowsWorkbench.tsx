@@ -26,7 +26,7 @@ export function FlowsWorkbench() {
   return (
     <SplitPane
       className={styles.workbench}
-      initialSizes={[260, 0, 400]}
+      initialSizes={["20%", 0, "32%"]}
       flexIndex={1}
       minSize={180}
       storageKey="workbench"

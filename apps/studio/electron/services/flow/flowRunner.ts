@@ -344,6 +344,7 @@ function buildFlowArgs(
 function flowFilesIn(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir).sort()) {
+    if (name.startsWith(".")) continue; // .templates and friends are not runnable
     const full = path.join(dir, name);
     if (statSync(full).isDirectory()) out.push(...flowFilesIn(full));
     else if (/\.(ya?ml|js)$/.test(name)) out.push(full);

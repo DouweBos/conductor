@@ -38,6 +38,12 @@
   cursor: not-allowed;
 }
 
+.separator {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--border);
+}
+
 .danger {
   color: var(--error);
 }

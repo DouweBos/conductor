@@ -25,6 +25,7 @@ import type {
   FlowCatalogEntry,
   FlowReference,
   FlowSearchHit,
+  FlowTemplate,
   LintProblem,
   RenameResult,
   MaestroStatus,
@@ -41,6 +42,7 @@ import type {
   TestSession,
   ThemePreference,
   UpdaterState,
+  ConductorStatus,
   VideoConfig,
 } from "../app/lib/types";
 import {
@@ -82,6 +84,7 @@ import {
   appFingerprint,
   captureUi,
   inputText,
+  pressKey,
   installApp,
   listDevices,
   startDevice,
@@ -118,6 +121,7 @@ import {
   runRepeat,
 } from "./services/flow/flowRunner";
 import { loadFlowCatalog } from "./services/flow/catalog";
+import { createFromTemplate, listTemplates } from "./services/flow/templates";
 import { lintOne, lintProject } from "./services/flow/lint";
 import { findUsages, indexReferences, searchFlows } from "./services/flow/references";
 import { listEnvNames } from "./services/flow/envNames";
@@ -143,6 +147,12 @@ import {
   getUpdaterState,
   quitAndInstallUpdate,
 } from "./services/updater/updaterService";
+import {
+  getConductorStatus,
+  readBundledVersion,
+  setConductorOverrideVersion,
+} from "./services/conductor/override";
+import { listConductorVersions } from "./services/conductor/registry";
 
 // Wrap ipcMain.handle: unwrap the single args object and re-throw as a plain
 // string so the renderer promise rejects with a readable message.
@@ -180,10 +190,16 @@ export function registerIpcHandlers(): void {
   handle<{ path: string; content?: string }, void>("flow_create", (a) =>
     createFlow(a.path, a.content),
   );
+  handle<void, FlowTemplate[]>("flow_templates", () => listTemplates());
+  handle<{ templateId: string; path: string; vars: Record<string, string> }, void>(
+    "flow_create_from_template",
+    (a) => createFromTemplate(a.templateId, a.path, a.vars),
+  );
   handle<{ path: string }, void>("flow_delete", (a) => deleteFlow(a.path));
   handle<{ from: string; to: string }, RenameResult>("flow_rename", (a) => renameFlow(a.from, a.to));
   handle<{ from: string; to: string }, void>("flow_duplicate", (a) => duplicateFlow(a.from, a.to));
   handle<{ path: string }, void>("flow_mkdir", (a) => createFolder(a.path));
+  handle<{ path: string }, void>("path_reveal", (a) => shell.showItemInFolder(a.path));
 
   // ── Devices ──
   handle<void, DeviceInfo[]>("devices_list", () => listDevices());
@@ -210,6 +226,9 @@ export function registerIpcHandlers(): void {
   );
   handle<{ deviceId: string; text: string }, void>("device_input_text", (a) =>
     inputText(a.deviceId, a.text),
+  );
+  handle<{ deviceId: string; key: string }, void>("device_press_key", (a) =>
+    pressKey(a.deviceId, a.key),
   );
   handle<{ deviceId: string }, CaptureUiResult>("capture_ui", (a) => captureUi(a.deviceId));
 
@@ -364,4 +383,13 @@ export function registerIpcHandlers(): void {
   handle<void, void>("updater_check", () => checkForUpdates());
   handle<void, void>("updater_download", () => downloadUpdate());
   handle<void, void>("updater_install", () => quitAndInstallUpdate());
+
+  // ── Conductor CLI version ──
+  handle<void, ConductorStatus>("conductor_status", () => getConductorStatus());
+  handle<void, string[]>("conductor_versions", () =>
+    listConductorVersions(readBundledVersion()),
+  );
+  handle<{ version: string | null }, ConductorStatus>("conductor_set_version", (a) =>
+    setConductorOverrideVersion(a.version),
+  );
 }

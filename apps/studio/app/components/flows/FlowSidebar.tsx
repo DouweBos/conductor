@@ -11,19 +11,29 @@ import {
   TextField,
   type ContextMenuItem,
 } from "@conductor/studio-ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
-  createFlow,
+  createFlowFromTemplate,
   createFolder,
   deleteFlow,
   duplicateFlow,
   findUsages,
+  listFlowTemplates,
+  loadFlowCatalog,
   renameFlow,
+  revealPath,
   searchFlows,
 } from "../../lib/ipc";
+import { aliasFor } from "../../lib/flowRefs";
 import { selectFlow } from "../../lib/router";
-import type { FlowReference, FlowSearchHit } from "../../lib/types";
+import {
+  FLOW_SEARCH_LIMIT,
+  type FlowReference,
+  type FlowSearchHit,
+  type FlowTemplate,
+} from "../../lib/types";
+import { requestReveal } from "../../stores/flowStore";
 import {
   refreshFlows,
   selectFlowsDir,
@@ -33,21 +43,37 @@ import {
 } from "../../stores/projectStore";
 import styles from "./FlowSidebar.module.css";
 
-const FLOW_TEMPLATE = `appId: com.example.app
----
-- launchApp
-`;
+const DEFAULT_TEMPLATE = "blank";
 
 type PromptKind = "new" | "rename" | "duplicate" | "newfolder" | "delete";
 interface Prompt {
   kind: PromptKind;
   target?: string;
   value: string;
+  isDir?: boolean;
+  /** "new" only: which scaffold to use, and the answers to its `{{vars}}`. */
+  templateId?: string;
+  vars?: Record<string, string>;
 }
 
-function suggestDuplicate(path: string): string {
+type EntryKind = "file" | "dir";
+interface MenuTarget {
+  path: string;
+  type: EntryKind;
+  x: number;
+  y: number;
+}
+
+function suggestDuplicate(path: string, isDir: boolean): string {
   const dot = path.lastIndexOf(".");
-  return dot > 0 ? `${path.slice(0, dot)}-copy${path.slice(dot)}` : `${path}-copy`;
+  return !isDir && dot > 0 ? `${path.slice(0, dot)}-copy${path.slice(dot)}` : `${path}-copy`;
+}
+
+/** Where a "new" action lands: inside a folder, or beside a file. */
+function containingDir(path: string, type: EntryKind): string {
+  if (type === "dir") return `${path}/`;
+  const cut = path.lastIndexOf("/");
+  return cut < 0 ? "" : `${path.slice(0, cut + 1)}`;
 }
 
 export function FlowSidebar({ activePath }: { activePath?: string }) {
@@ -59,8 +85,41 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
   const [hits, setHits] = useState<FlowSearchHit[]>([]);
   const [usages, setUsages] = useState<{ path: string; refs: FlowReference[] } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<MenuTarget | null>(null);
+  const [aliases, setAliases] = useState<Record<string, string>>({});
+  const [templates, setTemplates] = useState<FlowTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Cmd/Ctrl+Shift+F searches every flow, the way Cmd+F searches the open one.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "f" || !event.shiftKey) return;
+      if (!(event.metaKey || event.ctrlKey)) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // config.yaml `paths:`, so the menu can offer the `@alias/…` form of a path.
+  useEffect(() => {
+    if (!project) {
+      setAliases({});
+      return;
+    }
+    void loadFlowCatalog()
+      .then((catalog) => setAliases(catalog.aliases))
+      .catch(() => setAliases({}));
+  }, [project?.flowsDir]);
+
+  useEffect(() => {
+    void listFlowTemplates()
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, [project?.flowsDir]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -73,23 +132,31 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
     return () => clearTimeout(timer);
   }, [query]);
 
+  // The scaffold the New-flow dialog is pointed at, and so which `{{vars}}` it asks for.
+  const template =
+    templates.find((t) => t.id === (prompt?.templateId ?? DEFAULT_TEMPLATE)) ?? templates[0];
+
   const commit = async () => {
     if (!prompt) return;
     const value = prompt.value.trim();
     try {
       if (prompt.kind === "new") {
         const path = /\.(ya?ml|js|ts)$/.test(value) ? value : `${value}.yaml`;
-        await createFlow(path, FLOW_TEMPLATE);
+        await createFlowFromTemplate(template?.id ?? DEFAULT_TEMPLATE, path, prompt.vars ?? {});
         selectFlow(path);
       } else if (prompt.kind === "rename" && prompt.target) {
         const { updated } = await renameFlow(prompt.target, value);
         if (updated.length) {
           setNotice(`Repointed ${updated.length} file${updated.length === 1 ? "" : "s"} that called it.`);
         }
+        // The open flow follows the rename, whether it moved itself or its folder did.
         if (activePath === prompt.target) selectFlow(value);
+        else if (prompt.isDir && activePath?.startsWith(`${prompt.target}/`)) {
+          selectFlow(value + activePath.slice(prompt.target.length));
+        }
       } else if (prompt.kind === "duplicate" && prompt.target) {
         await duplicateFlow(prompt.target, value);
-        selectFlow(value);
+        if (!prompt.isDir) selectFlow(value);
       } else if (prompt.kind === "newfolder") {
         await createFolder(value);
       } else if (prompt.kind === "delete" && prompt.target) {
@@ -103,29 +170,79 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
     }
   };
 
-  const menuItems = (path: string): ContextMenuItem[] => [
-    { label: "Rename", icon: "file", onClick: () => setPrompt({ kind: "rename", target: path, value: path }) },
-    {
-      label: "Duplicate",
-      icon: "plus",
-      onClick: () => setPrompt({ kind: "duplicate", target: path, value: suggestDuplicate(path) }),
-    },
-    {
-      label: "Find usages",
-      icon: "search",
-      onClick: () => void findUsages(path).then((refs) => setUsages({ path, refs })),
-    },
-    { label: "New folder", icon: "folder", onClick: () => setPrompt({ kind: "newfolder", value: "" }) },
-    { label: "Delete", icon: "close", danger: true, onClick: () => setPrompt({ kind: "delete", target: path, value: path }) },
-  ];
-
-  const promptTitle: Record<PromptKind, string> = {
-    new: "New flow",
-    rename: "Rename",
-    duplicate: "Duplicate",
-    newfolder: "New folder",
-    delete: "Delete flow",
+  const copy = async (text: string, what: string) => {
+    await navigator.clipboard.writeText(text);
+    setNotice(`Copied ${what}: ${text}`);
   };
+
+  const menuItems = ({ path, type }: MenuTarget): ContextMenuItem[] => {
+    const isDir = type === "dir";
+    const inside = containingDir(path, type);
+    const aliased = aliasFor(path, aliases);
+    const absolute = project ? `${project.flowsDir}/${path}` : path;
+    return [
+      {
+        label: isDir ? "New flow here…" : "New flow…",
+        icon: "plus",
+        onClick: () => setPrompt({ kind: "new", value: inside }),
+      },
+      {
+        label: isDir ? "New folder here…" : "New folder…",
+        icon: "folder",
+        onClick: () => setPrompt({ kind: "newfolder", value: inside }),
+      },
+      { separator: true },
+      {
+        label: "Rename…",
+        icon: isDir ? "folder" : "file",
+        onClick: () => setPrompt({ kind: "rename", target: path, value: path, isDir }),
+      },
+      {
+        label: "Duplicate…",
+        icon: "copy",
+        onClick: () =>
+          setPrompt({ kind: "duplicate", target: path, value: suggestDuplicate(path, isDir), isDir }),
+      },
+      ...(isDir
+        ? []
+        : [
+            {
+              label: "Find usages",
+              icon: "search" as const,
+              onClick: () => void findUsages(path).then((refs) => setUsages({ path, refs })),
+            },
+          ]),
+      { separator: true },
+      { label: "Copy relative path", icon: "copy", onClick: () => void copy(path, "path") },
+      ...(aliased
+        ? [
+            {
+              label: "Copy aliased path",
+              icon: "copy" as const,
+              onClick: () => void copy(aliased, "alias"),
+            },
+          ]
+        : []),
+      { label: "Copy absolute path", icon: "copy", onClick: () => void copy(absolute, "path") },
+      { label: "Reveal in Finder", icon: "folderOpen", onClick: () => void revealPath(absolute) },
+      { separator: true },
+      {
+        label: "Delete",
+        icon: "trash",
+        danger: true,
+        onClick: () => setPrompt({ kind: "delete", target: path, value: path, isDir }),
+      },
+    ];
+  };
+
+  const promptTitle = (p: Prompt): string =>
+    ({
+      new: "New flow",
+      rename: p.isDir ? "Rename folder" : "Rename",
+      duplicate: p.isDir ? "Duplicate folder" : "Duplicate",
+      newfolder: "New folder",
+      delete: p.isDir ? "Delete folder" : "Delete flow",
+    })[p.kind];
 
   // Monorepos have more than one; name the one we're showing either way.
   const dirs = project?.flowsDirs ?? [];
@@ -161,10 +278,12 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
       ) : null}
       <div className={styles.searchBar}>
         <TextField
-          placeholder="Search flows…"
+          ref={searchRef}
+          placeholder="Search all flows… (⇧⌘F)"
           value={query}
           icon="search"
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && setQuery("")}
         />
       </div>
       {notice ? (
@@ -177,9 +296,21 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
           <EmptyState icon="search" title="No matches" description={`Nothing matches “${query}”.`} />
         ) : (
           <ul className={styles.hits}>
+            <li className={styles.hitCount}>
+              {hits.length >= FLOW_SEARCH_LIMIT
+                ? `First ${FLOW_SEARCH_LIMIT} matches`
+                : `${hits.length} match${hits.length === 1 ? "" : "es"}`}
+            </li>
             {hits.map((hit) => (
               <li key={`${hit.path}:${hit.line}`}>
-                <button type="button" className={styles.hit} onClick={() => selectFlow(hit.path)}>
+                <button
+                  type="button"
+                  className={styles.hit}
+                  onClick={() => {
+                    requestReveal(hit.path, hit.line);
+                    selectFlow(hit.path);
+                  }}
+                >
                   <span className={styles.hitPath}>
                     {hit.path}:{hit.line}
                   </span>
@@ -209,7 +340,7 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
           entries={flows}
           selectedPath={activePath}
           onSelectFile={selectFlow}
-          onContextMenu={(path, x, y) => setMenu({ path, x, y })}
+          onContextMenu={(path, x, y, type) => setMenu({ path, x, y, type })}
         />
       )}
 
@@ -244,12 +375,12 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
       </Dialog>
 
       {menu ? (
-        <ContextMenu open x={menu.x} y={menu.y} items={menuItems(menu.path)} onClose={() => setMenu(null)} />
+        <ContextMenu open x={menu.x} y={menu.y} items={menuItems(menu)} onClose={() => setMenu(null)} />
       ) : null}
 
       <Dialog
         open={prompt !== null}
-        title={prompt ? promptTitle[prompt.kind] : ""}
+        title={prompt ? promptTitle(prompt) : ""}
         onClose={() => {
           setPrompt(null);
           setError(null);
@@ -267,17 +398,50 @@ export function FlowSidebar({ activePath }: { activePath?: string }) {
       >
         {prompt?.kind === "delete" ? (
           <p>
-            Delete <strong>{prompt.target}</strong>? This cannot be undone.
+            Delete <strong>{prompt.target}</strong>
+            {prompt.isDir ? " and everything in it" : ""}? This cannot be undone.
           </p>
         ) : (
-          <TextField
-            label={prompt?.kind === "newfolder" ? "Folder path" : "Path"}
-            placeholder={prompt?.kind === "newfolder" ? "auth" : "auth/login.yaml"}
-            value={prompt?.value ?? ""}
-            autoFocus
-            onChange={(e) => setPrompt((p) => (p ? { ...p, value: e.target.value } : p))}
-            onKeyDown={(e) => e.key === "Enter" && void commit()}
-          />
+          <div className={styles.form}>
+            <TextField
+              label={prompt?.kind === "newfolder" ? "Folder path" : "Path"}
+              placeholder={prompt?.kind === "newfolder" ? "auth" : "auth/login.yaml"}
+              value={prompt?.value ?? ""}
+              autoFocus
+              onChange={(e) => setPrompt((p) => (p ? { ...p, value: e.target.value } : p))}
+              onKeyDown={(e) => e.key === "Enter" && void commit()}
+            />
+            {prompt?.kind === "new" && templates.length ? (
+              <>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Template</span>
+                  <Select
+                    options={templates.map((t) => ({ value: t.id, label: t.label }))}
+                    value={template?.id ?? ""}
+                    onChange={(e) =>
+                      setPrompt((p) => (p ? { ...p, templateId: e.target.value, vars: {} } : p))
+                    }
+                  />
+                  {template?.description ? (
+                    <span className={styles.fieldHint}>{template.description}</span>
+                  ) : null}
+                </div>
+                {(template?.vars ?? []).map((name) => (
+                  <TextField
+                    key={name}
+                    label={name}
+                    value={prompt.vars?.[name] ?? ""}
+                    onChange={(e) =>
+                      setPrompt((p) =>
+                        p ? { ...p, vars: { ...p.vars, [name]: e.target.value } } : p,
+                      )
+                    }
+                    onKeyDown={(e) => e.key === "Enter" && void commit()}
+                  />
+                ))}
+              </>
+            ) : null}
+          </div>
         )}
         {error ? <p style={{ color: "var(--error)", marginTop: 8 }}>{error}</p> : null}
       </Dialog>

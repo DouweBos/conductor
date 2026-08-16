@@ -26,10 +26,10 @@ import {
   runFlowInline,
   runFolder,
 } from "../../lib/ipc";
-import { referenceOnLine, resolveReference } from "../../lib/flowRefs";
-import { flowForSteps, parseSteps, stepAt, stepsUntil } from "../../lib/flowSteps";
+import { referenceSpanOnLine, resolveReference } from "../../lib/flowRefs";
+import { flowForSteps, parseSteps, stepAt, stepsInRange, stepsUntil } from "../../lib/flowSteps";
 import { maestroCompletion } from "../../lib/maestroCompletion";
-import { selectFlow } from "../../lib/router";
+import { selectFlow, setView } from "../../lib/router";
 import type { FlowCatalog, LintProblem, MaestroStatus } from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
 import {
@@ -37,9 +37,11 @@ import {
   languageFor,
   saveFile,
   setBufferContent,
+  clearReveal,
   useBuffer,
   useFlowBuffers,
   useOpenTabs,
+  useReveal,
 } from "../../stores/flowStore";
 import {
   getRunOptions,
@@ -51,10 +53,6 @@ import { beginRun } from "../../stores/runStore";
 import { useResolvedTheme } from "../../stores/themeStore";
 import { RunConsole } from "./RunConsole";
 import styles from "./EditorPane.module.css";
-
-function extractAppId(content: string | undefined): string | undefined {
-  return content?.match(/^appId:\s*(.+)$/m)?.[1]?.trim();
-}
 
 export function EditorPane({ activePath }: { activePath?: string }) {
   const openTabs = useOpenTabs();
@@ -68,6 +66,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
   const editorApi = useRef<EditorApi | null>(null);
   const [stepMenu, setStepMenu] = useState<{ line: number; x: number; y: number } | null>(null);
   const [problems, setProblems] = useState<LintProblem[]>([]);
+  const reveal = useReveal();
   // The project's env vocabulary, read through a ref so the completion source
   // stays stable while the names refresh underneath it.
   const envNames = useRef<string[]>([]);
@@ -114,22 +113,6 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     }
   };
 
-  const runSelection = async () => {
-    const snippet = editorApi.current?.getSelection() ?? "";
-    if (!snippet.trim()) return;
-    try {
-      const { runId } = await runFlowInline(
-        snippet,
-        deviceId ?? undefined,
-        extractAppId(buffer?.content),
-        getRunOptions(),
-      );
-      beginRun(runId, `${activePath ?? "selection"} (selection)`);
-    } catch {
-      /* surfaced in console */
-    }
-  };
-
   // Everything I touched since main — the set worth running before pushing.
   const runChanged = async () => {
     const changed = await changedFlows();
@@ -139,6 +122,13 @@ export function EditorPane({ activePath }: { activePath?: string }) {
       beginRun(runId, flow);
     }
   };
+
+  // Jump to a global-search hit, once its file has actually finished loading.
+  useEffect(() => {
+    if (!reveal || reveal.path !== activePath || buffer?.loading !== false) return;
+    editorApi.current?.revealLine(reveal.line);
+    clearReveal();
+  }, [reveal, activePath, buffer?.loading]);
 
   // Lint the buffer as it settles, so mistakes surface before a run does.
   useEffect(() => {
@@ -171,6 +161,19 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     }
   };
 
+  // Run whole steps, not the raw selection: a selection ending on the
+  // `- assertVisible:` line but not its indented body is a command with no
+  // value, which the engine rejects rather than running.
+  const runSelection = async () => {
+    const api = editorApi.current;
+    const content = buffer?.content;
+    if (!api || !content || !api.getSelection().trim()) return;
+    const { from, to } = api.getSelectedLines();
+    const chosen = stepsInRange(steps, from, to);
+    if (chosen.length === 0) return;
+    await runSteps(chosen, "selection");
+  };
+
   const runGutter = useMemo(
     () => ({
       lines: steps.map((step) => step.line),
@@ -192,13 +195,21 @@ export function EditorPane({ activePath }: { activePath?: string }) {
     [steps],
   );
 
-  // Cmd-click a `runFlow: …` line to open the subflow it names.
-  const followLine = (lineText: string) => {
-    const raw = referenceOnLine(lineText);
-    if (!raw) return;
-    const target = resolveReference(raw, activePath ?? "", catalog.current.aliases);
-    if (target && catalog.current.entries.some((e) => e.path === target)) selectFlow(target);
+  // Cmd-click a `runFlow: …` reference to open the file it names in a tab.
+  const targetOnLine = (lineText: string) => {
+    const span = referenceSpanOnLine(lineText);
+    if (!span) return null;
+    const target = resolveReference(span.raw, activePath ?? "", catalog.current.aliases);
+    if (!target || !catalog.current.entries.some((e) => e.path === target)) return null;
+    return { span, target };
   };
+
+  const followLine = (lineText: string) => {
+    const hit = targetOnLine(lineText);
+    if (hit) selectFlow(hit.target);
+  };
+
+  const followSpanOnLine = (lineText: string) => targetOnLine(lineText)?.span ?? null;
 
   const runAll = async () => {
     try {
@@ -232,7 +243,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
             </StatusPill>
           ) : null}
         </Toolbar>
-        <SplitPane direction="vertical" initialSizes={[0, 240]} flexIndex={0} minSize={120} storageKey="console">
+        <SplitPane direction="vertical" initialSizes={[0, "28%"]} flexIndex={0} minSize={120} storageKey="console">
           <div className={styles.editor}>
             <EmptyState
               icon="code"
@@ -250,7 +261,18 @@ export function EditorPane({ activePath }: { activePath?: string }) {
 
   return (
     <div className={styles.pane}>
-      <Tabs tabs={tabs} activeId={activePath} onSelect={selectFlow} onClose={closeFile} />
+      <Tabs
+        tabs={tabs}
+        activeId={activePath}
+        onSelect={selectFlow}
+        onClose={(path) => {
+          const next = closeFile(path);
+          // Closing a background tab leaves the URL — and the editor — alone.
+          if (path !== activePath) return;
+          if (next) selectFlow(next);
+          else setView("flows");
+        }}
+      />
       <Toolbar>
         <Button variant="primary" size="sm" icon="play" onClick={() => void run()}>
           Run
@@ -283,7 +305,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
           </StatusPill>
         ) : null}
       </Toolbar>
-      <SplitPane direction="vertical" initialSizes={[0, 240]} flexIndex={0} minSize={120} storageKey="console">
+      <SplitPane direction="vertical" initialSizes={[0, "28%"]} flexIndex={0} minSize={120} storageKey="console">
         <div className={styles.editor}>
           {buffer?.loading ? (
             <div className={styles.loading}>
@@ -297,6 +319,7 @@ export function EditorPane({ activePath }: { activePath?: string }) {
               completions={languageFor(activePath) === "yaml" ? completions : undefined}
               runGutter={languageFor(activePath) === "yaml" ? runGutter : undefined}
               onFollowLine={followLine}
+              followSpanOnLine={followSpanOnLine}
               problems={problems.map((p) => ({ line: p.line, severity: p.severity, message: p.message }))}
               registerApi={(api) => (editorApi.current = api)}
               onChange={(v) => setBufferContent(activePath, v)}

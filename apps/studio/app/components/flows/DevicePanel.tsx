@@ -29,6 +29,7 @@ import {
   useCapture,
   useCaptureLoading,
   useDeviceMode,
+  useSelectedRef,
 } from "../../stores/inspectStore";
 import { toggleRecording, useRecording } from "../../stores/recorderStore";
 import { CommandSuggestions } from "./CommandSuggestions";
@@ -50,9 +51,11 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
   const error = useDeviceError();
   const recording = useRecording();
   const mode = useDeviceMode();
+  const selectedRef = useSelectedRef();
   const capturing = useCaptureLoading();
   const capture = useCapture();
   const device = devices.find((d) => d.id === selectedId) ?? null;
+  const isTv = device?.platform === "tvos";
 
   // Inspect mode is only useful with a fresh snapshot, so take one on entry.
   const [busy, setBusy] = useState<string | null>(null);
@@ -174,14 +177,16 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
             {recording ? "Stop" : "Record"}
           </Button>
         ) : null}
-        {recording && showRecord ? (
+        {/* Focus is the screen's state on a TV, and it's the only thing this
+            records — elsewhere there's nothing focused to assert on. */}
+        {recording && showRecord && isTv ? (
           <Button
             size="sm"
             variant="secondary"
             icon="check"
             disabled={!selectedId}
             onClick={() => selectedId && void recordAssertion(selectedId)}
-            title="Append an assertVisible for what's on screen now"
+            title="Append an assertVisible for the focused element"
           >
             Assert
           </Button>
@@ -193,7 +198,7 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
       {showInspector ? (
         <SplitPane
           direction="vertical"
-          initialSizes={[0, 260]}
+          initialSizes={[0, "34%"]}
           flexIndex={0}
           minSize={120}
           storageKey="inspector"
@@ -202,7 +207,9 @@ export function DevicePanel({ showRecord = true, showInspector = true }: DeviceP
             <DeviceStream deviceId={streaming ? selectedId : null} />
           </div>
           <div className={styles.inspector}>
-            {mode === "inspect" && capture ? (
+            {/* Commands are about one element; until you've picked one, the
+                searchable tree is more use than a "pick an element" placeholder. */}
+            {mode === "inspect" && capture && selectedRef ? (
               <CommandSuggestions capture={capture} platform={device?.platform ?? "ios"} />
             ) : (
               <Inspector deviceId={selectedId} />

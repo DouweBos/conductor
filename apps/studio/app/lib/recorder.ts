@@ -1,4 +1,5 @@
 import { commandFor } from "../components/flows/Inspector";
+import { assertVisibleStep } from "./commandSuggestions";
 import { getCurrentRoute } from "./router";
 import { captureUi } from "./ipc";
 import type { CaptureElement, CaptureUiResult } from "./types";
@@ -52,21 +53,34 @@ export async function recordTap(deviceId: string, xN: number, yN: number): Promi
 export async function recordAssertion(deviceId: string): Promise<void> {
   try {
     const cap = await captureUi(deviceId);
-    const el = largestLabelled(cap.root);
-    if (el) appendStep(commandFor(el, "assertVisible"));
+    const el = focusedElement(cap.root);
+    // `focused: true` is the point — without it the step passes whenever the
+    // element is on screen, however far focus has wandered.
+    const snippet = el && assertVisibleStep(el, { focused: true });
+    if (snippet) appendStep(snippet);
   } catch {
     // nothing to assert on
   }
 }
 
-/** The most prominent labelled element — the one worth asserting on. */
-function largestLabelled(root: CaptureElement): CaptureElement | null {
+/**
+ * What holds focus, which on a TV is the whole state of the screen. Deepest
+ * wins, matching how the resolver picks between a focused container and the
+ * focused element inside it, and it has to be nameable — a selector built from
+ * a bare point would assert nothing useful.
+ */
+function focusedElement(root: CaptureElement): CaptureElement | null {
   let best: CaptureElement | null = null;
-  const visit = (el: CaptureElement) => {
-    if (el.text && el.bounds && (!best || area(el) > area(best))) best = el;
-    for (const child of el.children ?? []) visit(child);
+  let bestDepth = -1;
+  const visit = (el: CaptureElement, depth: number) => {
+    const nameable = !!(el.identifier || el.text);
+    if (el.focused && nameable && depth > bestDepth) {
+      best = el;
+      bestDepth = depth;
+    }
+    for (const child of el.children ?? []) visit(child, depth + 1);
   };
-  visit(root);
+  visit(root, 0);
   return best;
 }
 
@@ -74,4 +88,12 @@ export function recordSwipe(x1: number, y1: number, x2: number, y2: number): voi
   const start = `${Math.round(x1 * 100)}%, ${Math.round(y1 * 100)}%`;
   const end = `${Math.round(x2 * 100)}%, ${Math.round(y2 * 100)}%`;
   appendStep(`- swipe:\n    start: "${start}"\n    end: "${end}"`);
+}
+
+/**
+ * Record a remote/hardware key press. The simplest of the recorders — a key
+ * press has no target element to resolve, so the step is the key itself.
+ */
+export function recordKey(key: string): void {
+  appendStep(`- pressKey: "${key}"`);
 }
