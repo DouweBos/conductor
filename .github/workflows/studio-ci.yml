@@ -22,9 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` — the root package.json's `packageManager` field pins it,
+      # and specifying both makes the action error out. Matches ci.yml / pr.yml.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
