@@ -30,6 +30,57 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Signing certs live in the shared apple-certificates match repo (the same
+      # one Argus reads) — a Developer ID cert is per-team, so there's nothing
+      # Studio-specific to issue. Installed into a throwaway keychain here
+      # because electron-builder signs from the keychain, not from a file.
+      - name: Install fastlane
+        working-directory: apps/studio
+        run: bundle install
+
+      - name: Create build keychain
+        env:
+          MATCH_KEYCHAIN_PASSWORD: ${{ secrets.MATCH_KEYCHAIN_PASSWORD }}
+        run: |
+          security create-keychain -p "$MATCH_KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$MATCH_KEYCHAIN_PASSWORD" build.keychain
+          # Prepend build.keychain to the search list so match can find installed certs
+          security list-keychains -d user -s build.keychain $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s build.keychain
+
+      - name: Encode match git auth
+        env:
+          MATCH_GIT_PAT: ${{ secrets.MATCH_GIT_PAT }}
+        run: |
+          # match needs base64("user:token") for the HTTPS Authorization header.
+          # Store the raw PAT as a secret and encode it here so rotation is trivial.
+          AUTH=$(printf '%s' "x-access-token:${MATCH_GIT_PAT}" | base64 | tr -d '\n')
+          echo "::add-mask::$AUTH"
+          echo "MATCH_GIT_BASIC_AUTHORIZATION=$AUTH" >> "$GITHUB_ENV"
+
+      - name: Sync Developer ID cert
+        working-directory: apps/studio
+        env:
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_KEYCHAIN_NAME: build.keychain
+          MATCH_KEYCHAIN_PASSWORD: ${{ secrets.MATCH_KEYCHAIN_PASSWORD }}
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+          CI: "true"
+        run: bundle exec fastlane match developer_id --readonly
+
+      # electron-builder wants the App Store Connect key as a file path, so the
+      # key body is stored as a secret and written to disk here. A path on its
+      # own would be meaningless — the runner is fresh every time.
+      - name: Materialize App Store Connect API key
+        env:
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/asc-api-key.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_CONTENT" > "$KEY_PATH"
+          echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+
       - name: Resolve version and channel
         run: |
           VERSION=$(node -p "require('./apps/studio/package.json').version")
@@ -46,11 +97,14 @@ jobs:
         run: pnpm electron-builder --config electron-builder.release.cjs --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Code signing: the Developer ID cert must be present in the keychain
-          # (e.g. installed via Fastlane match in a prior step).
-          CSC_NAME: ${{ secrets.STUDIO_CSC_NAME }}
+          # Signing: the bare common name — electron-builder adds the
+          # "Developer ID Application:" prefix and rejects values that already
+          # have it. Auto-discovery must stay on or electron-builder ignores the
+          # keychain and looks for CSC_LINK instead.
+          CSC_NAME: Douwe Bos (CKZT75PN5T)
           CSC_IDENTITY_AUTO_DISCOVERY: "true"
-          # Notarization via App Store Connect API key.
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_PATH }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          CSC_KEYCHAIN: build.keychain
+          # Notarization: APPLE_API_KEY is the path exported into $GITHUB_ENV by
+          # the "Materialize App Store Connect API key" step.
+          APPLE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}

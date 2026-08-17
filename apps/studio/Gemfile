@@ -1,0 +1,5 @@
+source "https://rubygems.org"
+
+# Only used to read the Developer ID cert out of the shared match repo —
+# electron-builder does the actual signing and notarization.
+gem "fastlane"
