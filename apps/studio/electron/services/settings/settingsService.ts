@@ -1,8 +1,9 @@
-import { app } from "electron";
+import { app, safeStorage } from "electron";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { EnvProfile, ThemePreference } from "../../../app/lib/types";
+import { DEFAULT_DATASOURCE, type CasesDatasource } from "../cases/model";
 
 interface Settings {
   theme: ThemePreference;
@@ -11,6 +12,10 @@ interface Settings {
   recentProjects: string[];
   /** Saved run configurations, keyed by project root. */
   envProfiles: Record<string, EnvProfile[]>;
+  /** Where each project's test cases come from, keyed by project root. */
+  casesDatasource: Record<string, CasesDatasource>;
+  /** Qase API tokens, encrypted with safeStorage, keyed by project root. */
+  qaseTokens: Record<string, string>;
 }
 
 const DEFAULTS: Settings = {
@@ -18,6 +23,8 @@ const DEFAULTS: Settings = {
   updaterChannel: "latest",
   recentProjects: [],
   envProfiles: {},
+  casesDatasource: {},
+  qaseTokens: {},
 };
 
 function settingsPath(): string {
@@ -89,4 +96,52 @@ export function deleteEnvProfile(root: string, name: string): EnvProfile[] {
   settings.envProfiles[root] = (settings.envProfiles[root] ?? []).filter((p) => p.name !== name);
   save(settings);
   return settings.envProfiles[root];
+}
+
+// ── Test case datasource ────────────────────────────────────────────────────
+
+export function getCasesDatasource(root: string): CasesDatasource {
+  const settings = load();
+  const stored = settings.casesDatasource[root];
+  return {
+    ...DEFAULT_DATASOURCE,
+    ...stored,
+    hasToken: Boolean(process.env.QASE_API_TOKEN || settings.qaseTokens[root]),
+  };
+}
+
+export function setCasesDatasource(root: string, datasource: CasesDatasource): CasesDatasource {
+  const settings = load();
+  // hasToken is derived; storing it would let it drift from the actual token.
+  const { hasToken: _ignored, ...persisted } = datasource;
+  settings.casesDatasource[root] = persisted;
+  save(settings);
+  return getCasesDatasource(root);
+}
+
+/**
+ * The Qase token, encrypted at rest. `QASE_API_TOKEN` wins when set, so a
+ * developer can point at another Qase project without touching stored state.
+ */
+export function getQaseToken(root: string): string | undefined {
+  const fromEnv = process.env.QASE_API_TOKEN?.trim();
+  if (fromEnv) return fromEnv;
+  const stored = load().qaseTokens[root];
+  if (!stored) return undefined;
+  try {
+    return safeStorage.decryptString(Buffer.from(stored, "base64"));
+  } catch {
+    return undefined;
+  }
+}
+
+export function setQaseToken(root: string, token: string | null): void {
+  const settings = load();
+  if (!token) delete settings.qaseTokens[root];
+  else if (safeStorage.isEncryptionAvailable()) {
+    settings.qaseTokens[root] = safeStorage.encryptString(token).toString("base64");
+  } else {
+    throw new Error("Encrypted storage is unavailable, so the Qase token cannot be saved.");
+  }
+  save(settings);
 }

@@ -113,10 +113,10 @@ export function PlansPanel({ currentFilter, onClose }: PlansPanelProps) {
                 </div>
               </div>
               <p className={styles.muted}>
-                {plan.caseIds?.length
-                  ? `${plan.caseIds.length} cases`
+                {plan.refs?.length
+                  ? `${plan.refs.length} cases`
                   : Object.entries(plan.filter ?? {})
-                      .map(([dim, values]) => `${dim}: ${values.join("/")}`)
+                      .map(([field, values]) => `${field}: ${values.join("/")}`)
                       .join(" · ") || "every case"}
               </p>
               {last ? (
@@ -132,10 +132,10 @@ export function PlansPanel({ currentFilter, onClose }: PlansPanelProps) {
                     </span>
                   </div>
                   {last.entries.map((entry, i) => (
-                    <div key={`${entry.caseId}-${entry.column ?? i}`} className={styles.historyRow}>
+                    <div key={`${entry.ref}-${entry.column ?? i}`} className={styles.historyRow}>
                       <StatusPill tone={ENTRY_TONE[entry.status]}>{entry.status}</StatusPill>
                       <span className={styles.historyMeta}>
-                        {entry.caseId}
+                        {entry.ref}
                         {entry.column ? ` · ${entry.column}` : ""} — {entry.title}
                       </span>
                     </div>

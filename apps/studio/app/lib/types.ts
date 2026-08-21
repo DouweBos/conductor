@@ -177,68 +177,44 @@ export interface CommandResult {
   output: string;
 }
 
-// ── Test case management (git-tracked) ────────────────────────────────────
-export interface TestCase {
-  id: string;
-  /** Other matrix ids for the same case — e.g. the mobile row of a TV case. */
-  altIds?: string[];
-  title: string;
-  description?: string;
-  userStory?: string;
-  /** tag dimension -> values, e.g. { platform: ["ios"], vertical: ["fintech"] }. */
-  tags: Record<string, string[]>;
-  /** Path (relative to flowsDir) of the Maestro flow implementing this case. */
-  flow?: string;
-  /**
-   * Per-platform implementations, when a case is covered by one flow per
-   * platform: `platform` tag value -> flow path.
-   */
-  flows?: Record<string, string>;
-  /** Who owns keeping this case true. */
-  owner?: string;
-  /** Requirement / ticket / spec URLs this case traces back to. */
-  links?: string[];
-  /** Free-form state the team drives manually, e.g. `draft` / `review` / `ready`. */
-  state?: string;
-  /** What must be true before the steps make sense. */
-  preconditions?: string[];
-  /** Cleanup the case is responsible for. */
-  postconditions?: string[];
-  /** Structured steps; `description` stays as the free-text form. */
-  steps?: CaseStep[];
-  /** Most recent execution of any kind, filled in by the results log. */
-  lastResult?: CaseResult;
-  /** Executions recorded for this case, newest first. */
-  results?: CaseResult[];
-  filePath: string; // relative to project root
-}
-
+// ── Test cases ────────────────────────────────────────────────────────────
 /**
- * One human-readable step. `pom` is the bridge to automation: the page object
- * that performs this step, so a case can be scaffolded into a flow and a flow
- * can be checked against the case it claims to implement.
+ * The case model is Qase's — see electron/services/cases/model.ts. Re-exported
+ * here so the renderer keeps one import site for types.
  */
-export interface CaseStep {
-  action: string;
-  /** Test data the step uses, in Qase's action/data/expected shape. */
-  data?: string;
-  expected?: string;
-  /** Page object implementing the step, relative to the flows dir. */
-  pom?: string;
-  /** Values for that page object's `env:` parameters. */
-  env?: Record<string, string>;
-}
-
-/** Per-step outcome inside one manual execution. */
-export interface CaseStepResult {
-  index: number;
-  status: "passed" | "failed" | "skipped";
-  note?: string;
-}
+export type {
+  Behavior,
+  Case,
+  CaseInput,
+  CaseMatrix,
+  CaseResult,
+  CaseResultSource,
+  CaseStats,
+  CaseStatus,
+  CaseStep,
+  CaseStepResult,
+  CaseType,
+  CasesDatasource,
+  ConductorBlock,
+  Priority,
+  PullSummary,
+  ResultStatus,
+  Severity,
+  StepsType,
+} from "../../electron/services/cases/model";
+export {
+  BEHAVIORS,
+  CASE_STATUSES,
+  CASE_TYPES,
+  DEFAULT_DATASOURCE,
+  PRIORITIES,
+  RESULT_STATUSES,
+  SEVERITIES,
+} from "../../electron/services/cases/model";
 
 /** Which of a case's steps the flow behind it actually performs. */
 export interface StepCoverage {
-  caseId: string;
+  ref: string;
   column?: string;
   flow?: string;
   steps: { index: number; action: string; pom?: string; backed: boolean }[];
@@ -246,79 +222,14 @@ export interface StepCoverage {
   extra: string[];
 }
 
-/** Fields a case editor may write; everything else in the file is preserved. */
-export interface TestCaseInput {
-  id: string;
-  altIds?: string[];
-  title: string;
-  description?: string;
-  userStory?: string;
-  tags: Record<string, string[]>;
-  flow?: string;
-  flows?: Record<string, string>;
-  owner?: string;
-  links?: string[];
-  state?: string;
-  preconditions?: string[];
-  postconditions?: string[];
-  steps?: CaseStep[];
-  /** Set when renaming an existing case; absent when creating. */
-  previousId?: string;
-}
-
-export type CaseVerdict = "passed" | "failed" | "blocked" | "skipped";
-
-/** Where a verdict came from — automation, a person, the agent, or CI. */
-export type CaseResultSource = "run" | "manual" | "report" | "ci";
-
-/** One execution of one case, appended to the project's results log. */
-export interface CaseResult {
-  id: string;
-  caseId: string;
-  /** Column (platform) the execution covered, when the case has several. */
-  column?: string;
-  verdict: CaseVerdict;
-  source: CaseResultSource;
-  at: number;
-  note?: string;
-  /** Local flow run that produced this, for the run history / artifacts. */
-  runId?: string;
-  flow?: string;
-  deviceId?: string;
-  /** Agentic report that produced this. */
-  reportId?: string;
-  /** Plan execution this belonged to. */
-  planRunId?: string;
-  author?: string;
-  /** Per-step outcomes, when the run wizard walked the steps. */
-  steps?: CaseStepResult[];
-  /** App build / version under test, so a failure can be pinned to one. */
-  build?: string;
-  /** Environment the execution ran against, e.g. `staging`. */
-  environment?: string;
-}
-
-/** Rolled-up execution health for one case. */
-export interface CaseStats {
-  caseId: string;
-  total: number;
-  passed: number;
-  failed: number;
-  /** Pass rate over the recorded executions, 0–1. */
-  passRate: number;
-  /** True when the recent runs disagree — passed and failed within the window. */
-  flaky: boolean;
-  lastAt?: number;
-}
-
 /** A named selection of cases to execute together. */
 export interface TestPlan {
   id: string;
   name: string;
   description?: string;
-  /** Explicit case ids, in execution order. */
-  caseIds?: string[];
-  /** Or a tag filter: dimension -> accepted values (AND across dimensions). */
+  /** Explicit case refs, in execution order. */
+  refs?: string[];
+  /** Or a custom-field filter: field -> accepted values (AND across fields). */
   filter?: Record<string, string[]>;
   /** Only run these columns of each case; all of them when absent. */
   columns?: string[];
@@ -330,7 +241,7 @@ export interface TestPlanInput extends Omit<TestPlan, "filePath"> {
 }
 
 export interface PlanRunEntry {
-  caseId: string;
+  ref: string;
   title: string;
   column?: string;
   flow?: string;
@@ -362,13 +273,7 @@ export interface ImportResult {
   created: number;
   updated: number;
   skipped: number;
-  ids: string[];
-}
-
-export interface CaseMatrix {
-  dimension: string; // which tag dimension forms the columns
-  columns: string[];
-  cases: TestCase[];
+  refs: string[];
 }
 
 // ── Agentic writer (scaffolded) ───────────────────────────────────────────

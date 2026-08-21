@@ -1,24 +1,22 @@
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { CaseResult, CaseStats, CaseVerdict, RunRecord, TestCase } from "../../../app/lib/types";
+import type { RunRecord } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { getProjectInfo } from "../file/fileService";
 import { studioDir } from "../util/studioPaths";
+import type { Case, CaseResult, CaseStats, ResultStatus } from "./model";
 
 /**
  * The execution log: every time a case was exercised, by whom, and how it went.
- * Cases say what should be true; this says what actually happened — automation
- * runs, manual verdicts, agentic reports and CI alike.
+ * Cases say what should be true; this says what actually happened — flow runs,
+ * manual walkthroughs and agentic reports alike.
  *
- * Append-only JSONL inside the project so a team can commit it (or ignore it)
- * and two people recording results on the same day merge without a conflict.
+ * Append-only JSONL so two sessions on the same day merge without a conflict.
  */
 
 const LOG = "results.jsonl";
-/** Legacy location: the log used to be written into the repo under test. */
-const IN_REPO = path.join(".conductor-studio", "case-results.jsonl");
 /** How many recent executions decide "flaky". */
 const FLAKE_WINDOW = 10;
 
@@ -33,14 +31,7 @@ export function claimRunForPlan(runId: string, planRunId: string): void {
 function logPath(): string | null {
   const project = getProjectInfo();
   if (!project) return null;
-  const file = path.join(studioDir("cases", project.root), LOG);
-  // Pick up a log an earlier version wrote into the repo, once.
-  const legacy = path.join(project.root, IN_REPO);
-  if (!existsSync(file) && existsSync(legacy)) {
-    mkdirSync(path.dirname(file), { recursive: true });
-    copyFileSync(legacy, file);
-  }
-  return file;
+  return path.join(studioDir("cases", project.root), LOG);
 }
 
 export async function listResults(): Promise<CaseResult[]> {
@@ -64,7 +55,11 @@ export async function recordResult(
   const file = logPath();
   if (!file) throw new Error("No project is open.");
   counter += 1;
-  const result: CaseResult = { ...input, id: `res-${Date.now()}-${counter}`, at: input.at ?? Date.now() };
+  const result: CaseResult = {
+    ...input,
+    id: `res-${Date.now()}-${counter}`,
+    at: input.at ?? Date.now(),
+  };
   mkdirSync(path.dirname(file), { recursive: true });
   await appendFile(file, `${JSON.stringify(result)}\n`, "utf8");
   broadcastToRenderers("cases:result-recorded", result);
@@ -79,14 +74,14 @@ export async function detachReport(reportId: string): Promise<void> {
   const file = logPath();
   if (!file || !existsSync(file)) return;
   const results = await listResults();
-  if (!results.some((r) => r.reportId === reportId)) return;
+  if (!results.some((r) => r.report_id === reportId)) return;
   const kept = results
     .slice()
     .sort((a, b) => a.at - b.at)
     .map(({ ...r }) => {
-      if (r.reportId === reportId) {
-        delete r.reportId;
-        r.note = [r.note, "(report deleted)"].filter(Boolean).join(" ");
+      if (r.report_id === reportId) {
+        delete r.report_id;
+        r.comment = [r.comment, "(report deleted)"].filter(Boolean).join(" ");
       }
       return r;
     });
@@ -94,11 +89,11 @@ export async function detachReport(reportId: string): Promise<void> {
   broadcastToRenderers("cases:result-recorded", { detached: reportId });
 }
 
-/** Newest execution per case, and per `<caseId>::<column>` when scoped. */
+/** Newest execution per case ref, and per `<ref>::<column>` when scoped. */
 export function latestByCase(results: CaseResult[]): Record<string, CaseResult> {
   const latest: Record<string, CaseResult> = {};
   for (const r of results) {
-    for (const key of [r.caseId, r.column ? `${r.caseId}::${r.column}` : null]) {
+    for (const key of [r.ref, r.column ? `${r.ref}::${r.column}` : null]) {
       if (!key) continue;
       if (!latest[key] || latest[key].at < r.at) latest[key] = r;
     }
@@ -106,35 +101,35 @@ export function latestByCase(results: CaseResult[]): Record<string, CaseResult> 
   return latest;
 }
 
-export function statsFor(caseId: string, results: CaseResult[]): CaseStats {
-  const mine = results.filter((r) => r.caseId === caseId);
-  const decisive = mine.filter((r) => r.verdict === "passed" || r.verdict === "failed");
-  const passed = decisive.filter((r) => r.verdict === "passed").length;
+export function statsFor(ref: string, results: CaseResult[]): CaseStats {
+  const mine = results.filter((r) => r.ref === ref);
+  const decisive = mine.filter((r) => r.status === "passed" || r.status === "failed");
+  const passed = decisive.filter((r) => r.status === "passed").length;
   const recent = decisive.slice(0, FLAKE_WINDOW);
   return {
-    caseId,
+    ref,
     total: mine.length,
     passed,
     failed: decisive.length - passed,
     passRate: decisive.length ? passed / decisive.length : 0,
-    flaky: recent.some((r) => r.verdict === "passed") && recent.some((r) => r.verdict === "failed"),
+    flaky: recent.some((r) => r.status === "passed") && recent.some((r) => r.status === "failed"),
     lastAt: mine[0]?.at,
   };
 }
 
 /** Attach each case's execution history, newest first. */
-export function decorate(cases: TestCase[], results: CaseResult[]): TestCase[] {
+export function decorate(cases: Case[], results: CaseResult[]): Case[] {
   const byCase = new Map<string, CaseResult[]>();
-  for (const r of results) byCase.set(r.caseId, [...(byCase.get(r.caseId) ?? []), r]);
+  for (const r of results) byCase.set(r.ref, [...(byCase.get(r.ref) ?? []), r]);
   for (const c of cases) {
-    const mine = byCase.get(c.id) ?? [];
+    const mine = byCase.get(c.ref) ?? [];
     c.results = mine;
     c.lastResult = mine[0];
   }
   return cases;
 }
 
-const RUN_VERDICT: Record<string, CaseVerdict> = {
+const RUN_STATUS: Record<string, ResultStatus> = {
   passed: "passed",
   failed: "failed",
   error: "failed",
@@ -146,24 +141,26 @@ const RUN_VERDICT: Record<string, CaseVerdict> = {
  * — running a flow from anywhere in Studio updates the matrix, not just the ▶
  * button on the Cases screen.
  */
-export async function recordRunResult(record: RunRecord, cases: TestCase[]): Promise<void> {
-  const verdict = RUN_VERDICT[record.status];
-  if (!verdict) return;
+export async function recordRunResult(record: RunRecord, cases: Case[]): Promise<void> {
+  const status = RUN_STATUS[record.status];
+  if (!status) return;
   for (const c of cases) {
-    const columns = Object.entries(c.flows ?? {})
+    const columns = Object.entries(c.conductor?.flows ?? {})
       .filter(([, flow]) => flow === record.flowPath)
       .map(([column]) => column);
-    if (c.flow === record.flowPath) columns.push("");
+    if (c.conductor?.flow === record.flowPath) columns.push("");
     for (const column of columns) {
       await recordResult({
-        caseId: c.id,
+        case_id: c.id,
+        ref: c.ref,
         column: column || undefined,
-        verdict,
+        status,
         source: "run",
-        runId: record.runId,
+        run_id: record.runId,
         flow: record.flowPath,
-        deviceId: record.deviceId,
-        planRunId: planClaims.get(record.runId),
+        device_id: record.deviceId,
+        time_ms: record.finishedAt - record.startedAt,
+        plan_run_id: planClaims.get(record.runId),
         at: record.finishedAt,
       });
     }

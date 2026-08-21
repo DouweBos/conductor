@@ -8,7 +8,9 @@ import type {
   PlanRun,
   PlanRunEntry,
   StepCoverage,
-  TestCaseInput,
+  CaseInput,
+  CasesDatasource,
+  PullSummary,
   TestPlan,
   TestPlanInput,
   AgentStartResult,
@@ -35,7 +37,7 @@ import type {
   RunRecord,
   SceneGraph,
   SceneGraphSummary,
-  TestCase,
+  Case,
   TestReport,
   TestSession,
   ThemePreference,
@@ -145,13 +147,21 @@ export const startLogs = (deviceId: string) => invoke<void>("logs_start", { devi
 export const stopLogs = (deviceId: string) => invoke<void>("logs_stop", { deviceId });
 
 // ── Test case management ──
-export const listCases = () => invoke<TestCase[]>("cases_list");
-export const casesMatrix = (dimension?: string) =>
-  invoke<CaseMatrix>("cases_matrix", { dimension });
-export const saveCase = (input: TestCaseInput) => invoke<TestCase>("case_save", { input });
-export const deleteCase = (id: string) => invoke<void>("case_delete", { id });
+export const listCases = () => invoke<Case[]>("cases_list");
+export const casesMatrix = (field?: string) => invoke<CaseMatrix>("cases_matrix", { field });
+export const casesMatrixFields = () => invoke<string[]>("cases_matrix_fields");
+export const saveCase = (input: CaseInput) => invoke<Case>("case_save", { input });
+export const deleteCase = (id: number) => invoke<void>("case_delete", { id });
 export const listCaseResults = () => invoke<CaseResult[]>("cases_results");
-export const caseStats = (caseId: string) => invoke<CaseStats>("case_stats", { caseId });
+export const caseStats = (ref: string) => invoke<CaseStats>("case_stats", { ref });
+
+// ── Case datasource (local, or mirrored from Qase) ──
+export const casesDatasource = () => invoke<CasesDatasource>("cases_datasource_get");
+export const saveCasesDatasource = (datasource: CasesDatasource, token?: string | null) =>
+  invoke<CasesDatasource>("cases_datasource_set", { datasource, token });
+export const pullCases = () => invoke<PullSummary>("cases_pull");
+export const testCasesDatasource = () =>
+  invoke<{ ok: boolean; project?: string; error?: string }>("cases_datasource_test");
 export const recordCaseResult = (result: Omit<CaseResult, "id" | "at">) =>
   invoke<CaseResult>("case_record_result", { result });
 export const pickCaseCsv = () => invoke<string | null>("cases_pick_csv");
@@ -176,16 +186,16 @@ export const cancelPlanRun = (id: string) => invoke<void>("plan_run_cancel", { i
 export const planRuns = () => invoke<PlanRun[]>("plan_runs");
 
 export const scaffoldFlowFromCase = (options: {
-  caseId: string;
+  ref: string;
   column?: string;
   target?: string;
   tags?: string[];
 }) => invoke<{ flow: string; todos: number }>("case_scaffold_flow", { options });
-export const caseStepCoverage = (caseId: string, column?: string) =>
-  invoke<StepCoverage>("case_step_coverage", { caseId, column });
+export const caseStepCoverage = (ref: string, column?: string) =>
+  invoke<StepCoverage>("case_step_coverage", { ref, column });
 export const listStepPoms = () => invoke<FlowCatalogEntry[]>("case_step_poms");
-export const caseAutomationBrief = (caseId: string, column?: string) =>
-  invoke<string>("case_automation_brief", { caseId, column });
+export const caseAutomationBrief = (ref: string, column?: string) =>
+  invoke<string>("case_automation_brief", { ref, column });
 export const readCaseFlow = (flow: string) => invoke<string>("case_flow_text", { flow });
 
 

@@ -13,8 +13,8 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { z } from "zod";
 
-import type { AppFingerprint, CaseVerdict, SceneNode, TestVerdict } from "../../../app/lib/types";
-import { listCases, saveCase, toInput } from "../cases/casesService";
+import type { AppFingerprint, ResultStatus, SceneNode, TestVerdict } from "../../../app/lib/types";
+import { datasource, listCases, pull as pullCasesFromQase, saveCase, toInput } from "../cases/casesService";
 import { scaffoldFlow } from "../cases/pomBridge";
 import { recordResult } from "../cases/resultsService";
 import { createReportDir, writeReport } from "../report/reportService";
@@ -131,7 +131,7 @@ async function resolveApp(
 }
 
 /** An agentic verdict, in the vocabulary the results log speaks. */
-const REPORT_VERDICT: Record<TestVerdict, CaseVerdict> = {
+const REPORT_VERDICT: Record<TestVerdict, ResultStatus> = {
   PASS: "passed",
   FAIL: "failed",
   BLOCKED: "blocked",
@@ -361,14 +361,18 @@ export function createMcpServer(): McpServer {
       // case with no flow still gets a result on the matrix. The verdict is the
       // reconciled one: a PASS over a failed check was already corrected.
       if (caseId) {
-        await recordResult({
-          caseId,
-          verdict: REPORT_VERDICT[report.verdict] ?? "blocked",
-          source: "report",
-          reportId: report.id,
-          note: runLog.summary,
-          author: "agent",
-        }).catch(() => null);
+        const hit = (await listCases()).find((c) => c.ref === caseId || String(c.id) === caseId);
+        if (hit) {
+          await recordResult({
+            case_id: hit.id,
+            ref: hit.ref,
+            status: REPORT_VERDICT[report.verdict] ?? "blocked",
+            source: "report",
+            report_id: report.id,
+            comment: runLog.summary,
+            author: "agent",
+          }).catch(() => null);
+        }
       }
       return text({
         ...report,
@@ -383,30 +387,35 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "list_test_cases",
-    "List this project's test cases: id, title, tags, which flow implements each (if any) and its last recorded result. Use this to find work — a case with no flow is unautomated — or to check what a case expects before testing it.",
+    "List this project's test cases: id, title, suite, custom fields, tags, which flow implements each (if any) and its last recorded result. Use this to find work — a case with no flow is unautomated — or to check what a case expects before testing it.",
     {
       query: z
         .string()
         .optional()
-        .describe("Filter by id, title or tag value. Omit for everything."),
+        .describe("Filter by id, title, tag or custom field value. Omit for everything."),
       unautomatedOnly: z.boolean().optional().describe("Only cases with no flow yet."),
     },
     async ({ query, unautomatedOnly }) => {
       const q = query?.toLowerCase();
       const cases = (await listCases()).filter((c) => {
-        if (unautomatedOnly && (c.flow || Object.keys(c.flows ?? {}).length)) return false;
+        const wiring = c.conductor;
+        if (unautomatedOnly && (wiring?.flow || Object.keys(wiring?.flows ?? {}).length)) return false;
         if (!q) return true;
-        const hay = [c.id, ...(c.altIds ?? []), c.title, ...Object.values(c.tags).flat()];
+        const hay = [c.ref, c.title, c.suite ?? "", ...c.tags, ...Object.values(c.custom_fields).flat()];
         return hay.some((h) => h.toLowerCase().includes(q));
       });
       return text({
         total: cases.length,
         cases: cases.map((c) => ({
-          id: c.id,
+          id: c.ref,
           title: c.title,
+          suite: c.suite,
+          status: c.status,
+          priority: c.priority,
+          custom_fields: c.custom_fields,
           tags: c.tags,
-          flows: c.flows ?? (c.flow ? { default: c.flow } : {}),
-          lastResult: c.lastResult ? { verdict: c.lastResult.verdict, at: c.lastResult.at } : null,
+          flows: c.conductor?.flows ?? (c.conductor?.flow ? { default: c.conductor.flow } : {}),
+          lastResult: c.lastResult ? { status: c.lastResult.status, at: c.lastResult.at } : null,
         })),
       });
     },
@@ -414,15 +423,48 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "describe_test_case",
-    "Everything one test case specifies: business rule, steps, tags, owner, linked flows and its execution history. Read this before automating or verifying the case — the steps are the script.",
-    { id: z.string().describe("Case id, e.g. DT-1. Alternate ids (altIds) also match.") },
+    "Everything one test case specifies: description, steps (action/data/expected_result), suite, custom fields, tags, the flow that implements it and its execution history. Read this before automating or verifying the case — the steps are the script.",
+    { id: z.string().describe("Case id, e.g. DEMO-12.") },
     async ({ id }) => {
       const cases = await listCases();
-      const hit = cases.find((c) => c.id === id || (c.altIds ?? []).includes(id));
+      const hit = cases.find((c) => c.ref === id || String(c.id) === id);
       if (!hit) {
-        return text({ error: `No case "${id}".`, known_ids: cases.slice(0, 50).map((c) => c.id) });
+        return text({ error: `No case "${id}".`, known_ids: cases.slice(0, 50).map((c) => c.ref) });
       }
       return text(hit);
+    },
+  );
+
+  server.tool(
+    "get_cases_datasource",
+    "Where this project's test cases come from, and whether their content is yours to edit. Check this before proposing any change to a case.",
+    {},
+    async () => {
+      const config = datasource();
+      return text({
+        mode: config.mode,
+        projectCode: config.projectCode,
+        lastPulledAt: config.qase?.lastPulledAt ?? null,
+        matrixField: config.qase?.matrixField ?? "suite",
+        caseContentReadOnly: config.mode === "qase",
+        guidance:
+          config.mode === "qase"
+            ? "Cases are authored in Qase. Link flows and assign page objects; never rewrite a title, step, tag or custom field — the next sync would revert it."
+            : "Cases are local to this machine and fully editable.",
+      });
+    },
+  );
+
+  server.tool(
+    "sync_test_cases",
+    "Pull the latest test cases from Qase into this project. Run it before starting work so you are not automating a stale case. Flow links and page-object assignments are preserved; anything that could not be re-attached comes back in `lostPoms`.",
+    {},
+    async () => {
+      try {
+        return text(await pullCasesFromQase());
+      } catch (e) {
+        return text({ error: String(e) });
+      }
     },
   );
 
@@ -430,19 +472,19 @@ export function createMcpServer(): McpServer {
     "scaffold_case_flow",
     "Write a Maestro flow skeleton from a test case's steps and link it to that case. Steps naming a page object become runFlow calls with their env; steps without one become TODOs in the file. Start here when automating a case — then fill in the TODOs and run it.",
     {
-      caseId: z.string().describe("Case id, e.g. DT-2."),
+      id: z.string().describe("Case id, e.g. DEMO-12."),
       column: z
         .string()
         .optional()
-        .describe("Platform column this flow covers (tv, mobile). Omit for a single-platform case."),
+        .describe("Matrix column this flow covers (tv, mobile). Omit for a single-platform case."),
       target: z
         .string()
         .optional()
         .describe("Flows-relative path to write. Defaults to flows/cases/<id>[.<column>].yaml."),
     },
-    async ({ caseId, column, target }) => {
+    async ({ id, column, target }) => {
       try {
-        return text(await scaffoldFlow({ caseId, column, target }));
+        return text(await scaffoldFlow({ ref: id, column, target }));
       } catch (e) {
         return text({ error: String(e) });
       }
@@ -451,25 +493,26 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "link_case_flow",
-    "Point a test case at the flow that implements it, so the matrix stops calling it unautomated. Use after writing or renaming a flow by hand.",
+    "Point a test case at the flow that implements it, so the matrix stops calling it unautomated. Use after writing or renaming a flow by hand. This edits only Conductor's automation wiring, so it is allowed even when cases come from Qase.",
     {
-      caseId: z.string().describe("Case id, e.g. DT-2."),
+      id: z.string().describe("Case id, e.g. DEMO-12."),
       flow: z.string().describe("Flow path relative to the flows directory."),
       column: z
         .string()
         .optional()
-        .describe("Platform column this flow covers. Omit for a single-platform case."),
+        .describe("Matrix column this flow covers. Omit for a single-platform case."),
     },
-    async ({ caseId, flow, column }) => {
+    async ({ id, flow, column }) => {
       const cases = await listCases();
-      const hit = cases.find((c) => c.id === caseId);
-      if (!hit) return text({ error: `No case "${caseId}".` });
+      const hit = cases.find((c) => c.ref === id || String(c.id) === id);
+      if (!hit) return text({ error: `No case "${id}".` });
       const saved = await saveCase({
         ...toInput(hit),
-        flow: column ? hit.flow : flow,
-        flows: column ? { ...(hit.flows ?? {}), [column]: flow } : hit.flows,
+        conductor: column
+          ? { ...hit.conductor, flows: { ...(hit.conductor?.flows ?? {}), [column]: flow } }
+          : { ...hit.conductor, flow },
       });
-      return text({ id: saved.id, flow: saved.flow, flows: saved.flows });
+      return text({ id: saved.ref, conductor: saved.conductor });
     },
   );
 
@@ -477,16 +520,31 @@ export function createMcpServer(): McpServer {
     "record_case_result",
     "File the outcome of testing a case, so the matrix reflects it. Use after verifying a case by driving the device (write_test_report already records its own result when given a caseId).",
     {
-      caseId: z.string().describe("Case id, e.g. DT-1."),
-      verdict: z.enum(["passed", "failed", "blocked", "skipped"]),
+      id: z.string().describe("Case id, e.g. DEMO-12."),
+      status: z
+        .enum(["passed", "failed", "blocked", "skipped", "invalid"])
+        .describe("Qase's result statuses. `invalid` means the case itself is wrong."),
       column: z
         .string()
         .optional()
-        .describe("Platform column this covered, when the case has one flow per platform."),
-      note: z.string().optional().describe("One line on what decided the verdict."),
+        .describe("Matrix column this covered, when the case has one flow per column."),
+      comment: z.string().optional().describe("One line on what decided the result."),
     },
-    async ({ caseId, verdict, column, note }) =>
-      text(await recordResult({ caseId, verdict, column, note, source: "report", author: "agent" })),
+    async ({ id, status, column, comment }) => {
+      const hit = (await listCases()).find((c) => c.ref === id || String(c.id) === id);
+      if (!hit) return text({ error: `No case "${id}".` });
+      return text(
+        await recordResult({
+          case_id: hit.id,
+          ref: hit.ref,
+          status,
+          column,
+          comment,
+          source: "report",
+          author: "agent",
+        }),
+      );
+    },
   );
 
   return server;

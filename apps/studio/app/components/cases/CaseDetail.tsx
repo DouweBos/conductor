@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   caseStepCoverage,
+  casesDatasource,
   deleteCase,
   recordCaseResult,
   listStepPoms,
@@ -12,42 +13,50 @@ import {
 import { askAgentToVerifyCase } from "../../lib/agentHandoff";
 import { askAgentToAutomateCase } from "../../lib/agentHandoff";
 import { selectFlow } from "../../lib/router";
-import type {
-  CaseResult,
-  CaseVerdict,
-  FlowCatalogEntry,
-  StepCoverage,
-  TestCase,
-  TestCaseInput,
+import {
+  CASE_STATUSES,
+  PRIORITIES,
+  RESULT_STATUSES,
+  SEVERITIES,
+  type Case,
+  type CaseInput,
+  type CaseResult,
+  type CasesDatasource,
+  type CaseStatus,
+  type FlowCatalogEntry,
+  type Priority,
+  type ResultStatus,
+  type Severity,
+  type StepCoverage,
 } from "../../lib/types";
 import styles from "./CasesView.module.css";
 
-const VERDICT_TONE: Record<CaseVerdict, StatusTone> = {
+const STATUS_TONE: Record<ResultStatus, StatusTone> = {
   passed: "success",
   failed: "error",
   blocked: "warning",
   skipped: "neutral",
+  invalid: "warning",
 };
 
 const SOURCE_LABEL: Record<CaseResult["source"], string> = {
   run: "flow run",
   manual: "manual",
   report: "agent",
-  ci: "CI",
 };
 
-export const ids = (c: TestCase) => [c.id, ...(c.altIds ?? [])].join(" · ");
+export const ids = (c: Case) => c.ref;
 
-export function allFlows(c: TestCase): { column?: string; flow: string }[] {
-  const entries: { column?: string; flow: string }[] = Object.entries(c.flows ?? {}).map(
+export function allFlows(c: Case): { column?: string; flow: string }[] {
+  const entries: { column?: string; flow: string }[] = Object.entries(c.conductor?.flows ?? {}).map(
     ([column, flow]) => ({ column, flow }),
   );
-  if (c.flow) entries.push({ flow: c.flow });
+  if (c.conductor?.flow) entries.push({ flow: c.conductor.flow });
   return entries;
 }
 
 interface CaseDetailProps {
-  testCase: TestCase;
+  testCase: Case;
   onClose: () => void;
   onRun: (flow: string, platform?: string) => void;
   onChanged: () => void;
@@ -55,43 +64,56 @@ interface CaseDetailProps {
 
 export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetailProps) {
   const [editing, setEditing] = useState(false);
-  const [note, setNote] = useState("");
+  const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [coverage, setCoverage] = useState<StepCoverage | null>(null);
+  const [source, setSource] = useState<CasesDatasource | null>(null);
 
   useEffect(() => {
     setEditing(false);
-    setNote("");
+    setComment("");
     setError(null);
     setConfirmDelete(false);
     setCoverage(null);
     // Which steps the flow behind this case actually performs, via their POMs.
-    caseStepCoverage(c.id).then(setCoverage).catch(() => setCoverage(null));
-  }, [c.id]);
+    caseStepCoverage(c.ref).then(setCoverage).catch(() => setCoverage(null));
+  }, [c.ref]);
+
+  useEffect(() => {
+    casesDatasource().then(setSource).catch(() => setSource(null));
+  }, []);
 
   const flows = allFlows(c);
   // Columns the case claims but nothing implements yet — what the agent is for.
-  const missingColumns = (c.tags.platform ?? []).filter((p) => !c.flows?.[p] && !c.flow);
+  const matrixField = source?.qase?.matrixField;
+  const missingColumns = (matrixField ? (c.custom_fields[matrixField] ?? []) : []).filter(
+    (p) => !c.conductor?.flows?.[p] && !c.conductor?.flow,
+  );
   const results = c.results ?? [];
   const stats = useMemo(() => {
-    const decisive = results.filter((r) => r.verdict === "passed" || r.verdict === "failed");
-    const passed = decisive.filter((r) => r.verdict === "passed").length;
+    const decisive = results.filter((r) => r.status === "passed" || r.status === "failed");
+    const passed = decisive.filter((r) => r.status === "passed").length;
     const recent = decisive.slice(0, 10);
     return {
       total: results.length,
       passRate: decisive.length ? Math.round((passed / decisive.length) * 100) : null,
-      flaky: recent.some((r) => r.verdict === "passed") && recent.some((r) => r.verdict === "failed"),
+      flaky: recent.some((r) => r.status === "passed") && recent.some((r) => r.status === "failed"),
     };
   }, [results]);
 
-
-  const record = async (verdict: CaseVerdict) => {
+  const record = async (status: ResultStatus) => {
     setBusy(true);
     try {
-      await recordCaseResult({ caseId: c.id, verdict, source: "manual", note: note.trim() || undefined });
-      setNote("");
+      await recordCaseResult({
+        case_id: c.id,
+        ref: c.ref,
+        status,
+        source: "manual",
+        comment: comment.trim() || undefined,
+      });
+      setComment("");
       onChanged();
     } catch (e) {
       setError(String(e));
@@ -103,13 +125,11 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
   const scaffold = async (column?: string) => {
     setBusy(true);
     try {
-      const { flow, todos } = await scaffoldFlowFromCase({ caseId: c.id, column });
+      const { flow, todos } = await scaffoldFlowFromCase({ ref: c.ref, column });
       onChanged();
       // Stay here: the flow is now linked to the case, so Run and Open are one
       // click away in this panel.
-      setError(
-        `Wrote ${flow}${todos ? ` — ${todos} step(s) still need a page object` : ""}.`,
-      );
+      setError(`Wrote ${flow}${todos ? ` — ${todos} step(s) still need a page object` : ""}.`);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -140,6 +160,12 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
     );
   }
 
+  const facets: [string, string[]][] = [
+    ...(c.suite ? ([["suite", [c.suite]]] as [string, string[]][]) : []),
+    ...Object.entries(c.custom_fields),
+    ...(c.tags.length ? ([["tags", c.tags]] as [string, string[]][]) : []),
+  ];
+
   return (
     <aside className={styles.detail}>
       <header className={styles.detailHeader}>
@@ -163,8 +189,8 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
         {error ? <StatusPill tone="error">{error}</StatusPill> : null}
         <div className={styles.statRow}>
           {c.lastResult ? (
-            <StatusPill tone={VERDICT_TONE[c.lastResult.verdict]}>
-              {c.lastResult.verdict} · {SOURCE_LABEL[c.lastResult.source]}
+            <StatusPill tone={STATUS_TONE[c.lastResult.status]}>
+              {c.lastResult.status} · {SOURCE_LABEL[c.lastResult.source]}
             </StatusPill>
           ) : (
             <StatusPill tone="neutral">never executed</StatusPill>
@@ -175,17 +201,18 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
             </span>
           ) : null}
           {stats.flaky ? <StatusPill tone="warning">flaky</StatusPill> : null}
+          {c.status !== "actual" ? <StatusPill tone="warning">{c.status}</StatusPill> : null}
         </div>
 
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>Record a result</h3>
           <TextField
             placeholder="What happened? (optional)"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
           />
           <div className={styles.verdictRow}>
-            {(["passed", "failed", "blocked", "skipped"] as CaseVerdict[]).map((v) => (
+            {RESULT_STATUSES.map((v) => (
               <Button key={v} size="sm" variant="secondary" disabled={busy} onClick={() => void record(v)}>
                 {v}
               </Button>
@@ -222,7 +249,7 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
             </p>
           ) : null}
 
-          {/* The gap is the point: a case covered on one platform and not the
+          {/* The gap is the point: a case covered on one column and not the
               other is the easiest thing to automate, because the other flow is
               the reference. */}
           {missingColumns.length || !flows.length ? (
@@ -263,28 +290,27 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
           ) : null}
         </section>
 
-        {c.userStory ? (
+        {c.description ? (
           <section className={styles.section}>
-            <h3 className={styles.sectionTitle}>Business rule</h3>
-            <p className={styles.prose}>{c.userStory}</p>
+            <h3 className={styles.sectionTitle}>Description</h3>
+            <p className={styles.prose}>{c.description}</p>
           </section>
         ) : null}
 
-        {c.preconditions?.length ? (
+        {c.preconditions ? (
           <section className={styles.section}>
             <h3 className={styles.sectionTitle}>Preconditions</h3>
-            {c.preconditions.map((p) => (
-              <p key={p} className={styles.prose}>
-                {p}
-              </p>
-            ))}
+            <p className={styles.prose}>{c.preconditions}</p>
           </section>
         ) : null}
 
         {c.steps?.length ? (
           <section className={styles.section}>
             <h3 className={styles.sectionTitle}>
-              Steps — {coverage ? `${coverage.steps.filter((s) => s.backed).length}/${c.steps.length} automated` : "…"}
+              Steps —{" "}
+              {coverage
+                ? `${coverage.steps.filter((s) => s.backed).length}/${c.steps.length} automated`
+                : "…"}
             </h3>
             {c.steps.map((step, i) => {
               const backed = coverage?.steps.find((s) => s.index === i)?.backed;
@@ -295,11 +321,15 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
                       {i + 1}. {step.action}
                     </span>
                     {step.data ? <span className={styles.muted}>data: {step.data}</span> : null}
-                    {step.expected ? <span className={styles.wizardExpected}>→ {step.expected}</span> : null}
+                    {step.expected_result ? (
+                      <span className={styles.wizardExpected}>→ {step.expected_result}</span>
+                    ) : null}
                     {step.pom ? (
                       <span className={styles.flowPath}>
                         {step.pom}
-                        {step.env ? ` (${Object.entries(step.env).map(([k, v]) => `${k}=${v}`).join(", ")})` : ""}
+                        {step.env
+                          ? ` (${Object.entries(step.env).map(([k, v]) => `${k}=${v}`).join(", ")})`
+                          : ""}
                       </span>
                     ) : null}
                   </div>
@@ -315,29 +345,20 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
               </p>
             ) : null}
           </section>
-        ) : c.description ? (
-          <section className={styles.section}>
-            <h3 className={styles.sectionTitle}>Steps</h3>
-            <pre className={styles.steps}>{c.description}</pre>
-          </section>
         ) : null}
 
-        {c.postconditions?.length ? (
+        {c.postconditions ? (
           <section className={styles.section}>
             <h3 className={styles.sectionTitle}>Postconditions</h3>
-            {c.postconditions.map((p) => (
-              <p key={p} className={styles.prose}>
-                {p}
-              </p>
-            ))}
+            <p className={styles.prose}>{c.postconditions}</p>
           </section>
         ) : null}
 
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>Tags</h3>
-          {Object.entries(c.tags).map(([dim, values]) => (
-            <div key={dim} className={styles.tagRow}>
-              <span className={styles.tagDim}>{dim}</span>
+          {facets.map(([field, values]) => (
+            <div key={field} className={styles.tagRow}>
+              <span className={styles.tagDim}>{field}</span>
               <span className={styles.tagValues}>
                 {values.map((v) => (
                   <Tag key={v}>{v}</Tag>
@@ -345,24 +366,25 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
               </span>
             </div>
           ))}
-          {c.owner ? (
-            <div className={styles.tagRow}>
-              <span className={styles.tagDim}>owner</span>
-              <span className={styles.tagValues}>{c.owner}</span>
-            </div>
-          ) : null}
-          {c.state ? (
-            <div className={styles.tagRow}>
-              <span className={styles.tagDim}>state</span>
-              <span className={styles.tagValues}>{c.state}</span>
-            </div>
-          ) : null}
+          {([
+            ["severity", c.severity],
+            ["priority", c.priority],
+            ["type", c.type],
+            ["behavior", c.behavior],
+          ] as [string, string | undefined][])
+            .filter(([, value]) => value)
+            .map(([field, value]) => (
+              <div key={field} className={styles.tagRow}>
+                <span className={styles.tagDim}>{field}</span>
+                <span className={styles.tagValues}>{value}</span>
+              </div>
+            ))}
         </section>
 
-        {c.links?.length ? (
+        {c.external_issues?.length ? (
           <section className={styles.section}>
             <h3 className={styles.sectionTitle}>Traces to</h3>
-            {c.links.map((link) => (
+            {c.external_issues.map((link) => (
               <a key={link} className={styles.link} href={link} target="_blank" rel="noreferrer">
                 {link}
               </a>
@@ -375,11 +397,12 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
           {results.length ? (
             results.slice(0, 25).map((r) => (
               <div key={r.id} className={styles.historyRow}>
-                <StatusPill tone={VERDICT_TONE[r.verdict]}>{r.verdict}</StatusPill>
+                <StatusPill tone={STATUS_TONE[r.status]}>{r.status}</StatusPill>
                 <span className={styles.historyMeta}>
                   {SOURCE_LABEL[r.source]}
                   {r.column ? ` · ${r.column}` : ""} · {new Date(r.at).toLocaleString()}
-                  {r.note ? ` — ${r.note}` : ""}
+                  {r.app_version ? ` · ${r.app_version}` : ""}
+                  {r.comment ? ` — ${r.comment}` : ""}
                 </span>
               </div>
             ))
@@ -397,25 +420,35 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
 // ── Editor ──────────────────────────────────────────────────────────────────
 
 interface CaseEditorProps {
-  testCase: TestCase | null;
+  testCase: Case | null;
   onCancel: () => void;
-  onSaved: (saved: TestCase) => void;
+  onSaved: (saved: Case) => void;
 }
 
-/** Create or edit a case. Writes the YAML file; comments in it survive. */
+/**
+ * Create or edit a case. Writes the YAML file; comments in it survive.
+ *
+ * When cases come from Qase, everything Qase owns is read-only here — it is
+ * authored there, and the next sync would revert an edit made in Studio. What
+ * stays editable is Conductor's own wiring: which flow implements the case, and
+ * which page object performs each step.
+ */
 export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
-  const [draft, setDraft] = useState<TestCaseInput>(() => ({
-    id: testCase?.id ?? "",
-    altIds: testCase?.altIds ?? [],
+  const [source, setSource] = useState<CasesDatasource | null>(null);
+  const locked = source?.mode === "qase";
+
+  const [draft, setDraft] = useState<CaseInput>(() => ({
+    id: testCase?.id ?? 0,
     title: testCase?.title ?? "",
-    userStory: testCase?.userStory ?? "",
     description: testCase?.description ?? "",
-    tags: testCase?.tags ?? {},
-    flow: testCase?.flow,
-    flows: testCase?.flows,
-    owner: testCase?.owner ?? "",
-    state: testCase?.state ?? "",
-    links: testCase?.links ?? [],
+    preconditions: testCase?.preconditions ?? "",
+    postconditions: testCase?.postconditions ?? "",
+    severity: testCase?.severity,
+    priority: testCase?.priority,
+    status: testCase?.status,
+    custom_fields: testCase?.custom_fields ?? {},
+    tags: testCase?.tags ?? [],
+    conductor: testCase?.conductor,
     previousId: testCase?.id,
   }));
   // `1. action -> expected @ pages/foo.yaml?key=value` per line: readable to a
@@ -426,27 +459,21 @@ export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
         const env = step.env ? `?${new URLSearchParams(step.env).toString()}` : "";
         return [
           step.action,
-          step.expected ? ` -> ${step.expected}` : "",
+          step.expected_result ? ` -> ${step.expected_result}` : "",
           step.pom ? ` @ ${step.pom}${env}` : "",
         ].join("");
       })
       .join("\n"),
   );
-  const [conditionText, setConditionText] = useState(() =>
-    [
-      ...(testCase?.preconditions ?? []).map((p) => `pre: ${p}`),
-      ...(testCase?.postconditions ?? []).map((p) => `post: ${p}`),
-    ].join("\n"),
-  );
-  const [tagText, setTagText] = useState(() =>
-    Object.entries(testCase?.tags ?? {})
-      .map(([dim, values]) => `${dim}: ${values.join(", ")}`)
+  const [fieldText, setFieldText] = useState(() =>
+    Object.entries(testCase?.custom_fields ?? {})
+      .map(([field, values]) => `${field}: ${values.join(", ")}`)
       .join("\n"),
   );
   const [flowText, setFlowText] = useState(() =>
-    testCase?.flows
-      ? Object.entries(testCase.flows).map(([col, flow]) => `${col}: ${flow}`).join("\n")
-      : (testCase?.flow ?? ""),
+    testCase?.conductor?.flows
+      ? Object.entries(testCase.conductor.flows).map(([col, flow]) => `${col}: ${flow}`).join("\n")
+      : (testCase?.conductor?.flow ?? ""),
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -454,20 +481,22 @@ export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
 
   useEffect(() => {
     listStepPoms().then(setPoms).catch(() => {});
+    casesDatasource().then(setSource).catch(() => setSource(null));
   }, []);
 
-  const set = <K extends keyof TestCaseInput>(key: K, value: TestCaseInput[K]) =>
+  const set = <K extends keyof CaseInput>(key: K, value: CaseInput[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
 
   const save = async () => {
     setSaving(true);
     try {
-      // `dimension: a, b` per line for tags; `column: flow` (or a bare path) for flows.
-      const tags: Record<string, string[]> = {};
-      for (const line of tagText.split("\n")) {
-        const [dim, rest] = line.split(":");
-        if (!dim?.trim() || !rest?.trim()) continue;
-        tags[dim.trim()] = rest.split(",").map((v) => v.trim()).filter(Boolean);
+      // `field: a, b` per line for custom fields; `column: flow` (or a bare
+      // path) for flows.
+      const custom_fields: Record<string, string[]> = {};
+      for (const line of fieldText.split("\n")) {
+        const [field, rest] = line.split(":");
+        if (!field?.trim() || !rest?.trim()) continue;
+        custom_fields[field.trim()] = rest.split(",").map((v) => v.trim()).filter(Boolean);
       }
       const flows: Record<string, string> = {};
       let flow: string | undefined;
@@ -484,33 +513,41 @@ export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
         .map((line) => {
           const [before, pomPart] = line.split(" @ ");
           const [action, expected] = before.split(" -> ");
-          if (!pomPart) return { action: action.trim(), expected: expected?.trim() };
+          if (!pomPart) return { action: action.trim(), expected_result: expected?.trim() };
           const [pom, queryString] = pomPart.trim().split("?");
           const env = Object.fromEntries(new URLSearchParams(queryString ?? ""));
           return {
             action: action.trim(),
-            expected: expected?.trim(),
+            expected_result: expected?.trim(),
             pom: pom.trim(),
             env: Object.keys(env).length ? env : undefined,
           };
         });
-      const preconditions: string[] = [];
-      const postconditions: string[] = [];
-      for (const line of conditionText.split("\n")) {
-        const match = /^\s*(pre|post):\s*(.+)$/i.exec(line);
-        if (!match) continue;
-        (match[1].toLowerCase() === "pre" ? preconditions : postconditions).push(match[2].trim());
-      }
 
-      const saved = await saveCase({
-        ...draft,
-        steps,
-        preconditions,
-        postconditions,
-        tags,
-        flow: Object.keys(flows).length ? undefined : flow,
-        flows: Object.keys(flows).length ? flows : undefined,
-      });
+      // In qase mode only the wiring is ours to write; sending the rest back
+      // unchanged is what saveCase refuses, so don't send it at all.
+      const saved = await saveCase(
+        locked
+          ? {
+              id: draft.id,
+              previousId: draft.previousId,
+              title: draft.title,
+              steps,
+              conductor: {
+                flow: Object.keys(flows).length ? undefined : flow,
+                flows: Object.keys(flows).length ? flows : undefined,
+              },
+            }
+          : {
+              ...draft,
+              steps,
+              custom_fields,
+              conductor: {
+                flow: Object.keys(flows).length ? undefined : flow,
+                flows: Object.keys(flows).length ? flows : undefined,
+              },
+            },
+      );
       onSaved(saved);
     } catch (e) {
       setError(String(e));
@@ -527,25 +564,35 @@ export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
       </header>
       <div className={styles.detailBody}>
         {error ? <StatusPill tone="error">{error}</StatusPill> : null}
+        {locked ? (
+          <p className={styles.muted}>
+            Cases come from Qase project {source?.projectCode}. Title, steps, tags and fields are
+            edited there — here you link the flow that implements the case and the page object
+            behind each step.
+          </p>
+        ) : null}
         <Field label="Id">
-          <TextField value={draft.id} onChange={(e) => set("id", e.target.value)} placeholder="TC-001" />
-        </Field>
-        <Field label="Title">
-          <TextField value={draft.title} onChange={(e) => set("title", e.target.value)} />
-        </Field>
-        <Field label="Alternate ids">
           <TextField
-            value={(draft.altIds ?? []).join(", ")}
-            placeholder="Ids for the same case in other matrices"
-            onChange={(e) => set("altIds", e.target.value.split(",").map((v) => v.trim()).filter(Boolean))}
+            value={String(draft.id || "")}
+            disabled={locked}
+            onChange={(e) => set("id", Number(e.target.value.replace(/[^0-9]/g, "")) || 0)}
+            placeholder="12"
           />
         </Field>
-        <Field label="Business rule">
+        <Field label="Title">
+          <TextField
+            value={draft.title}
+            disabled={locked}
+            onChange={(e) => set("title", e.target.value)}
+          />
+        </Field>
+        <Field label="Description">
           <textarea
             className={styles.textarea}
             rows={3}
-            value={draft.userStory ?? ""}
-            onChange={(e) => set("userStory", e.target.value)}
+            disabled={locked}
+            value={draft.description ?? ""}
+            onChange={(e) => set("description", e.target.value)}
           />
         </Field>
         <Field label="Steps — `action -> expected @ pages/x.yaml?key=value` per line">
@@ -554,7 +601,9 @@ export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
             rows={7}
             value={stepText}
             onChange={(e) => setStepText(e.target.value)}
-            placeholder={"Open the details page -> The title is shown @ pages/details/open.yaml?path=movie/sintel"}
+            placeholder={
+              "Open the details page -> The title is shown @ pages/details/open.yaml?path=movie/sintel"
+            }
           />
           {poms.length ? (
             <span className={styles.fieldLabel}>
@@ -562,32 +611,50 @@ export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
               {poms[0].params.length ? `?${poms[0].params.map((p) => `${p}=`).join("&")}` : ""}
             </span>
           ) : null}
+          {locked ? (
+            <span className={styles.fieldLabel}>
+              Only the `@ page-object` part of a step is saved — the wording comes from Qase.
+            </span>
+          ) : null}
         </Field>
-        <Field label="Pre / postconditions — `pre:` or `post:` per line">
+        <Field label="Preconditions">
           <textarea
             className={styles.textarea}
-            rows={3}
-            value={conditionText}
-            onChange={(e) => setConditionText(e.target.value)}
+            rows={2}
+            disabled={locked}
+            value={draft.preconditions ?? ""}
+            onChange={(e) => set("preconditions", e.target.value)}
           />
         </Field>
-        <Field label="Free-text steps (legacy)">
+        <Field label="Postconditions">
           <textarea
             className={styles.textarea}
-            rows={3}
-            value={draft.description ?? ""}
-            onChange={(e) => set("description", e.target.value)}
+            rows={2}
+            disabled={locked}
+            value={draft.postconditions ?? ""}
+            onChange={(e) => set("postconditions", e.target.value)}
           />
         </Field>
-        <Field label="Tags — one `dimension: a, b` per line">
+        <Field label="Custom fields — one `field: a, b` per line">
           <textarea
             className={styles.textarea}
             rows={4}
-            value={tagText}
-            onChange={(e) => setTagText(e.target.value)}
+            disabled={locked}
+            value={fieldText}
+            onChange={(e) => setFieldText(e.target.value)}
+            placeholder={"Platform: ios, android"}
           />
         </Field>
-        <Field label="Flows — `platform: path`, or one bare path">
+        <Field label="Tags — comma separated">
+          <TextField
+            value={(draft.tags ?? []).join(", ")}
+            disabled={locked}
+            onChange={(e) =>
+              set("tags", e.target.value.split(",").map((v) => v.trim()).filter(Boolean))
+            }
+          />
+        </Field>
+        <Field label="Flows — `column: path`, or one bare path">
           <textarea
             className={styles.textarea}
             rows={3}
@@ -595,21 +662,49 @@ export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
             onChange={(e) => setFlowText(e.target.value)}
           />
         </Field>
-        <Field label="Owner">
-          <TextField value={draft.owner ?? ""} onChange={(e) => set("owner", e.target.value)} />
+        <Field label="Severity">
+          <select
+            className={styles.textarea}
+            disabled={locked}
+            value={draft.severity ?? ""}
+            onChange={(e) => set("severity", (e.target.value || undefined) as Severity | undefined)}
+          >
+            <option value="">—</option>
+            {SEVERITIES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
         </Field>
-        <Field label="State">
-          <TextField
-            value={draft.state ?? ""}
-            placeholder="draft / review / ready"
-            onChange={(e) => set("state", e.target.value)}
-          />
+        <Field label="Priority">
+          <select
+            className={styles.textarea}
+            disabled={locked}
+            value={draft.priority ?? ""}
+            onChange={(e) => set("priority", (e.target.value || undefined) as Priority | undefined)}
+          >
+            <option value="">—</option>
+            {PRIORITIES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
         </Field>
-        <Field label="Traces to — comma separated URLs">
-          <TextField
-            value={(draft.links ?? []).join(", ")}
-            onChange={(e) => set("links", e.target.value.split(",").map((v) => v.trim()).filter(Boolean))}
-          />
+        <Field label="Status">
+          <select
+            className={styles.textarea}
+            disabled={locked}
+            value={draft.status ?? "actual"}
+            onChange={(e) => set("status", e.target.value as CaseStatus)}
+          >
+            {CASE_STATUSES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
         </Field>
         <div className={styles.verdictRow}>
           <Button size="sm" disabled={saving} onClick={() => void save()}>

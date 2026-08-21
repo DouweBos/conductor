@@ -1,6 +1,6 @@
 import type { DeviceInfo, SceneGraph } from "../../../app/lib/types";
 import { getProjectInfo } from "../file/fileService";
-import { listCases } from "../cases/casesService";
+import { datasource, listCases } from "../cases/casesService";
 import { listPoms } from "../pom/pomService";
 import { appFingerprint } from "../conductor/conductorService";
 import { loadSceneGraph } from "../scenegraph/sceneGraphService";
@@ -61,18 +61,28 @@ export async function buildAgentSystemPrompt(device: DeviceInfo | null): Promise
 
   const cases = await listCases().catch(() => []);
   if (cases.length) {
-    const uncovered = cases.filter((c) => !c.flow && !Object.keys(c.flows ?? {}).length);
+    const uncovered = cases.filter(
+      (c) => !c.conductor?.flow && !Object.keys(c.conductor?.flows ?? {}).length,
+    );
+    const source = datasource();
     lines.push(
       "",
       "## Test cases",
       "Studio tracks test cases as YAML under `~/.conductor/studio/cases/` —",
-      "outside this repo, so testing a project never adds files to it. A case is",
-      "the spec (id, title, business rule, steps, tags); the flow it names, which",
-      "does live in the repo, is the implementation. When you automate a case,",
-      "set the flow path on it (`flow:`, or `flows:` keyed by platform) with",
-      "`record_case_result`'s sibling tools so the matrix picks it up.",
-      "Use the MCP tools `list_test_cases` / `describe_test_case` to read them,",
-      "and `record_case_result` when you verify one by driving the device.",
+      "outside this repo, so testing a project never adds files to it. A case",
+      "follows Qase's model (id, title, steps with action/data/expected_result,",
+      "suite, custom fields, tags); the flow it names, which does live in the",
+      "repo, is the implementation and is held in the case's `conductor` block.",
+      "Use `list_test_cases` / `describe_test_case` to read them, `link_case_flow`",
+      "to attach a flow you wrote, and `record_case_result` when you verify one",
+      "by driving the device.",
+      ...(source.mode === "qase"
+        ? [
+            `Cases come from Qase project ${source.projectCode} and are read-only here:`,
+            "link flows and assign page objects, never rewrite a title, step or tag.",
+            "`sync_test_cases` pulls the latest before you start.",
+          ]
+        : []),
       `${cases.length} cases, ${uncovered.length} with no flow yet.`,
     );
   }

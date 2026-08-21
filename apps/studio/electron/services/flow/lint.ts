@@ -197,16 +197,13 @@ async function lintCases(known: Set<string>, called: Set<string>): Promise<LintP
   } catch {
     return problems;
   }
-  const ids = new Set<string>();
+  const refs = new Set<string>();
   const covered = new Set<string>();
   for (const testCase of cases) {
-    // altIds share the id space: a matrix id may only name one case.
-    for (const id of [testCase.id, ...(testCase.altIds ?? [])]) {
-      if (ids.has(id)) {
-        problems.push(problem(testCase.filePath, 1, "error", `Duplicate case id "${id}".`, ""));
-      }
-      ids.add(id);
+    if (refs.has(testCase.ref)) {
+      problems.push(problem(testCase.filePath, 1, "error", `Duplicate case id "${testCase.ref}".`, ""));
     }
+    refs.add(testCase.ref);
     // A step's page object is as load-bearing as the flow link: it is what a
     // scaffold writes and what coverage is measured against.
     for (const step of testCase.steps ?? []) {
@@ -219,8 +216,11 @@ async function lintCases(known: Set<string>, called: Set<string>): Promise<LintP
     // A draft case names the flow someone is going to write, so a missing file
     // is the plan, not a break. Reporting those as errors buried the cases that
     // claim to be automated and aren't.
-    const draft = (testCase.tags.status ?? []).includes("draft");
-    const flows = [testCase.flow, ...Object.values(testCase.flows ?? {})].filter(Boolean);
+    const draft = testCase.status === "draft";
+    const flows = [
+      testCase.conductor?.flow,
+      ...Object.values(testCase.conductor?.flows ?? {}),
+    ].filter(Boolean);
     for (const flow of flows as string[]) {
       covered.add(flow);
       if (known.has(flow)) continue;

@@ -20,7 +20,8 @@
     "preview": "vite preview",
     "prepare-conductor": "tsx scripts/prepare-conductor.ts",
     "postinstall": "tsx scripts/prepare-conductor.ts",
-    "build:icon": "tsx scripts/generate-icon.ts"
+    "build:icon": "tsx scripts/generate-icon.ts",
+    "test": "tsx tests/all-tests.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.0",

@@ -1,5 +1,6 @@
 import { dialog, ipcMain, shell } from "electron";
 
+import { broadcastToRenderers } from "./broadcast";
 import { appState } from "./state";
 
 import type {
@@ -12,7 +13,9 @@ import type {
   PlanRun,
   PlanRunEntry,
   StepCoverage,
-  TestCaseInput,
+  CaseInput,
+  CasesDatasource,
+  PullSummary,
   TestPlan,
   TestPlanInput,
   CaptureUiResult,
@@ -37,7 +40,7 @@ import type {
   RunRecord,
   SceneGraph,
   SceneGraphSummary,
-  TestCase,
+  Case,
   TestReport,
   TestSession,
   ThemePreference,
@@ -53,7 +56,17 @@ import {
   startAgent,
   stopAgent,
 } from "./services/agent/agentService";
-import { buildMatrix, deleteCase, listCases, saveCase } from "./services/cases/casesService";
+import {
+  buildMatrix,
+  datasource,
+  deleteCase,
+  listCases,
+  matrixFields,
+  pull,
+  saveCase,
+  saveDatasource,
+} from "./services/cases/casesService";
+import { verifyProject } from "./services/cases/qaseClient";
 import { exportCsv, importCsv, previewCsv, type ImportOptions } from "./services/cases/importService";
 import {
   cancelPlanRun,
@@ -137,8 +150,10 @@ import {
 import {
   deleteEnvProfile,
   getEnvProfiles,
+  getQaseToken,
   getTheme,
   saveEnvProfile,
+  setQaseToken,
   setTheme,
 } from "./services/settings/settingsService";
 import {
@@ -275,13 +290,45 @@ export function registerIpcHandlers(): void {
   handle<{ deviceId: string }, void>("logs_stop", (a) => stopLogs(a.deviceId));
 
   // ── Test case management ──
-  handle<void, TestCase[]>("cases_list", () => listCases());
-  handle<{ dimension?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.dimension));
-  handle<{ input: TestCaseInput }, TestCase>("case_save", (a) => saveCase(a.input));
-  handle<{ id: string }, void>("case_delete", (a) => deleteCase(a.id));
+  handle<void, Case[]>("cases_list", () => listCases());
+  handle<{ field?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.field));
+  handle<void, string[]>("cases_matrix_fields", () => matrixFields());
+  handle<{ input: CaseInput }, Case>("case_save", (a) => saveCase(a.input));
+  handle<{ id: number }, void>("case_delete", (a) => deleteCase(a.id));
   handle<void, CaseResult[]>("cases_results", () => listResults());
-  handle<{ caseId: string }, CaseStats>("case_stats", async (a) =>
-    statsFor(a.caseId, await listResults()),
+  handle<{ ref: string }, CaseStats>("case_stats", async (a) =>
+    statsFor(a.ref, await listResults()),
+  );
+
+  // ── Case datasource (local, or mirrored from Qase) ──
+  handle<void, CasesDatasource>("cases_datasource_get", () => datasource());
+  handle<{ datasource: CasesDatasource; token?: string | null }, CasesDatasource>(
+    "cases_datasource_set",
+    (a) => {
+      const project = getProjectInfo();
+      if (!project) throw new Error("No project is open.");
+      if (a.token !== undefined) setQaseToken(project.root, a.token);
+      return saveDatasource(a.datasource);
+    },
+  );
+  handle<void, PullSummary>("cases_pull", async () => {
+    const summary = await pull();
+    broadcastToRenderers("cases:pulled", summary);
+    return summary;
+  });
+  handle<void, { ok: boolean; project?: string; error?: string }>(
+    "cases_datasource_test",
+    async () => {
+      const root = getProjectInfo()?.root;
+      const config = datasource();
+      const token = root ? getQaseToken(root) : undefined;
+      if (!token) return { ok: false, error: "No Qase API token is set for this project." };
+      try {
+        return { ok: true, project: await verifyProject(config.projectCode, token) };
+      } catch (e) {
+        return { ok: false, error: String(e instanceof Error ? e.message : e) };
+      }
+    },
   );
   handle<{ result: Omit<CaseResult, "id" | "at"> }, CaseResult>("case_record_result", (a) =>
     recordResult(a.result),
@@ -298,7 +345,7 @@ export function registerIpcHandlers(): void {
   handle<void, string | null>("cases_pick_export", async () => {
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: "Export test cases",
-      defaultPath: "test-cases.csv",
+      defaultPath: "cases.csv",
       filters: [{ name: "CSV", extensions: ["csv"] }],
     });
     return canceled ? null : (filePath ?? null);
@@ -325,12 +372,12 @@ export function registerIpcHandlers(): void {
   handle<{ options: ScaffoldOptions }, { flow: string; todos: number }>("case_scaffold_flow", (a) =>
     scaffoldFlow(a.options),
   );
-  handle<{ caseId: string; column?: string }, StepCoverage>("case_step_coverage", (a) =>
-    stepCoverage(a.caseId, a.column),
+  handle<{ ref: string; column?: string }, StepCoverage>("case_step_coverage", (a) =>
+    stepCoverage(a.ref, a.column),
   );
   handle<void, FlowCatalogEntry[]>("case_step_poms", () => listStepPoms());
-  handle<{ caseId: string; column?: string }, string>("case_automation_brief", (a) =>
-    automationBrief(a.caseId, a.column),
+  handle<{ ref: string; column?: string }, string>("case_automation_brief", (a) =>
+    automationBrief(a.ref, a.column),
   );
   handle<{ flow: string }, string>("case_flow_text", (a) => readFlowText(a.flow));
 

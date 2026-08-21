@@ -2,7 +2,8 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { FlowCatalogEntry, StepCoverage, TestCase } from "../../../app/lib/types";
+import type { FlowCatalogEntry, StepCoverage } from "../../../app/lib/types";
+import type { Case } from "./model";
 import { getProjectInfo } from "../file/fileService";
 import { loadFlowCatalog } from "../flow/catalog";
 import { indexReferences } from "../flow/references";
@@ -30,7 +31,7 @@ function callFor(entry: FlowCatalogEntry | undefined, pom: string): string {
 }
 
 export interface ScaffoldOptions {
-  caseId: string;
+  ref: string;
   /** Platform column this flow covers; also picks the file suffix. */
   column?: string;
   /** Flows-relative target; derived from the case when omitted. */
@@ -39,9 +40,9 @@ export interface ScaffoldOptions {
   tags?: string[];
 }
 
-/** Where a case's flow lands by default: `flows/cases/<id>[.<column>].yaml`. */
-function defaultTarget(testCase: TestCase, column?: string): string {
-  const slug = testCase.id.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+/** Where a case's flow lands by default: `flows/cases/<ref>[.<column>].yaml`. */
+function defaultTarget(testCase: Case, column?: string): string {
+  const slug = testCase.ref.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return path.posix.join("flows", "cases", `${slug}${column ? `.${column}` : ""}.yaml`);
 }
 
@@ -53,10 +54,10 @@ function defaultTarget(testCase: TestCase, column?: string): string {
  */
 export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: string; todos: number }> {
   const project = requireProject();
-  const testCase = (await listCases()).find((c) => c.id === options.caseId);
-  if (!testCase) throw new Error(`No case with id "${options.caseId}".`);
+  const testCase = (await listCases()).find((c) => c.ref === options.ref);
+  if (!testCase) throw new Error(`No case ${options.ref}.`);
   if (!testCase.steps?.length) {
-    throw new Error(`Case ${testCase.id} has no structured steps to scaffold from.`);
+    throw new Error(`Case ${testCase.ref} has no structured steps to scaffold from.`);
   }
 
   const catalog = await loadFlowCatalog();
@@ -77,13 +78,13 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
     : undefined;
   const tags = [
     ...(columnTag ? [columnTag] : []),
-    ...(testCase.tags.area ?? []).map((a) => a.toLowerCase().replace(/[^a-z0-9]+/g, "-")),
+    ...(testCase.suite ? [testCase.suite] : []).map((a) => a.toLowerCase().replace(/[^a-z0-9]+/g, "-")),
     ...(options.tags ?? []),
   ].filter(Boolean);
 
   const lines: string[] = [
-    `# ${testCase.id} — ${testCase.title}`,
-    ...(testCase.userStory ? [`#`, ...testCase.userStory.split("\n").map((l) => `# ${l}`)] : []),
+    `# ${testCase.ref} — ${testCase.title}`,
+    ...(testCase.description ? [`#`, ...testCase.description.split("\n").map((l) => `# ${l}`)] : []),
     "#",
     "# Scaffolded from the test case. Every step below is one of its steps; a",
     "# TODO marks a step with no page object yet.",
@@ -92,17 +93,19 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
   if (tags.length) lines.push("tags:", ...[...new Set(tags)].map((t) => `  - ${t}`));
   lines.push("---");
 
-  for (const pre of testCase.preconditions ?? []) lines.push(`# Precondition: ${pre}`);
+  for (const pre of (testCase.preconditions ?? "").split("\n").filter(Boolean)) {
+    lines.push(`# Precondition: ${pre}`);
+  }
 
   let todos = 0;
   testCase.steps.forEach((step, i) => {
     lines.push("", `# Step ${i + 1}: ${step.action}`);
     if (step.data) lines.push(`# Data: ${step.data}`);
-    if (step.expected) lines.push(`# Expected: ${step.expected}`);
+    if (step.expected_result) lines.push(`# Expected: ${step.expected_result}`);
     if (!step.pom) {
       todos += 1;
       lines.push(`# TODO: no page object for this step — add one under pages/ and set`);
-      lines.push(`#       \`pom:\` on step ${i + 1} of ${testCase.id}.`);
+      lines.push(`#       \`pom:\` on step ${i + 1} of ${testCase.ref}.`);
       return;
     }
     const call = callFor(byPath.get(step.pom), step.pom);
@@ -114,7 +117,9 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
     }
   });
 
-  for (const post of testCase.postconditions ?? []) lines.push("", `# Postcondition: ${post}`);
+  for (const post of (testCase.postconditions ?? "").split("\n").filter(Boolean)) {
+    lines.push("", `# Postcondition: ${post}`);
+  }
 
   await mkdir(path.dirname(abs), { recursive: true });
   await writeFile(abs, `${lines.join("\n")}\n`, "utf8");
@@ -122,8 +127,12 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
   // Link it back, so the case and its implementation know about each other.
   await saveCase({
     ...toInput(testCase),
-    flow: options.column ? undefined : target,
-    flows: options.column ? { ...(testCase.flows ?? {}), [options.column]: target } : testCase.flows,
+    conductor: options.column
+      ? {
+          ...testCase.conductor,
+          flows: { ...(testCase.conductor?.flows ?? {}), [options.column]: target },
+        }
+      : { ...testCase.conductor, flow: target },
   });
   return { flow: target, todos };
 }
@@ -132,10 +141,11 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
  * Does the flow actually do what the case says? A step is backed when the flow
  * (or anything it calls) reaches the page object the step names.
  */
-export async function stepCoverage(caseId: string, column?: string): Promise<StepCoverage> {
-  const testCase = (await listCases()).find((c) => c.id === caseId);
-  if (!testCase) throw new Error(`No case with id "${caseId}".`);
-  const flow = column ? testCase.flows?.[column] : (testCase.flow ?? Object.values(testCase.flows ?? {})[0]);
+export async function stepCoverage(ref: string, column?: string): Promise<StepCoverage> {
+  const testCase = (await listCases()).find((c) => c.ref === ref);
+  if (!testCase) throw new Error(`No case ${ref}.`);
+  const wiring = testCase.conductor;
+  const flow = column ? wiring?.flows?.[column] : (wiring?.flow ?? Object.values(wiring?.flows ?? {})[0]);
   const reached = flow ? await reachableFrom(flow) : new Set<string>();
 
   const steps = (testCase.steps ?? []).map((step, index) => ({
@@ -146,7 +156,7 @@ export async function stepCoverage(caseId: string, column?: string): Promise<Ste
   }));
   const claimed = new Set(steps.map((s) => s.pom).filter(Boolean) as string[]);
   return {
-    caseId,
+    ref,
     column,
     flow,
     steps,
@@ -183,14 +193,14 @@ export async function listStepPoms(): Promise<FlowCatalogEntry[]> {
 }
 
 /** The steps' page objects must exist — a typo'd `pom:` is a broken case. */
-export async function lintStepPoms(): Promise<{ caseId: string; filePath: string; pom: string }[]> {
+export async function lintStepPoms(): Promise<{ ref: string; filePath: string; pom: string }[]> {
   const catalog = await loadFlowCatalog();
   const known = new Set(catalog.entries.map((e) => e.path));
-  const problems: { caseId: string; filePath: string; pom: string }[] = [];
+  const problems: { ref: string; filePath: string; pom: string }[] = [];
   for (const testCase of await listCases()) {
     for (const step of testCase.steps ?? []) {
       if (step.pom && !known.has(step.pom)) {
-        problems.push({ caseId: testCase.id, filePath: testCase.filePath, pom: step.pom });
+        problems.push({ ref: testCase.ref, filePath: testCase.filePath, pom: step.pom });
       }
     }
   }

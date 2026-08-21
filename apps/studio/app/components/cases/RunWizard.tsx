@@ -2,20 +2,22 @@ import { Button, IconButton, StatusPill, TextField, type StatusTone } from "@con
 import { useEffect, useMemo, useState } from "react";
 
 import { recordCaseResult, runFlow } from "../../lib/ipc";
-import type { CaseStep, CaseStepResult, CaseVerdict, TestCase } from "../../lib/types";
+import type { Case, CaseStep, CaseStepResult, ResultStatus } from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
 import { beginRun } from "../../stores/runStore";
 import styles from "./CasesView.module.css";
 
-const STEP_TONE: Record<CaseStepResult["status"], StatusTone> = {
+const STEP_TONE: Record<ResultStatus, StatusTone> = {
   passed: "success",
   failed: "error",
+  blocked: "warning",
   skipped: "neutral",
+  invalid: "warning",
 };
 
 interface RunWizardProps {
   /** The cases to walk, in order — usually the current filter. */
-  cases: TestCase[];
+  cases: Case[];
   onClose: () => void;
   onRecorded: () => void;
   /** Hand-off to the flow: bring the device rail up beside the wizard. */
@@ -31,17 +33,17 @@ export function RunWizard({ cases, onClose, onRecorded, onRunStarted }: RunWizar
   const [index, setIndex] = useState(0);
   const [steps, setSteps] = useState<Record<number, CaseStepResult>>({});
   const [note, setNote] = useState("");
-  const [build, setBuild] = useState("");
+  const [appVersion, setAppVersion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<Record<string, CaseVerdict>>({});
+  const [done, setDone] = useState<Record<string, ResultStatus>>({});
   const deviceId = useSelectedDeviceId();
 
   const current = cases[index];
   useEffect(() => {
     setSteps({});
     setNote("");
-  }, [current?.id]);
+  }, [current?.ref]);
 
   // A case with structured steps walks step by step; a legacy free-text case
   // still walks, one line at a time.
@@ -73,18 +75,19 @@ export function RunWizard({ cases, onClose, onRecorded, onRunStarted }: RunWizar
   const markStep = (i: number, status: CaseStepResult["status"]) =>
     setSteps((s) => ({ ...s, [i]: { index: i, status } }));
 
-  const finish = async (verdict: CaseVerdict) => {
+  const finish = async (status: ResultStatus) => {
     setBusy(true);
     try {
       await recordCaseResult({
-        caseId: current.id,
-        verdict,
+        case_id: current.id,
+        ref: current.ref,
+        status,
         source: "manual",
-        note: note.trim() || undefined,
-        build: build.trim() || undefined,
+        comment: note.trim() || undefined,
+        app_version: appVersion.trim() || undefined,
         steps: Object.values(steps),
       });
-      setDone((d) => ({ ...d, [current.id]: verdict }));
+      setDone((d) => ({ ...d, [current.ref]: status }));
       setNote("");
       setSteps({});
       setIndex((i) => i + 1);
@@ -102,15 +105,17 @@ export function RunWizard({ cases, onClose, onRecorded, onRunStarted }: RunWizar
   const anyFailed = caseSteps.some((_, i) => steps[i]?.status === "failed");
 
   // Run the flow for the platform we're walking, not just the first one.
-  const [column, flow] =
-    Object.entries(current.flows ?? {})[0] ?? ([undefined, current.flow] as const);
+  const [column, flow] = (Object.entries(current.conductor?.flows ?? {})[0] ?? [
+    undefined,
+    current.conductor?.flow,
+  ]) as [string | undefined, string | undefined];
 
   return (
     <aside className={styles.detail}>
       <header className={styles.detailHeader}>
         <div>
           <div className={styles.detailIds}>
-            {index + 1} of {cases.length} · {current.id}
+            {index + 1} of {cases.length} · {current.ref}
           </div>
           <h2 className={styles.detailTitle}>{current.title}</h2>
         </div>
@@ -120,18 +125,14 @@ export function RunWizard({ cases, onClose, onRecorded, onRunStarted }: RunWizar
       <div className={styles.detailBody}>
         {error ? <StatusPill tone="error">{error}</StatusPill> : null}
 
-        {current.preconditions?.length ? (
+        {current.preconditions ? (
           <section className={styles.section}>
             <h3 className={styles.sectionTitle}>Before you start</h3>
-            {current.preconditions.map((p) => (
-              <p key={p} className={styles.prose}>
-                {p}
-              </p>
-            ))}
+            <p className={styles.prose}>{current.preconditions}</p>
           </section>
         ) : null}
 
-        {current.userStory ? <p className={styles.prose}>{current.userStory}</p> : null}
+        {current.description ? <p className={styles.prose}>{current.description}</p> : null}
 
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>Steps</h3>
@@ -142,8 +143,8 @@ export function RunWizard({ cases, onClose, onRecorded, onRunStarted }: RunWizar
                   {i + 1}. {step.action}
                 </span>
                 {step.data ? <span className={styles.muted}>data: {step.data}</span> : null}
-                {step.expected ? (
-                  <span className={styles.wizardExpected}>→ {step.expected}</span>
+                {step.expected_result ? (
+                  <span className={styles.wizardExpected}>→ {step.expected_result}</span>
                 ) : null}
                 {step.pom ? <span className={styles.muted}>{step.pom}</span> : null}
               </div>
@@ -160,23 +161,19 @@ export function RunWizard({ cases, onClose, onRecorded, onRunStarted }: RunWizar
           ) : null}
         </section>
 
-        {current.postconditions?.length ? (
+        {current.postconditions ? (
           <section className={styles.section}>
             <h3 className={styles.sectionTitle}>Afterwards</h3>
-            {current.postconditions.map((p) => (
-              <p key={p} className={styles.prose}>
-                {p}
-              </p>
-            ))}
+            <p className={styles.prose}>{current.postconditions}</p>
           </section>
         ) : null}
 
         <section className={styles.section}>
           <TextField placeholder="Notes (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
           <TextField
-            placeholder="Build under test, e.g. 2026.17.0"
-            value={build}
-            onChange={(e) => setBuild(e.target.value)}
+            placeholder="App version under test, e.g. 2026.17.0"
+            value={appVersion}
+            onChange={(e) => setAppVersion(e.target.value)}
           />
           <div className={styles.verdictRow}>
             <Button size="sm" disabled={busy || anyFailed} onClick={() => void finish("passed")}>
@@ -190,6 +187,9 @@ export function RunWizard({ cases, onClose, onRecorded, onRunStarted }: RunWizar
             </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void finish("skipped")}>
               Skip
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void finish("invalid")}>
+              Invalid
             </Button>
           </div>
           {flow ? (

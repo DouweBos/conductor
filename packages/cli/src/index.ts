@@ -128,13 +128,6 @@ import { startDevice, HELP as startDeviceHelp } from './commands/start-device.js
 import { stopDevice, HELP as stopDeviceHelp } from './commands/stop-device.js';
 import { deleteDevice, HELP as deleteDeviceHelp } from './commands/delete-device.js';
 import { logs, HELP as logsHelp } from './commands/logs.js';
-import {
-  casesList,
-  casesReport,
-  casesResult,
-  HELP as casesHelp,
-  type Verdict,
-} from './commands/cases.js';
 import { memory, HELP as memoryHelp } from './commands/memory.js';
 import { metroStop, metroReload, HELP as metroHelp } from './commands/metro.js';
 import {
@@ -172,7 +165,6 @@ const COMMAND_HELP: Record<string, string> = {
   'list-devices': listDevicesHelp,
   'foreground-app': foregroundAppHelp,
   'list-apps': listAppsHelp,
-  cases: casesHelp,
   'copy-app': copyAppHelp,
   'download-app': downloadAppHelp,
   'install-app': installAppHelp,
@@ -381,13 +373,6 @@ async function main(): Promise<void> {
       'speed',
       'threshold',
       'reference',
-      'project',
-      'junit',
-      'verdict',
-      'note',
-      'column',
-      'build',
-      'environment',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version', o: 'output', y: 'yes' },
   });
@@ -1094,38 +1079,6 @@ async function main(): Promise<void> {
         interval: argv['interval'] !== undefined ? Number(argv['interval']) : undefined,
       });
       break;
-
-    case 'cases': {
-      // Repo-scoped, not device-scoped: cases and their results are files.
-      const root = (argv['project'] as string | undefined) ?? process.cwd();
-      const sub = rest[0] ?? 'list';
-      if (sub === 'list') {
-        exitCode = await casesList(root, opts);
-      } else if (sub === 'report') {
-        exitCode = await casesReport(root, (argv['junit'] as string) ?? '', {
-          ...opts,
-          build: argv['build'] as string | undefined,
-          environment: argv['environment'] as string | undefined,
-        });
-      } else if (sub === 'result') {
-        exitCode = await casesResult(
-          root,
-          rest[1] ?? '',
-          (argv['verdict'] as Verdict) ?? 'passed',
-          {
-            ...opts,
-            note: argv['note'] as string | undefined,
-            column: argv['column'] as string | undefined,
-            build: argv['build'] as string | undefined,
-            environment: argv['environment'] as string | undefined,
-          }
-        );
-      } else {
-        console.error(`Unknown cases subcommand "${sub}". Use list, report or result.`);
-        exitCode = 1;
-      }
-      break;
-    }
 
     case 'logs':
       exitCode = await logs(opts, sessionName, {

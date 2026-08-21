@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { TestCase } from "../../../app/lib/types";
+import { datasource } from "./casesService";
+import type { Case } from "./model";
 import { getProjectInfo } from "../file/fileService";
 import { loadFlowCatalog } from "../flow/catalog";
 import { listSceneGraphs } from "../scenegraph/sceneGraphService";
@@ -19,16 +20,19 @@ import { listCases } from "./casesService";
 
 const MAX_REFERENCE_LINES = 160;
 
-export async function automationBrief(caseId: string, column?: string): Promise<string> {
+export async function automationBrief(ref: string, column?: string): Promise<string> {
   const project = getProjectInfo();
   if (!project) throw new Error("No project is open.");
   const cases = await listCases();
-  const testCase = cases.find((c) => c.id === caseId);
-  if (!testCase) throw new Error(`No case with id "${caseId}".`);
+  const testCase = cases.find((c) => c.ref === ref);
+  if (!testCase) throw new Error(`No case ${ref}.`);
 
-  const target = column ?? (testCase.tags.platform ?? []).find((p) => !testCase.flows?.[p]);
+  // Default to a matrix column this case has no flow for yet.
+  const field = datasource().qase?.matrixField;
+  const columns = field ? (testCase.custom_fields[field] ?? []) : [];
+  const target = column ?? columns.find((p) => !testCase.conductor?.flows?.[p]);
   const lines: string[] = [
-    `Write the Maestro flow for test case ${testCase.id}${target ? ` (${target})` : ""} — "${testCase.title}".`,
+    `Write the Maestro flow for test case ${testCase.ref}${target ? ` (${target})` : ""} — "${testCase.title}".`,
     "",
     "Everything you need is below: the case, the same case's flow on the other",
     "platform, the conventions it follows, the page objects that already exist,",
@@ -43,32 +47,31 @@ export async function automationBrief(caseId: string, column?: string): Promise<
   return lines.join("\n");
 }
 
-function caseSection(c: TestCase, column?: string): string[] {
-  const lines = ["", "## The case", "", `Id: ${c.id}${c.altIds?.length ? ` (also ${c.altIds.join(", ")})` : ""}`];
-  if (c.userStory) lines.push(`Business rule: ${c.userStory}`);
-  const tags = Object.entries(c.tags)
-    .map(([dim, values]) => `${dim}=${values.join("/")}`)
-    .join(" · ");
-  if (tags) lines.push(`Tags: ${tags}`);
-  if (c.preconditions?.length) lines.push("", "Preconditions:", ...c.preconditions.map((p) => `- ${p}`));
+function caseSection(c: Case, column?: string): string[] {
+  const lines = ["", "## The case", "", `Id: ${c.ref}${c.suite ? ` (suite: ${c.suite})` : ""}`];
+  if (c.description) lines.push(`Business rule: ${c.description}`);
+  const facets = [
+    ...Object.entries(c.custom_fields).map(([field, values]) => `${field}=${values.join("/")}`),
+    ...(c.tags.length ? [`tags=${c.tags.join("/")}`] : []),
+  ].join(" · ");
+  if (facets) lines.push(`Tags: ${facets}`);
+  if (c.preconditions) lines.push("", "Preconditions:", c.preconditions);
   if (c.steps?.length) {
     lines.push("", "Steps — this is the script, don't invent your own:");
     c.steps.forEach((step, i) => {
       const bits = [`${i + 1}. ${step.action}`];
       if (step.data) bits.push(`   data: ${step.data}`);
-      if (step.expected) bits.push(`   expect: ${step.expected}`);
+      if (step.expected_result) bits.push(`   expect: ${step.expected_result}`);
       if (step.pom) {
         const env = step.env ? ` with env ${JSON.stringify(step.env)}` : "";
         bits.push(`   the case says this is \`${step.pom}\`${env} — use it`);
       }
       lines.push(...bits);
     });
-  } else if (c.description) {
-    lines.push("", "Steps — this is the script, don't invent your own:", c.description);
   }
-  if (c.postconditions?.length) lines.push("", "Postconditions:", ...c.postconditions.map((p) => `- ${p}`));
-  if (column && c.flows) {
-    const others = Object.entries(c.flows).filter(([key]) => key !== column);
+  if (c.postconditions) lines.push("", "Postconditions:", c.postconditions);
+  if (column && c.conductor?.flows) {
+    const others = Object.entries(c.conductor.flows).filter(([key]) => key !== column);
     if (others.length) {
       lines.push("", `Already automated elsewhere: ${others.map(([k, v]) => `${k} → ${v}`).join(", ")}`);
     }
@@ -82,8 +85,9 @@ function caseSection(c: TestCase, column?: string): string[] {
  * Failing that, a neighbouring flow for the target platform shows the house
  * style.
  */
-async function referenceSection(c: TestCase, column: string | undefined, flowsDir: string): Promise<string[]> {
-  const sibling = Object.entries(c.flows ?? {}).find(([key]) => key !== column)?.[1] ?? c.flow;
+async function referenceSection(c: Case, column: string | undefined, flowsDir: string): Promise<string[]> {
+  const wiring = c.conductor;
+  const sibling = Object.entries(wiring?.flows ?? {}).find(([key]) => key !== column)?.[1] ?? wiring?.flow;
   const fallback = sibling ? undefined : await neighbourFlow(column);
   const reference = sibling ?? fallback;
   if (!reference) return [];
@@ -119,7 +123,7 @@ async function neighbourFlow(column?: string): Promise<string | undefined> {
   return (flows.find((e) => e.path.includes(suffix)) ?? flows[0])?.path;
 }
 
-async function pomSection(c: TestCase): Promise<string[]> {
+async function pomSection(c: Case): Promise<string[]> {
   const catalog = await loadFlowCatalog();
   const poms = catalog.entries.filter((e) => e.kind === "flow" && /^(pages|commands)\//.test(e.path));
   if (!poms.length) return [];
@@ -152,16 +156,16 @@ async function screensSection(): Promise<string[]> {
   ];
 }
 
-function instructions(c: TestCase, column?: string): string[] {
+function instructions(c: Case, column?: string): string[] {
   return [
     "",
     "## How to go about it",
     "",
-    `1. \`scaffold_case_flow\` with caseId "${c.id}"${column ? ` and column "${column}"` : ""} — it writes the skeleton from the steps (page objects become runFlow calls, the rest become TODOs) and links it to the case.`,
+    `1. \`scaffold_case_flow\` with ref "${c.ref}"${column ? ` and column "${column}"` : ""} — it writes the skeleton from the steps (page objects become runFlow calls, the rest become TODOs) and links it to the case.`,
     "2. Fill in the TODOs. Reuse page objects wherever one covers a step; write a new one under `pages/` if a step is worth reusing and none exists.",
     "3. Run it on the device until it passes twice in a row. Use `conductor run-flow <file> --device <id>` and read the failures rather than guessing.",
     "4. Keep the draft tag until it's green twice; only then promote it to the suite's real tag.",
-    `5. Finish with \`record_case_result\` for ${c.id}${column ? ` (column "${column}")` : ""} so the matrix reflects reality.`,
+    `5. Finish with \`record_case_result\` for ${c.ref}${column ? ` (column "${column}")` : ""} so the matrix reflects reality.`,
     "",
     "Don't weaken an assertion to make a flow pass — if the app is wrong, say so and stop.",
   ];

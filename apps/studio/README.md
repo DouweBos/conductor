@@ -282,52 +282,88 @@ commit.
 
 ## 3. Test case management
 
-A **case** is the spec — id, title, business rule, steps, tags, owner, the
-ticket it traces to — kept as a YAML file under
-`~/.conductor/studio/cases/<project>/`, scoped by the project's path and shared
-with the `conductor cases` CLI. Studio does not write cases, results or plans
-into the repo under test: the flows a case names are the tests, and those are
-what belong in git. The Cases screen is the matrix over them: a switchable tag
-dimension for the columns, filters per dimension, search, and per-column
-automation coverage.
+A **case** follows **Qase's model** — id, title, description, steps as
+action/data/expected_result, suite, severity/priority/type, custom fields, tags —
+kept as a YAML file under `~/.conductor/studio/cases/<project>/`, scoped by the
+project's path. Studio does not write cases, results or plans into the repo under
+test: the flows a case names are the tests, and those are what belong in git. The
+Cases screen is the matrix over them: a switchable custom field for the columns,
+filters, search, and per-column automation coverage.
+
+Cases are either **local** to this machine or **mirrored from Qase** — see
+[Datasource](#datasource) below.
 
 ```yaml
-id: TC-001
+id: 12
 title: User can log in with valid credentials
-userStory: As a returning user, I can sign in…
-description: |-
-  Open the app
-  Enter valid credentials
-  Verify the home screen loads
-tags:
-  platform: [ios, android]
-  vertical: [fintech]
-owner: sam
-links: [https://linear.app/acme/issue/ABC-12]
-flow: login.yaml
+description: As a returning user, I can sign in…
+preconditions: A registered account exists.
+severity: normal
+priority: medium
+type: functional
+status: actual
+suite: Authentication
+custom_fields:
+  Platform: [ios, android]
+tags: [auth, p0]
+external_issues: [https://linear.app/acme/issue/ABC-12]
+steps:
+  - action: Open the login screen
+    expected_result: The email field is focused
+
+conductor:
+  flow: flows/cases/login.yaml
 ```
 
-One user story is one case even when each platform implements it separately:
-use `flows` instead of `flow` to name a flow per column, and `altIds` when the
-platforms are tracked under different ids upstream. Each column then reports its
-own result, and the case's own status is the worst of them.
+Everything above `conductor:` is Qase's, written with Qase's own field names and
+its enums spelled out rather than left as the integers the API sends. The
+`conductor:` block is the one thing Qase has no concept of — which flow file
+implements the case, and which page object performs each step — so it is
+Conductor's, and it survives every sync.
+
+One user story is one case even when each platform implements it separately: use
+`conductor.flows` instead of `conductor.flow` to name a flow per column. Each
+column then reports its own result, and the case's own status is the worst of
+them.
 
 ```yaml
-id: DT-1
-altIds: [DM-101]
-tags:
-  platform: [tv, mobile]
-flows:
-  tv: flows/features/player/vod-playback.tv.yaml
-  mobile: flows/features/player/vod-playback.responsive.yaml
+id: 34
+custom_fields:
+  Platform: [tv, mobile]
+conductor:
+  flows:
+    tv: flows/features/player/vod-playback.tv.yaml
+    mobile: flows/features/player/vod-playback.responsive.yaml
 ```
+
+### Datasource
+
+A project's cases are either **local** — Studio owns them, you author them on the
+Cases screen — or pulled from **Qase**, set per project under the datasource
+button in the toolbar. In Qase mode:
+
+- **Sync** pulls every case (optionally only certain suites) into the local
+  store. Qase owns case content and wins on every sync; the `conductor:` block
+  is read off the existing file and re-attached, and any page object that could
+  not be re-attached because its step changed is reported rather than dropped.
+- A case Qase no longer returns is marked `status: deprecated`, never deleted —
+  deleting it would take its flow link with it.
+- Qase-owned fields are **read-only** in the editor. What stays yours is the
+  automation wiring: the flow that implements the case, and each step's page
+  object.
+- The API token is stored per project, encrypted with Electron's `safeStorage`.
+  `QASE_API_TOKEN` in the environment overrides it.
+
+The mirror is deliberate: the matrix re-reads cases constantly and lint runs on
+every flow change, so neither should wait on a network round trip, and a flaky
+connection should not stop a validation session.
 
 **Authoring.** Cases are created, edited, renamed and deleted from the screen.
 Edits go through yaml's Document API, so comments and key order in a
 hand-written case survive a round trip. **Import** reads a CSV out of whatever
 tool you're leaving — columns it recognises map to case fields, and the ones it
-doesn't become tag dimensions, which is how a "Priority" column turns into a
-matrix filter. **Export** writes the whole matrix back out, automation status
+doesn't become custom fields, which is how a "Platform" column turns into the
+matrix's columns. **Export** writes the whole matrix back out, automation status
 and last verdict included.
 
 **Executions.** A case is only as good as its evidence, so every verification
@@ -418,20 +454,16 @@ of showing "no device" while maestro works away on a simulator.
 
 **Running by hand.** The run wizard walks a filtered selection case by case:
 preconditions, each step with its expected result, pass/fail/skip per step,
-a note and the build under test, then a verdict — and on to the next case. A
-case with a flow can hand off to it mid-session.
+a note and the app version under test, then a result — passed, failed, blocked,
+skipped or invalid, Qase's own set — and on to the next case. A case with a flow
+can hand off to it mid-session.
 
-**From CI, without Studio.** The CLI speaks the same files:
-
-```bash
-conductor cases report --junit report.xml --build "$GITHUB_SHA"
-conductor cases result DT-1 --verdict failed --column tv --note "…"
-conductor cases list --json
-```
-
-`report` binds each `<testcase>` to a case by the flow it names (recording
-against that platform's column) or by a case id appearing as a whole word in the
-test name, and says how many entries matched nothing.
+**From the agent.** Studio's MCP server is how an agent reads and updates cases:
+`list_test_cases`, `describe_test_case`, `get_cases_datasource`,
+`sync_test_cases`, `scaffold_case_flow`, `link_case_flow` and
+`record_case_result`. In Qase mode the tools tell the agent that case content is
+authored in Qase — it links flows and assigns page objects, and never rewrites a
+title or a step.
 
 **Test plans** are the named selections a team actually runs — "release smoke",
 "everything high-priority on tv". They're YAML in the same store, built from whatever the matrix is currently filtered to, and a plan run walks
@@ -443,10 +475,11 @@ error, and a flow no case traces back to is a warning — coverage the matrix
 can't see.
 
 Results are local: what ran on your machine, what you recorded by hand, what the
-agent verified. Nothing is pulled from CI — a run's outcome comes from the
-execution log and nowhere else. The `conductor cases report --junit` command can
-still file a report a CI job produced, but that's a file you hand it, not a
-service Studio talks to.
+agent verified. They carry Qase's result shape — `case_id`, `status`, `time_ms`,
+`comment`, per-step statuses — so pushing them back to a Qase test run is a small
+addition rather than a remap. Studio is a local test-engineering tool; nothing
+here runs in CI, and a run's outcome comes from the execution log and nowhere
+else.
 
 ---
 

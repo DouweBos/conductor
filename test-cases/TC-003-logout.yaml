@@ -1,9 +1,0 @@
-id: TC-003
-title: User can log out
-userStory: >
-  As a signed-in user, I can log out so my session ends on a shared device.
-tags:
-  platform: [ios]
-  vertical: [fintech]
-  product: [wallet]
-flow: logout.yaml

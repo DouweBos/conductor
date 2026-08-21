@@ -1,6 +1,6 @@
 import { caseAutomationBrief, runArtifacts } from "./ipc";
 import { setView } from "./router";
-import type { RunRecord, TestCase, TestReport } from "./types";
+import type { Case, RunRecord, TestReport } from "./types";
 import { setPendingPrompt } from "../stores/agentStore";
 
 /**
@@ -45,29 +45,27 @@ export async function askAgentToFix(record: RunRecord): Promise<void> {
  * otherwise stuck waiting for someone to automate it; the agent can execute the
  * steps as written and file the result itself.
  */
-export function askAgentToVerifyCase(c: TestCase, column?: string): void {
+export function askAgentToVerifyCase(c: Case, column?: string): void {
   const lines = [
-    `Verify test case ${c.id} — "${c.title}" — on the device, then report on it.`,
+    `Verify test case ${c.ref} — "${c.title}" — on the device, then report on it.`,
     "",
-    `Read it first with \`describe_test_case\` (id: ${c.id}). Its steps are the script; don't invent your own.`,
+    `Read it first with \`describe_test_case\` (id: ${c.ref}). Its steps are the script; don't invent your own.`,
   ];
   if (column) lines.push(`Test the ${column} column.`);
-  if (c.userStory) lines.push("", `Business rule: ${c.userStory}`);
-  if (c.preconditions?.length) {
-    lines.push("", "Preconditions:", ...c.preconditions.map((p) => `- ${p}`));
-  }
+  if (c.description) lines.push("", `Business rule: ${c.description}`);
+  if (c.preconditions) lines.push("", "Preconditions:", c.preconditions);
   if (c.steps?.length) {
     lines.push(
       "",
       "Steps:",
-      ...c.steps.map((s, i) => `${i + 1}. ${s.action}${s.expected ? ` → expect: ${s.expected}` : ""}`),
+      ...c.steps.map(
+        (s, i) => `${i + 1}. ${s.action}${s.expected_result ? ` → expect: ${s.expected_result}` : ""}`,
+      ),
     );
-  } else if (c.description) {
-    lines.push("", "Steps:", c.description);
   }
   lines.push(
     "",
-    `Start with \`start_test_report\`, assert every expectation with a structured check, and finish with \`write_test_report\` passing caseId "${c.id}".`,
+    `Start with \`start_test_report\`, assert every expectation with a structured check, and finish with \`write_test_report\` passing caseId "${c.ref}".`,
   );
 
   setPendingPrompt(lines.join("\n"));
@@ -80,9 +78,9 @@ export function askAgentToVerifyCase(c: TestCase, column?: string): void {
  * objects, the known screens — because starting the agent cold means it spends
  * its first twenty minutes rediscovering all of it.
  */
-export async function askAgentToAutomateCase(c: TestCase, column?: string): Promise<void> {
-  const brief = await caseAutomationBrief(c.id, column).catch(
-    () => `Write the Maestro flow for test case ${c.id} — "${c.title}". Read it with \`describe_test_case\` first.`,
+export async function askAgentToAutomateCase(c: Case, column?: string): Promise<void> {
+  const brief = await caseAutomationBrief(c.ref, column).catch(
+    () => `Write the Maestro flow for test case ${c.ref} — "${c.title}". Read it with \`describe_test_case\` first.`,
   );
   setPendingPrompt(brief);
   setView("agent");

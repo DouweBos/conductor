@@ -4,18 +4,13 @@ import path from "node:path";
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import type {
-  PlanRun,
-  PlanRunEntry,
-  TestCase,
-  TestPlan,
-  TestPlanInput,
-} from "../../../app/lib/types";
+import type { PlanRun, PlanRunEntry, TestPlan, TestPlanInput } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { getProjectInfo } from "../file/fileService";
 import { studioDir } from "../util/studioPaths";
 import { awaitRun, cancelRun, runFlow } from "../flow/flowRunner";
 import { listCases } from "./casesService";
+import type { Case } from "./model";
 import { claimRunForPlan, recordResult } from "./resultsService";
 
 /**
@@ -49,7 +44,7 @@ export async function listPlans(): Promise<TestPlan[]> {
         id,
         name,
         description: raw.description ? String(raw.description) : undefined,
-        caseIds: Array.isArray(raw.caseIds) ? raw.caseIds.map(String) : undefined,
+        refs: Array.isArray(raw.refs) ? raw.refs.map(String) : undefined,
         filter: normalizeFilter(raw.filter),
         columns: Array.isArray(raw.columns) ? raw.columns.map(String) : undefined,
         filePath: abs,
@@ -64,8 +59,8 @@ export async function listPlans(): Promise<TestPlan[]> {
 function normalizeFilter(raw: unknown): Record<string, string[]> | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const filter: Record<string, string[]> = {};
-  for (const [dim, value] of Object.entries(raw as Record<string, unknown>)) {
-    filter[dim] = Array.isArray(value) ? value.map(String) : [String(value)];
+  for (const [field, value] of Object.entries(raw as Record<string, unknown>)) {
+    filter[field] = Array.isArray(value) ? value.map(String) : [String(value)];
   }
   return Object.keys(filter).length ? filter : undefined;
 }
@@ -82,7 +77,7 @@ export async function savePlan(input: TestPlanInput): Promise<TestPlan[]> {
     ...(input.description ? { description: input.description } : {}),
     ...(input.filter && Object.keys(input.filter).length ? { filter: input.filter } : {}),
     ...(input.columns?.length ? { columns: input.columns } : {}),
-    ...(input.caseIds?.length ? { caseIds: input.caseIds } : {}),
+    ...(input.refs?.length ? { refs: input.refs } : {}),
   };
   await writeFile(path.join(root, `${id}.yaml`), stringifyYaml(body, { lineWidth: 0 }), "utf8");
   if (input.previousId && input.previousId !== id) {
@@ -96,39 +91,45 @@ export async function deletePlan(id: string): Promise<TestPlan[]> {
   return listPlans();
 }
 
-/** The cases a plan selects: explicit ids in order, else everything matching its filter. */
-export function resolvePlan(plan: TestPlan, cases: TestCase[]): TestCase[] {
-  if (plan.caseIds?.length) {
-    const byId = new Map(cases.map((c) => [c.id, c]));
-    return plan.caseIds.map((id) => byId.get(id)).filter((c): c is TestCase => Boolean(c));
+/** The cases a plan selects: explicit refs in order, else everything matching its filter. */
+export function resolvePlan(plan: TestPlan, cases: Case[]): Case[] {
+  if (plan.refs?.length) {
+    const byRef = new Map(cases.map((c) => [c.ref, c]));
+    return plan.refs.map((ref) => byRef.get(ref)).filter((c): c is Case => Boolean(c));
   }
+  // A filter matches on custom fields, plus `tags` for Qase's flat tag list.
   return cases.filter((c) =>
-    Object.entries(plan.filter ?? {}).every(([dim, values]) =>
-      values.some((v) => (c.tags[dim] ?? []).includes(v)),
+    Object.entries(plan.filter ?? {}).every(([field, values]) =>
+      values.some((v) => (field === "tags" ? c.tags : (c.custom_fields[field] ?? [])).includes(v)),
     ),
   );
 }
 
 /** Everything a plan run will execute: one entry per case per covered column. */
-export function planEntries(plan: TestPlan, cases: TestCase[]): PlanRunEntry[] {
+export function planEntries(plan: TestPlan, cases: Case[]): PlanRunEntry[] {
   const entries: PlanRunEntry[] = [];
   for (const c of resolvePlan(plan, cases)) {
-    const columns = Object.entries(c.flows ?? {})
+    const columns = Object.entries(c.conductor?.flows ?? {})
       .filter(([column]) => !plan.columns?.length || plan.columns.includes(column))
       .map(([column, flow]) => ({ column, flow }));
-    if (c.flow && !columns.length) columns.push({ column: "", flow: c.flow });
+    if (c.conductor?.flow && !columns.length) columns.push({ column: "", flow: c.conductor.flow });
     if (!columns.length) {
-      entries.push({ caseId: c.id, title: c.title, status: "skipped" });
+      entries.push({ ref: c.ref, title: c.title, status: "skipped" });
       continue;
     }
     for (const { column, flow } of columns) {
-      entries.push({ caseId: c.id, title: c.title, column: column || undefined, flow, status: "pending" });
+      entries.push({ ref: c.ref, title: c.title, column: column || undefined, flow, status: "pending" });
     }
   }
   return entries;
 }
 
 // ── Execution ───────────────────────────────────────────────────────────────
+
+/** `DEMO-12` -> 12. Results carry both, so a re-coded project still resolves. */
+function caseIdFor(ref: string): number {
+  return Number(ref.slice(ref.lastIndexOf("-") + 1)) || 0;
+}
 
 const runs = new Map<string, PlanRun>();
 const cancelled = new Set<string>();
@@ -174,12 +175,13 @@ async function execute(run: PlanRun): Promise<void> {
       // A case with no automation still belongs in the plan — it just needs a
       // person, so say so instead of pretending it ran.
       await recordResult({
-        caseId: entry.caseId,
+        case_id: caseIdFor(entry.ref),
+        ref: entry.ref,
         column: entry.column,
-        verdict: "skipped",
+        status: "skipped",
         source: "run",
-        planRunId: run.id,
-        note: "No flow implements this case yet.",
+        plan_run_id: run.id,
+        comment: "No flow implements this case yet.",
       });
       continue;
     }
@@ -197,13 +199,14 @@ async function execute(run: PlanRun): Promise<void> {
     } catch (e) {
       entry.status = "failed";
       await recordResult({
-        caseId: entry.caseId,
+        case_id: caseIdFor(entry.ref),
+        ref: entry.ref,
         column: entry.column,
-        verdict: "failed",
+        status: "failed",
         source: "run",
-        planRunId: run.id,
+        plan_run_id: run.id,
         flow: entry.flow,
-        note: String(e),
+        comment: String(e),
       });
     }
     publish();

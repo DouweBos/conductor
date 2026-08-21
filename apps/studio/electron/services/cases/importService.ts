@@ -1,7 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 
-import type { CasePreview, ImportResult, TestCaseInput } from "../../../app/lib/types";
-import { listCases, saveCase } from "./casesService";
+import type { CasePreview, ImportResult } from "../../../app/lib/types";
+import { datasource, listCases, nextLocalId, saveCase } from "./casesService";
+import { CASE_STATUSES, PRIORITIES, SEVERITIES, decodeEnum, type CaseInput } from "./model";
 
 /**
  * Getting a matrix out of a spreadsheet and back again. Teams arrive with their
@@ -13,13 +14,14 @@ import { listCases, saveCase } from "./casesService";
 export const IMPORT_FIELDS = [
   "id",
   "title",
-  "userStory",
   "description",
-  "owner",
-  "state",
-  "links",
+  "preconditions",
+  "postconditions",
+  "severity",
+  "priority",
+  "status",
+  "tags",
   "flow",
-  "altIds",
 ] as const;
 
 /** Header names we recognise without being told, lower-cased and de-punctuated. */
@@ -32,24 +34,22 @@ const GUESSES: Record<string, string> = {
   testcase: "title",
   name: "title",
   summary: "title",
-  userstory: "userStory",
-  businessrule: "userStory",
-  businessrulecoverage: "userStory",
-  expectedresult: "userStory",
+  userstory: "description",
+  businessrule: "description",
+  businessrulecoverage: "description",
   description: "description",
   steps: "description",
   actionstotest: "description",
-  preconditions: "description",
-  owner: "owner",
-  assignee: "owner",
-  status: "state",
-  automationstatus: "state",
-  state: "state",
+  preconditions: "preconditions",
+  postconditions: "postconditions",
+  severity: "severity",
+  priority: "priority",
+  status: "status",
+  state: "status",
   flow: "flow",
-  link: "links",
-  links: "links",
-  url: "links",
-  ticket: "links",
+  tags: "tags",
+  tag: "tags",
+  labels: "tags",
 };
 
 const key = (header: string) => header.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -96,7 +96,7 @@ export async function previewCsv(file: string): Promise<CasePreview> {
     const guess = GUESSES[key(header)];
     // Anything unrecognised becomes a tag dimension named after the column —
     // that is how a "Priority"/"Main Area" column ends up as a matrix filter.
-    mapping[header] = guess ?? (header ? `tag:${header.trim()}` : "");
+    mapping[header] = guess ?? (header ? `field:${header.trim()}` : "");
   }
   return { headers, rows: rows.slice(0, 20), mapping };
 }
@@ -104,7 +104,7 @@ export async function previewCsv(file: string): Promise<CasePreview> {
 export interface ImportOptions {
   file: string;
   mapping: Record<string, string>;
-  /** Tag dimension + value stamped on every imported case, e.g. platform=tv. */
+  /** Custom field + value stamped on every imported case, e.g. Platform=tv. */
   stamp?: Record<string, string>;
   /** Overwrite cases whose id already exists. */
   overwrite?: boolean;
@@ -113,41 +113,67 @@ export interface ImportOptions {
 export async function importCsv(options: ImportOptions): Promise<ImportResult> {
   const rows = parseCsv(await readFile(options.file, "utf8"));
   const headers = (rows.shift() ?? []).map((h) => h.trim());
+  const { projectCode } = datasource();
   const existing = new Set((await listCases()).map((c) => c.id));
-  const result: ImportResult = { created: 0, updated: 0, skipped: 0, ids: [] };
+  const result: ImportResult = { created: 0, updated: 0, skipped: 0, refs: [] };
+  // A CSV without an id column still imports; ids are handed out locally.
+  let nextId = await nextLocalId();
 
   for (const row of rows) {
-    const input: TestCaseInput = { id: "", title: "", tags: {} };
-    for (const [dim, value] of Object.entries(options.stamp ?? {})) {
-      if (value) input.tags[dim] = [value];
+    const input: CaseInput = { id: 0, title: "", custom_fields: {}, tags: [] };
+    let flow: string | undefined;
+    for (const [field, value] of Object.entries(options.stamp ?? {})) {
+      if (value) input.custom_fields![field] = [value];
     }
     headers.forEach((header, i) => {
       const target = options.mapping[header];
       const value = (row[i] ?? "").trim();
       if (!target || !value) return;
-      if (target.startsWith("tag:")) {
-        const dim = target.slice(4);
-        input.tags[dim] = [...new Set([...(input.tags[dim] ?? []), value])];
+      if (target.startsWith("field:")) {
+        const field = target.slice(6);
+        const fields = input.custom_fields!;
+        fields[field] = [...new Set([...(fields[field] ?? []), value])];
         return;
       }
-      if (target === "links" || target === "altIds") {
-        input[target] = value.split(/[,\s]+/).filter(Boolean);
-        return;
+      switch (target) {
+        case "id":
+          // Accept both `12` and Qase's `DEMO-12`.
+          input.id = Number(value.replace(/^.*-/, "")) || 0;
+          return;
+        case "tags":
+          input.tags = value.split(/[,\s]+/).filter(Boolean);
+          return;
+        case "severity":
+          input.severity = decodeEnum(SEVERITIES, value.toLowerCase());
+          return;
+        case "priority":
+          input.priority = decodeEnum(PRIORITIES, value.toLowerCase());
+          return;
+        case "status":
+          input.status = decodeEnum(CASE_STATUSES, value.toLowerCase());
+          return;
+        case "flow":
+          flow = value;
+          return;
+        default:
+          (input as unknown as Record<string, unknown>)[target] = value;
       }
-      (input as unknown as Record<string, unknown>)[target] = value;
     });
 
-    if (!input.id || !input.title) {
+    if (!input.title) {
       result.skipped++;
       continue;
     }
+    if (!input.id) input.id = nextId++;
     if (existing.has(input.id) && !options.overwrite) {
       result.skipped++;
       continue;
     }
+    if (flow) input.conductor = { flow };
+
     // Overwriting a known id is an edit of that case, not a new one.
     await saveCase(existing.has(input.id) ? { ...input, previousId: input.id } : input);
-    result.ids.push(input.id);
+    result.refs.push(`${projectCode}-${input.id}`);
     if (existing.has(input.id)) result.updated++;
     else result.created++;
     existing.add(input.id);
@@ -160,40 +186,46 @@ const cell = (value: string) => (/[",\n]/.test(value) ? `"${value.replace(/"/g, 
 /** Everything the matrix knows, as a CSV — including the automation status. */
 export async function exportCsv(file: string): Promise<number> {
   const cases = await listCases();
-  const dimensions = [...new Set(cases.flatMap((c) => Object.keys(c.tags)))].sort();
+  const fields = [...new Set(cases.flatMap((c) => Object.keys(c.custom_fields)))].sort();
   const headers = [
     "id",
-    "altIds",
     "title",
-    "userStory",
     "description",
-    "owner",
-    "state",
-    "links",
-    ...dimensions,
+    "preconditions",
+    "postconditions",
+    "suite",
+    "severity",
+    "priority",
+    "type",
+    "status",
+    "tags",
+    ...fields,
     "flows",
-    "lastVerdict",
+    "lastStatus",
     "lastRunAt",
   ];
   const lines = [headers.map(cell).join(",")];
   for (const c of cases) {
-    const flows = Object.entries(c.flows ?? {})
+    const flows = Object.entries(c.conductor?.flows ?? {})
       .map(([column, flow]) => `${column}=${flow}`)
-      .concat(c.flow ? [c.flow] : [])
+      .concat(c.conductor?.flow ? [c.conductor.flow] : [])
       .join(" ");
     lines.push(
       [
-        c.id,
-        (c.altIds ?? []).join(" "),
+        c.ref,
         c.title,
-        c.userStory ?? "",
         c.description ?? "",
-        c.owner ?? "",
-        c.state ?? "",
-        (c.links ?? []).join(" "),
-        ...dimensions.map((d) => (c.tags[d] ?? []).join(" ")),
+        c.preconditions ?? "",
+        c.postconditions ?? "",
+        c.suite ?? "",
+        c.severity ?? "",
+        c.priority ?? "",
+        c.type ?? "",
+        c.status,
+        c.tags.join(" "),
+        ...fields.map((f) => (c.custom_fields[f] ?? []).join(" ")),
         flows,
-        c.lastResult?.verdict ?? "",
+        c.lastResult?.status ?? "",
         c.lastResult ? new Date(c.lastResult.at).toISOString() : "",
       ]
         .map(cell)

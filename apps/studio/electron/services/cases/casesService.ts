@@ -1,166 +1,91 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { Document, isMap, isSeq, parseDocument, parse as parseYaml } from "yaml";
+import { Document, parseDocument, parse as parseYaml } from "yaml";
 
-import type { CaseMatrix, CaseStep, TestCase, TestCaseInput } from "../../../app/lib/types";
 import { getProjectInfo } from "../file/fileService";
+import {
+  getCasesDatasource,
+  getQaseToken,
+  setCasesDatasource,
+} from "../settings/settingsService";
 import { studioDir } from "../util/studioPaths";
+import { fileNameFor, parseCase, writeCase } from "./caseFile";
+import { QASE_OWNED, type Case, type CaseInput, type CaseMatrix, type CasesDatasource, type PullSummary } from "./model";
+import { pullCases } from "./qaseSync";
 import { decorate, listResults } from "./resultsService";
 
-const DEFAULT_DIMENSION = "platform";
-/** Legacy location: cases used to be written into the repo under test. */
-const IN_REPO = "test-cases";
+/** Fallback matrix dimension when the datasource names no custom field. */
+const SUITE_COLUMN = "suite";
 
-function casesRoot(): string {
-  const project = getProjectInfo();
-  if (!project) throw new Error("No project is open.");
-  return studioDir("cases", project.root);
+function project(): { root: string } {
+  const info = getProjectInfo();
+  if (!info) throw new Error("No project is open.");
+  return info;
 }
 
-export async function listCases(): Promise<TestCase[]> {
+function casesRoot(): string {
+  return studioDir("cases", project().root);
+}
+
+export function datasource(): CasesDatasource {
+  return getCasesDatasource(project().root);
+}
+
+export function saveDatasource(next: CasesDatasource): CasesDatasource {
+  return setCasesDatasource(project().root, next);
+}
+
+export async function listCases(): Promise<Case[]> {
   const root = casesRoot();
-  await adoptRepoCases(root);
   if (!existsSync(root)) return [];
-  const files = (await readdir(root)).filter((f) => /\.(ya?ml)$/i.test(f));
-  const cases: TestCase[] = [];
+  const { projectCode } = datasource();
+  const files = (await readdir(root)).filter((f) => /\.ya?ml$/i.test(f));
+  const cases: Case[] = [];
   for (const file of files) {
     const abs = path.join(root, file);
     try {
       const raw = parseYaml(await readFile(abs, "utf8")) as Record<string, unknown>;
-      const parsed = normalizeCase(raw, abs);
+      const parsed = parseCase(raw, abs, projectCode);
       if (parsed) cases.push(parsed);
     } catch {
       // skip malformed case files
     }
   }
-  // Executions come from the local results log — the only source of truth now.
   decorate(cases, await listResults());
-  return cases.sort((a, b) => a.id.localeCompare(b.id));
-}
-
-function normalizeCase(raw: Record<string, unknown>, filePath: string): TestCase | null {
-  if (!raw || typeof raw !== "object") return null;
-  const id = String(raw.id ?? "").trim();
-  const title = String(raw.title ?? "").trim();
-  if (!id || !title) return null;
-
-  // One case can carry several matrix ids — the TV and mobile rows of the same
-  // user story are one case here, but CI job names still use either id.
-  const altIds = Array.isArray(raw.altIds) ? raw.altIds.map(String).filter(Boolean) : undefined;
-
-  const flows: Record<string, string> = {};
-  if (raw.flows && typeof raw.flows === "object") {
-    for (const [key, value] of Object.entries(raw.flows as Record<string, unknown>)) {
-      if (value) flows[key] = String(value);
-    }
-  }
-
-  const tags: Record<string, string[]> = {};
-  if (raw.tags && typeof raw.tags === "object") {
-    for (const [dim, value] of Object.entries(raw.tags as Record<string, unknown>)) {
-      tags[dim] = Array.isArray(value) ? value.map(String) : [String(value)];
-    }
-  }
-  return {
-    id,
-    title,
-    description: raw.description ? String(raw.description) : undefined,
-    userStory: raw.userStory ? String(raw.userStory) : undefined,
-    tags,
-    altIds: altIds?.length ? altIds : undefined,
-    owner: raw.owner ? String(raw.owner) : undefined,
-    state: raw.state ? String(raw.state) : undefined,
-    links: Array.isArray(raw.links) ? raw.links.map(String).filter(Boolean) : undefined,
-    preconditions: stringList(raw.preconditions),
-    postconditions: stringList(raw.postconditions),
-    steps: normalizeSteps(raw.steps),
-    flow: raw.flow ? String(raw.flow) : undefined,
-    flows: Object.keys(flows).length ? flows : undefined,
-    filePath,
-  };
-}
-
-function stringList(raw: unknown): string[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const list = raw.map(String).map((v) => v.trim()).filter(Boolean);
-  return list.length ? list : undefined;
-}
-
-/** Steps may be plain strings (`- Open the app`) or the action/expected form. */
-function normalizeSteps(raw: unknown): CaseStep[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const steps: CaseStep[] = [];
-  for (const item of raw) {
-    if (typeof item === "string") {
-      if (item.trim()) steps.push({ action: item.trim() });
-      continue;
-    }
-    if (!item || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    const action = String(row.action ?? row.step ?? "").trim();
-    if (!action) continue;
-    const env: Record<string, string> = {};
-    if (row.env && typeof row.env === "object") {
-      for (const [k, v] of Object.entries(row.env as Record<string, unknown>)) env[k] = String(v);
-    }
-    steps.push({
-      action,
-      data: row.data ? String(row.data) : undefined,
-      expected: row.expected ? String(row.expected) : undefined,
-      pom: row.pom ? String(row.pom) : undefined,
-      env: Object.keys(env).length ? env : undefined,
-    });
-  }
-  return steps.length ? steps : undefined;
+  return cases.sort((a, b) => a.id - b.id);
 }
 
 /**
- * One-time pickup of cases an earlier version wrote into the repo. Copied, not
- * moved: the repo's copy is left exactly as it was for the user to delete (or
- * keep) themselves.
+ * Columns come from a Qase custom field — which one is the project's choice,
+ * since no two Qase projects model platform the same way. Suite is the fallback.
  */
-async function adoptRepoCases(root: string): Promise<void> {
-  const project = getProjectInfo();
-  if (!project || existsSync(root)) return;
-  const legacy = path.join(project.root, IN_REPO);
-  if (!existsSync(legacy)) return;
-  await mkdir(root, { recursive: true });
-  for (const file of (await readdir(legacy)).filter((f) => /\.(ya?ml)$/i.test(f))) {
-    await copyFile(path.join(legacy, file), path.join(root, file));
-  }
+export async function buildMatrix(field?: string): Promise<CaseMatrix> {
+  const cases = await listCases();
+  const chosen = field ?? datasource().qase?.matrixField ?? SUITE_COLUMN;
+  const valuesOf = (c: Case): string[] =>
+    chosen === SUITE_COLUMN ? (c.suite ? [c.suite] : []) : (c.custom_fields[chosen] ?? []);
+  const columns = [...new Set(cases.flatMap(valuesOf))].sort();
+  return { field: chosen, columns, cases };
 }
 
-export async function buildMatrix(dimension = DEFAULT_DIMENSION): Promise<CaseMatrix> {
+/** Every custom field any case carries — the options for the column picker. */
+export async function matrixFields(): Promise<string[]> {
   const cases = await listCases();
-  const columns = [
-    ...new Set(cases.flatMap((c) => c.tags[dimension] ?? [])),
-  ].sort();
-  return { dimension, columns, cases };
+  return [SUITE_COLUMN, ...new Set(cases.flatMap((c) => Object.keys(c.custom_fields)))].sort();
 }
 
 // ── Authoring ───────────────────────────────────────────────────────────────
 
-/** `DT-1 Can I …?` -> `DT-1-can-i.yaml`, matching what the importer writes. */
-function fileNameFor(id: string, title: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60)
-    .replace(/-$/, "");
-  return `${id}${slug ? `-${slug}` : ""}.yaml`;
-}
-
-async function fileForId(id: string): Promise<string | null> {
+async function fileForId(id: number): Promise<string | null> {
   const root = casesRoot();
   if (!existsSync(root)) return null;
   for (const file of await readdir(root)) {
-    if (!/\.(ya?ml)$/i.test(file)) continue;
+    if (!/\.ya?ml$/i.test(file)) continue;
     try {
       const raw = parseYaml(await readFile(path.join(root, file), "utf8")) as Record<string, unknown>;
-      if (String(raw?.id ?? "").trim() === id) return path.join(root, file);
+      if (Number(raw?.id) === id) return path.join(root, file);
     } catch {
       // malformed files can't own an id
     }
@@ -168,133 +93,149 @@ async function fileForId(id: string): Promise<string | null> {
   return null;
 }
 
-const CLEARABLE = [
-  "altIds",
-  "description",
-  "userStory",
-  "flow",
-  "flows",
-  "owner",
-  "links",
-  "state",
-  "steps",
-  "preconditions",
-  "postconditions",
-];
-
-/**
- * Keep id and tag lists on one line (`platform: [tv, mobile]`) — the default
- * block style turns a compact case file into a page of bullets on every save.
- */
-function compact(doc: Document, key: string, value: unknown): unknown {
-  if (key === "altIds" || key === "links") {
-    const node = doc.createNode(value);
-    if (isSeq(node)) node.flow = true;
-    return node;
-  }
-  if (key !== "tags") return value;
-  const node = doc.createNode(value);
-  if (isMap(node)) {
-    for (const item of node.items) {
-      if (isSeq(item.value)) item.value.flow = true;
-    }
-  }
-  return node;
+/** Next free id in local mode, so a hand-authored case doesn't need one picked. */
+export async function nextLocalId(): Promise<number> {
+  const cases = await listCases();
+  return cases.reduce((max, c) => Math.max(max, c.id), 0) + 1;
 }
 
 /**
  * Write a case, editing the existing file in place when there is one — through
  * yaml's Document API, so comments and key order in a hand-written case survive
  * a round trip through the editor.
+ *
+ * In `qase` mode the Qase-owned fields are refused rather than written: Qase is
+ * the source of truth, and the next pull would revert the edit anyway.
  */
-export async function saveCase(input: TestCaseInput): Promise<TestCase> {
-  const id = input.id.trim();
-  if (!id) throw new Error("A case needs an id.");
-  if (!input.title.trim()) throw new Error("A case needs a title.");
+export async function saveCase(input: CaseInput): Promise<Case> {
+  const config = datasource();
+  if (!input.title?.trim()) throw new Error("A case needs a title.");
+  if (!Number.isFinite(input.id)) throw new Error("A case needs a numeric id.");
 
-  const previous = (input.previousId ?? id).trim();
-  const clash = await fileForId(id);
-  // previousId is what makes this an edit; without it, an existing id is a
-  // collision rather than an invitation to overwrite someone else's case.
-  if (clash && (!input.previousId || (previous !== id && clash))) {
-    throw new Error(`Case id "${id}" is already taken.`);
-  }
-  const existingPath = previous === id ? clash : await fileForId(previous);
+  const previous = input.previousId ?? input.id;
+  const existingPath = await fileForId(previous);
 
-  const doc = existingPath
-    ? parseDocument(await readFile(existingPath, "utf8"))
-    : new Document({});
-  doc.set("id", id);
-  doc.set("title", input.title.trim());
-  const optional: Record<string, unknown> = {
-    altIds: input.altIds?.length ? input.altIds : undefined,
-    userStory: input.userStory?.trim() || undefined,
-    description: input.description?.trim() || undefined,
-    tags: Object.fromEntries(
-      Object.entries(input.tags ?? {}).filter(([, values]) => values.length),
-    ),
-    owner: input.owner?.trim() || undefined,
-    state: input.state?.trim() || undefined,
-    links: input.links?.length ? input.links : undefined,
-    flow: input.flow?.trim() || undefined,
-    flows: Object.keys(input.flows ?? {}).length ? input.flows : undefined,
-    preconditions: input.preconditions?.length ? input.preconditions : undefined,
-    postconditions: input.postconditions?.length ? input.postconditions : undefined,
-    steps: input.steps?.length
-      ? input.steps.map((step) => ({
-          action: step.action,
-          ...(step.data ? { data: step.data } : {}),
-          ...(step.expected ? { expected: step.expected } : {}),
-          ...(step.pom ? { pom: step.pom } : {}),
-          ...(step.env && Object.keys(step.env).length ? { env: step.env } : {}),
-        }))
-      : undefined,
-  };
-  for (const [key, value] of Object.entries(optional)) {
-    if (value === undefined || (key === "tags" && !Object.keys(value as object).length)) {
-      if (CLEARABLE.includes(key)) doc.delete(key);
-      continue;
+  if (config.mode === "qase" && existingPath) {
+    const current = parseCase(
+      parseYaml(await readFile(existingPath, "utf8")) as Record<string, unknown>,
+      existingPath,
+      config.projectCode,
+    );
+    const changed = QASE_OWNED.filter(
+      (key) =>
+        input[key] !== undefined &&
+        JSON.stringify(input[key]) !== JSON.stringify(current?.[key as keyof Case]),
+    );
+    if (changed.length) {
+      throw new Error(
+        `${changed.join(", ")} ${changed.length > 1 ? "are" : "is"} owned by Qase — edit the case in Qase, then sync.`,
+      );
     }
-    doc.set(key, compact(doc, key, value));
   }
+
+  const clash = await fileForId(input.id);
+  if (clash && previous !== input.id) throw new Error(`Case id ${input.id} is already taken.`);
+
+  const doc = existingPath ? parseDocument(await readFile(existingPath, "utf8")) : new Document({});
+  const base = existingPath
+    ? parseCase(
+        parseYaml(await readFile(existingPath, "utf8")) as Record<string, unknown>,
+        existingPath,
+        config.projectCode,
+      )
+    : null;
+
+  const ref = `${config.projectCode}-${input.id}`;
+  const merged: Case = {
+    ...(base ?? {
+      status: "actual",
+      is_manual: true,
+      custom_fields: {},
+      tags: [],
+      steps_type: "classic",
+    }),
+    id: input.id,
+    ref,
+    title: input.title.trim(),
+    description: input.description?.trim() || undefined,
+    preconditions: input.preconditions?.trim() || undefined,
+    postconditions: input.postconditions?.trim() || undefined,
+    severity: input.severity ?? base?.severity,
+    priority: input.priority ?? base?.priority,
+    type: input.type ?? base?.type,
+    behavior: input.behavior ?? base?.behavior,
+    status: input.status ?? base?.status ?? "actual",
+    is_manual: input.is_manual ?? base?.is_manual ?? true,
+    suite_id: input.suite_id ?? base?.suite_id,
+    steps: input.steps ?? base?.steps,
+    custom_fields: input.custom_fields ?? base?.custom_fields ?? {},
+    tags: input.tags ?? base?.tags ?? [],
+    conductor: input.conductor ?? base?.conductor,
+    filePath: existingPath ?? "",
+  };
+
+  writeCase(doc, merged);
 
   const root = casesRoot();
   await mkdir(root, { recursive: true });
-  const target = path.join(root, fileNameFor(id, input.title));
+  const target = path.join(root, fileNameFor(ref, merged.title));
   await writeFile(existingPath ?? target, doc.toString({ lineWidth: 0 }), "utf8");
-  // Keep the filename in step with the id/title it now carries.
   if (existingPath && path.resolve(existingPath) !== path.resolve(target)) {
     await rename(existingPath, target);
   }
 
-  const saved = (await listCases()).find((c) => c.id === id);
+  const saved = (await listCases()).find((c) => c.id === input.id);
   if (!saved) throw new Error("Case was written but could not be read back.");
   return saved;
 }
 
 /** A case as editable input — the basis for "change one field, keep the rest". */
-export function toInput(c: TestCase): TestCaseInput {
+export function toInput(c: Case): CaseInput {
   return {
     id: c.id,
     previousId: c.id,
-    altIds: c.altIds,
     title: c.title,
     description: c.description,
-    userStory: c.userStory,
-    tags: c.tags,
-    owner: c.owner,
-    state: c.state,
-    links: c.links,
     preconditions: c.preconditions,
     postconditions: c.postconditions,
+    severity: c.severity,
+    priority: c.priority,
+    type: c.type,
+    behavior: c.behavior,
+    status: c.status,
+    is_manual: c.is_manual,
+    suite_id: c.suite_id,
     steps: c.steps,
-    flow: c.flow,
-    flows: c.flows,
+    custom_fields: c.custom_fields,
+    tags: c.tags,
+    conductor: c.conductor,
   };
 }
 
-export async function deleteCase(id: string): Promise<void> {
+export async function deleteCase(id: number): Promise<void> {
   const file = await fileForId(id);
-  if (!file) throw new Error(`No case with id "${id}".`);
+  if (!file) throw new Error(`No case with id ${id}.`);
   await rm(file);
+}
+
+// ── Sync ────────────────────────────────────────────────────────────────────
+
+export async function pull(): Promise<PullSummary> {
+  const root = project().root;
+  const config = getCasesDatasource(root);
+  if (config.mode !== "qase") throw new Error("This project's cases are local — nothing to pull.");
+  const token = getQaseToken(root);
+  if (!token) throw new Error("No Qase API token is set for this project.");
+
+  const summary = await pullCases({
+    casesDir: casesRoot(),
+    projectCode: config.projectCode,
+    token,
+    suiteIds: config.qase?.suiteIds,
+  });
+  setCasesDatasource(root, {
+    ...config,
+    qase: { ...config.qase, lastPulledAt: Date.now() },
+  });
+  return summary;
 }

@@ -28,7 +28,7 @@ export function ImportDialog({ onClose, onImported }: ImportDialogProps) {
   const [file, setFile] = useState<string | null>(null);
   const [preview, setPreview] = useState<CasePreview | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
-  const [stampDim, setStampDim] = useState("platform");
+  const [stampField, setStampField] = useState("Platform");
   const [stampValue, setStampValue] = useState("");
   const [overwrite, setOverwrite] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +54,7 @@ export function ImportDialog({ onClose, onImported }: ImportDialogProps) {
       const result = await importCases({
         file,
         mapping,
-        stamp: stampValue.trim() ? { [stampDim.trim()]: stampValue.trim() } : undefined,
+        stamp: stampValue.trim() ? { [stampField.trim()]: stampValue.trim() } : undefined,
         overwrite,
       });
       onImported(result.created, result.updated);
@@ -79,8 +79,8 @@ export function ImportDialog({ onClose, onImported }: ImportDialogProps) {
         {preview ? (
           <>
             <p className={styles.muted}>
-              Unrecognised columns become tag dimensions, so a Priority column turns into a
-              filterable dimension. {preview.rows.length} rows previewed.
+              Unrecognised columns become custom fields, so a Platform column turns into a
+              filterable field the matrix can key on. {preview.rows.length} rows previewed.
             </p>
             <div className={styles.mapGrid}>
               {preview.headers.map((header) => (
@@ -88,15 +88,15 @@ export function ImportDialog({ onClose, onImported }: ImportDialogProps) {
                   <span className={styles.mapHeader}>{header}</span>
                   <Select
                     value={
-                      FIELDS.some((f) => f.value === mapping[header]) ? mapping[header] : "__tag"
+                      FIELDS.some((f) => f.value === mapping[header]) ? mapping[header] : "__field"
                     }
                     onChange={(e) =>
                       setMapping((m) => ({
                         ...m,
-                        [header]: e.target.value === "__tag" ? `tag:${header}` : e.target.value,
+                        [header]: e.target.value === "__field" ? `field:${header}` : e.target.value,
                       }))
                     }
-                    options={[...FIELDS, { value: "__tag", label: `tag: ${header}` }]}
+                    options={[...FIELDS, { value: "__field", label: `custom field: ${header}` }]}
                   />
                   <span className={styles.mapSample}>{preview.rows[0]?.[preview.headers.indexOf(header)] ?? ""}</span>
                 </div>
@@ -105,8 +105,8 @@ export function ImportDialog({ onClose, onImported }: ImportDialogProps) {
             <div className={styles.verdictRow}>
               <TextField
                 label="Stamp every case with"
-                value={stampDim}
-                onChange={(e) => setStampDim(e.target.value)}
+                value={stampField}
+                onChange={(e) => setStampField(e.target.value)}
               />
               <TextField
                 label="value"
