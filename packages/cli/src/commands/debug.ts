@@ -6,7 +6,7 @@ export const HELP = `  debug status [--port N]              Show RN debugger con
 
 import crypto from 'crypto';
 import { printError, printData, OutputOptions } from '../output.js';
-import { MetroCdpClient, cdpCall } from '../drivers/metro-cdp.js';
+import { MetroCdpClient, cdpCall, resolveMetroPort } from '../drivers/metro-cdp.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 import { fetchTargets } from '../drivers/log-sources/metro.js';
 import { makeComponentTreeScript, makeInspectElementScript } from '../drivers/metro-scripts.js';
@@ -50,11 +50,11 @@ export async function debugStatus(
   sessionName: string,
   debugOpts: DebugOptions
 ): Promise<number> {
-  const port = debugOpts.port ?? 8081;
   try {
-    const targets = await fetchTargets(port, 'localhost');
     const { deviceId, platformPromise } = resolveSession(sessionName);
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: debugOpts.port, deviceId, platform });
+    const targets = await fetchTargets(port, 'localhost');
 
     const client = new MetroCdpClient();
     await client.connect({ port, deviceId, platform, targetIndex: debugOpts.targetIndex });
@@ -131,10 +131,10 @@ export async function debugEvaluate(
     }
   }
 
-  const port = debugOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   try {
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: debugOpts.port, deviceId, platform });
     const client = new MetroCdpClient();
     await client.connect({ port, deviceId, platform, targetIndex: debugOpts.targetIndex });
     const value = await client.evaluate(expr);
@@ -178,10 +178,10 @@ export async function debugComponentTree(
   sessionName: string,
   debugOpts: DebugOptions
 ): Promise<number> {
-  const port = debugOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   try {
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: debugOpts.port, deviceId, platform });
     const client = new MetroCdpClient();
     await client.connect({ port, deviceId, platform, targetIndex: debugOpts.targetIndex });
     const awaitCallback = await client.installCallbackBinding();
@@ -280,10 +280,10 @@ export async function debugInspectElement(
   }
   const x = Number(m[1]);
   const y = Number(m[2]);
-  const port = debugOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   try {
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: debugOpts.port, deviceId, platform });
     const client = new MetroCdpClient();
     await client.connect({ port, deviceId, platform, targetIndex: debugOpts.targetIndex });
     const awaitCallback = await client.installCallbackBinding();
@@ -324,10 +324,10 @@ export async function debugReload(
   sessionName: string,
   debugOpts: DebugOptions
 ): Promise<number> {
-  const port = debugOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   try {
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: debugOpts.port, deviceId, platform });
     await cdpCall<void>('Page.reload', undefined, {
       port,
       deviceId,

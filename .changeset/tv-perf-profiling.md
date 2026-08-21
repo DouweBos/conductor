@@ -59,9 +59,12 @@ detail) so commits can be lined up against input events. On a release build,
 where React strips the timing instrumentation, it now fails with an explanation
 instead of reporting an empty result.
 
-Metro-backed commands (`profile react`, `profile js`, `debug *`) auto-detect
-Metro's port from the device instead of assuming 8081, and an unreachable Metro
-now names the port it tried and how to override it.
+Metro-backed commands auto-detect Metro's port from the device instead of
+assuming 8081, and an unreachable Metro now names the port it tried and how to
+override it. That covers `profile react`, `profile js`, `debug *`, `network`,
+`native-rn` and `metro reload`. `metro stop` deliberately keeps the literal
+8081 default: it kills whatever is listening on the port it resolves, and
+discovering one risks killing a Metro the user did not mean to stop.
 
 **Absence is now structurally distinguishable from a good value.** An empty
 `Distribution` reports `null` for every percentile rather than `0` — a missing

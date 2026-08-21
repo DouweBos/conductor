@@ -12,7 +12,7 @@
 export const RN_SET_HELP = `  native-rn-set --react-tag <n> --path <dot.path> --value <json>   Live-edit an RN component's props via React (text, style.color, …; dev builds only)`;
 export const RN_PROPS_HELP = `  native-rn-props --react-tag <n>      Raw JSX props (memoizedProps) of an RN fiber by reactTag`;
 
-import { MetroCdpClient } from '../drivers/metro-cdp.js';
+import { MetroCdpClient, resolveMetroPort } from '../drivers/metro-cdp.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 import { makeOverridePropsScript, makeRnPropsScript } from '../drivers/metro-scripts.js';
 import { printError, printData, OutputOptions } from '../output.js';
@@ -67,11 +67,11 @@ export async function nativeRnSet(
   const path = args.path.split('.').filter((s) => s.length > 0);
   const { json } = parseValue(args.value);
 
-  const port = rnOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   const client = new MetroCdpClient();
   try {
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: rnOpts.port, deviceId, platform });
     await client.connect({ port, deviceId, platform, targetIndex: rnOpts.targetIndex });
     const raw = await client.evaluate<string>(makeOverridePropsScript(tag, path, json), true);
     const res = JSON.parse(raw) as {
@@ -107,11 +107,11 @@ export async function nativeRnProps(
     printError('native-rn-props needs --react-tag <n> (from native-inspect rn.reactTag)', opts);
     return 1;
   }
-  const port = rnOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   const client = new MetroCdpClient();
   try {
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: rnOpts.port, deviceId, platform });
     await client.connect({ port, deviceId, platform, targetIndex: rnOpts.targetIndex });
     const raw = await client.evaluate<string>(makeRnPropsScript(tag), true);
     const res = JSON.parse(raw) as { status: string; props?: unknown; message?: string };

@@ -3,7 +3,7 @@ export const HELP = `  metro stop [--port N]                Stop the Metro bundl
 
 import { spawn } from 'child_process';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
-import { cdpCall } from '../drivers/metro-cdp.js';
+import { cdpCall, resolveMetroPort } from '../drivers/metro-cdp.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 
 export interface MetroOptions {
@@ -32,6 +32,8 @@ async function pidsOnPort(port: number): Promise<number[]> {
 }
 
 export async function metroStop(opts: OutputOptions, metroOpts: MetroOptions): Promise<number> {
+  // Deliberately not auto-discovered: this kills whatever listens on the port,
+  // and guessing one risks killing a Metro the user did not mean to stop.
   const port = metroOpts.port ?? 8081;
   const pids = await pidsOnPort(port);
 
@@ -73,13 +75,13 @@ export async function metroReload(
   sessionName: string,
   metroOpts: MetroOptions
 ): Promise<number> {
-  const port = metroOpts.port ?? 8081;
   let deviceId: string | undefined;
   let platform: string | undefined;
   if (sessionName && sessionName !== 'default') {
     deviceId = sessionName;
     platform = await detectPlatform(deviceId).catch(() => undefined);
   }
+  const port = await resolveMetroPort({ port: metroOpts.port, deviceId, platform });
 
   // Try CDP Page.reload first (works on Hermes/Fusebox).
   try {

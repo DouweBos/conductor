@@ -3,7 +3,7 @@ export const HELP = `  network logs [--port N] [--limit N]  Read recent HTTP tra
                                        Issue an HTTP request from the app's context`;
 
 import { printError, printData, OutputOptions } from '../output.js';
-import { MetroCdpClient } from '../drivers/metro-cdp.js';
+import { MetroCdpClient, resolveMetroPort } from '../drivers/metro-cdp.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 import { getDriver } from '../runner.js';
 import { WebDriver } from '../drivers/web.js';
@@ -182,10 +182,10 @@ export async function networkLogs(
     }
   }
 
-  const port = netOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   try {
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: netOpts.port, deviceId, platform });
     const client = new MetroCdpClient();
     await client.connect({ port, deviceId, platform, targetIndex: netOpts.targetIndex });
     await client.evaluate<ShimResult>(INSTALL_SHIM_SCRIPT);
@@ -280,10 +280,10 @@ export async function networkRequest(
 })()
 `;
 
-  const port = reqOpts.port ?? 8081;
   const { deviceId, platformPromise } = resolveSession(sessionName);
   try {
     const platform = await platformPromise;
+    const port = await resolveMetroPort({ port: reqOpts.port, deviceId, platform });
     const client = new MetroCdpClient();
     await client.connect({ port, deviceId, platform, targetIndex: reqOpts.targetIndex });
     const result = await client.evaluate<{
