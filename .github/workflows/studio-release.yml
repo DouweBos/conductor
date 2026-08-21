@@ -186,6 +186,13 @@ jobs:
             gh release create "$TAG" "${ARGS[@]}" "${ASSETS[@]}"
           fi
 
+          # A leftover draft from an earlier attempt is reused by the upload
+          # branch above, and a draft is invisible to electron-updater and to
+          # the houwert.dev proxy alike. Force it published.
+          PRERELEASE=true
+          [ "$CHANNEL" = "latest" ] && PRERELEASE=false
+          gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE"
+
       # A release whose manifest names a file that never uploaded looks fine
       # from the outside, so assert every artifact actually landed.
       - name: Verify every artifact landed
