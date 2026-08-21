@@ -60,6 +60,9 @@ All commands accept `--session <name>` to scope to a named session and
 | `list-apps`        | List installed apps on the current device.                                                    |
 | `logs`             | Stream platform logs scoped to the current app.                                               |
 | `memory`           | Print memory usage / capture a heap profile (Android `hprof`).                                |
+| `profile frames`   | Android jank / frame-timing report from `dumpsys gfxinfo`. See [TV performance](/conductor/docs/tv-performance). |
+| `profile js`       | Hermes JS CPU sampling profiler, ranked by self time.                                         |
+| `press-key --measure` | Time input-to-response latency; `--repeat n` for a distribution.                           |
 
 ---
 

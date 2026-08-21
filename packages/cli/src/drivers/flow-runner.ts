@@ -474,6 +474,15 @@ type ExecOpts = {
   output: Record<string, unknown>;
   depth: number; // nesting level for indented output
   benchmark?: boolean;
+  /** Receives one entry per executed command, for --repeat aggregation. */
+  benchmarkSink?: (entry: BenchmarkEntry) => void;
+};
+
+export type BenchmarkEntry = {
+  label: string;
+  depth: number;
+  ms: number;
+  ok: boolean;
 };
 
 export async function executeFlow(
@@ -486,6 +495,7 @@ export async function executeFlow(
     output?: Record<string, unknown>;
     depth?: number;
     benchmark?: boolean;
+    benchmarkSink?: (entry: BenchmarkEntry) => void;
   } = {}
 ): Promise<void> {
   const cliEnv = opts.env ?? {};
@@ -498,6 +508,7 @@ export async function executeFlow(
     output: opts.output ?? {},
     depth: opts.depth ?? 0,
     benchmark: opts.benchmark,
+    benchmarkSink: opts.benchmarkSink,
   };
   const flowStart = opts.benchmark ? performance.now() : 0;
 
@@ -629,10 +640,12 @@ async function executeCommand(cmd: FlowCommand, driver: AnyDriver, opts: ExecOpt
     process.stdout.write(`${indent}→ ${label} ... `);
   }
 
-  const t0 = opts.benchmark ? performance.now() : 0;
+  const timing = opts.benchmark || opts.benchmarkSink;
+  const t0 = timing ? performance.now() : 0;
 
   try {
     await executeCommandBody(key, resolvedVal, driver, opts);
+    opts.benchmarkSink?.({ label, depth: opts.depth, ms: performance.now() - t0, ok: true });
     const elapsed = opts.benchmark ? `  (${fmtMs(performance.now() - t0)})` : '';
     if (!isCompound) {
       console.log(`ok${elapsed}`);
@@ -641,6 +654,7 @@ async function executeCommand(cmd: FlowCommand, driver: AnyDriver, opts: ExecOpt
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    opts.benchmarkSink?.({ label, depth: opts.depth, ms: performance.now() - t0, ok: false });
     const elapsed = opts.benchmark ? `  (${fmtMs(performance.now() - t0)})` : '';
     if (optional) {
       // For compound commands the sub-command already printed its warning/failure
@@ -1468,6 +1482,7 @@ async function executeCommandBody(
           output: opts.output,
           depth: childDepth,
           benchmark: opts.benchmark,
+          benchmarkSink: opts.benchmarkSink,
         });
       } else {
         const v = val as {
@@ -1490,6 +1505,7 @@ async function executeCommandBody(
             output: opts.output,
             depth: childDepth,
             benchmark: opts.benchmark,
+            benchmarkSink: opts.benchmarkSink,
           });
         }
       }

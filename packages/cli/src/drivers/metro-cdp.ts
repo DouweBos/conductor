@@ -10,10 +10,14 @@
  */
 import WebSocket from 'ws';
 import { fetchTargets, type MetroTarget } from './log-sources/metro.js';
-import { selectTargetForDevice, getDeviceDisplayName } from './log-sources/metro-discovery.js';
+import {
+  selectTargetForDevice,
+  getDeviceDisplayName,
+  discoverMetroPortForDevice,
+} from './log-sources/metro-discovery.js';
 
 export interface CdpCallOptions {
-  /** Metro server port. Defaults to 8081. */
+  /** Metro server port. When omitted, discovered from the device, then 8081. */
   port?: number;
   /** Metro host. Defaults to localhost. */
   host?: string;
@@ -93,16 +97,43 @@ export function selectDebuggerUrl(
  * Throws with a clear message if Metro is unreachable or no target matches.
  */
 export async function resolveDebuggerUrl(opts: CdpCallOptions): Promise<string> {
-  const port = opts.port ?? 8081;
+  const port = await resolveMetroPort(opts);
   const host = opts.host ?? 'localhost';
-  const targets = await fetchTargets(port, host);
+
+  let targets: MetroTarget[];
+  try {
+    targets = await fetchTargets(port, host);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Cannot reach Metro on ${host}:${port} — ${detail}.\n` +
+        `Pass --port <n> if Metro listens elsewhere (a project may set RCT_METRO_PORT); ` +
+        `\`conductor workspace info\` reports the port it can see.`
+    );
+  }
 
   let displayName: string | undefined;
   if (opts.deviceId && opts.platform) {
     displayName = (await getDeviceDisplayName(opts.platform, opts.deviceId)) ?? undefined;
   }
 
-  return selectDebuggerUrl(targets, opts, displayName);
+  return selectDebuggerUrl(targets, { ...opts, port }, displayName);
+}
+
+/**
+ * Metro's port for this device: the explicit --port, else whatever the device is
+ * actually connected to, else 8081. Auto-discovery matters because a project
+ * that sets RCT_METRO_PORT otherwise fails with an opaque connection error.
+ */
+export async function resolveMetroPort(opts: CdpCallOptions): Promise<number> {
+  if (opts.port !== undefined) return opts.port;
+  if (opts.deviceId && opts.platform) {
+    const discovered = await discoverMetroPortForDevice(opts.platform, opts.deviceId).catch(
+      () => null
+    );
+    if (discovered) return discovered;
+  }
+  return 8081;
 }
 
 /**

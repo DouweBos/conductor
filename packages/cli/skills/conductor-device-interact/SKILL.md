@@ -41,7 +41,7 @@ conductor assert-visible "Dashboard"
 | `conductor copy-text-from <element>` | Print an element's text (and copy to the iOS clipboard) |
 | `conductor input-text <text>` | Type into the focused field |
 | `conductor erase-text [n]` | Erase n characters (default 50) |
-| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`) for tvOS / Android TV / vega. `--long-press` / `--duration <seconds>` holds it |
+| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`) for tvOS / Android TV / vega. `--long-press` / `--duration <seconds>` holds it; `--measure` times the response (see `conductor-profiler`) |
 | `conductor hide-keyboard` | Dismiss the on-screen keyboard |
 | `conductor back` | Press back |
 | `conductor scroll [--direction down\|up\|left\|right]` | Scroll |

@@ -1,0 +1,82 @@
+Applications Graphics Acceleration Info:
+Uptime: 228452 Realtime: 228452
+
+** Graphics info for pid 4678 [com.google.android.tvlauncher] **
+
+Stats since: 223388475851ns
+Total frames rendered: 115
+Janky frames: 2 (1.74%)
+50th percentile: 5ms
+90th percentile: 5ms
+95th percentile: 5ms
+99th percentile: 19ms
+Number Missed Vsync: 1
+Number High input latency: 18
+Number Slow UI thread: 1
+Number Slow bitmap uploads: 0
+Number Slow issue draw commands: 0
+Number Frame deadline missed: 2
+HISTOGRAM: 5ms=111 6ms=1 13ms=1 19ms=1 27ms=1
+50th gpu percentile: 1ms
+90th gpu percentile: 13ms
+95th gpu percentile: 14ms
+99th gpu percentile: 14ms
+GPU HISTOGRAM: 1ms=92 2ms=5 13ms=7 14ms=8
+Font Cache (CPU):
+  Size: 255.66 kB 
+  Glyph Count: 56 
+CPU Caches:
+GPU Caches:
+  Shadow Gaussian Falloff:
+    Texture: 128.00 bytes (1 entry)
+  Other:
+    Other: 25.19 KB (1 entry)
+    Buffer Object: 2.05 KB (2 entries)
+  SW Path Mask:
+    Texture: 2.83 KB (2 entries)
+  Image:
+    Texture: 16.87 MB (25 entries)
+  Scratch:
+    RenderTarget: 19.25 MB (6 entries)
+    Texture: 1.00 MB (1 entry)
+    Buffer Object: 142.00 KB (4 entries)
+Other Caches:
+                         Current / Maximum
+  Layers Total           0.00 KB (numLayers = 0)
+Total GPU memory usage:
+  39103416 bytes, 37.29 MB (19.01 MB is purgeable)
+
+
+Pipeline=Skia (OpenGL)
+Profile data in ms:
+
+	com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity/android.view.ViewRootImpl@b1396df (visibility=0)
+Window: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+Stats since: 223388421529ns
+Total frames rendered: 115
+Janky frames: 2 (1.74%)
+50th percentile: 5ms
+90th percentile: 5ms
+95th percentile: 5ms
+99th percentile: 19ms
+Number Missed Vsync: 1
+Number High input latency: 18
+Number Slow UI thread: 1
+Number Slow bitmap uploads: 0
+Number Slow issue draw commands: 0
+Number Frame deadline missed: 2
+HISTOGRAM: 5ms=111 6ms=1 13ms=1 19ms=1 27ms=1
+50th gpu percentile: 1ms
+90th gpu percentile: 13ms
+95th gpu percentile: 14ms
+99th gpu percentile: 14ms
+GPU HISTOGRAM: 1ms=92 2ms=5 13ms=7 14ms=8
+
+
+---PROFILEDATA---
+Flags,IntendedVsync,Vsync,OldestInputEvent,NewestInputEvent,HandleInputStart,AnimationStart,PerformTraversalsStart,DrawStart,SyncQueued,SyncStart,IssueDrawCommandsStart,SwapBuffers,FrameCompleted,DequeueBufferDuration,QueueBufferDuration,GpuCompleted,
+0,224165160755,224165160755,9223372036854775807,0,224180841580,224180842830,224180952778,224181052830,224181291945,224181669705,224181913768,224183822830,224184643820,173594,350885,224185410955,
+0,224181777445,224181777445,9223372036854775807,0,224182937518,224182938924,224183121476,224183163507,224183223195,224185010070,224185355747,224188103039,224189290278,653541,751927,224189678560,
+0,224198461574,224198461574,9223372036854775807,0,224198786789,224198788924,224200250018,224200321060,224200394653,224200811268,224201334497,224203662830,224205036268,338281,342135,224215927205,
+8,228452736554,228452736554,9223372036854775807,0,228453148714,228453149964,228453273922,228453318714,228453371995,228454401422,212614702262,212620698095,212621398720,370781,301302,212621042314,
+---PROFILEDATA---

@@ -1,9 +1,16 @@
 export const HELP = `  press-key <key>                     Press a key (Enter, Backspace, Home, ...)
     --long-press                      Hold the button ~1.5s (tvOS remote buttons)
-    --duration <seconds>              Hold for a custom duration (tvOS remote buttons)`;
+    --duration <seconds>              Hold for a custom duration (tvOS remote buttons)
+    --measure                         Time the app's response to the press
+    --repeat <n>                      With --measure, take n samples and report a distribution
+    --sequence <k1,k2,...>            With --repeat, cycle these keys so focus oscillates
+    --timeout <ms>                    With --measure, give up on a sample after n ms (default 3000)
+    --poll-interval <ms>              With --measure, delay between focus polls (default 0)
+    --settle <ms>                     With --measure on Android, render time to allow (default 700)`;
 
 import { runDirect } from '../runner.js';
-import { printSuccess, printError, OutputOptions } from '../output.js';
+import { printSuccess, printError, printData, OutputOptions } from '../output.js';
+import { measureKeyLatency, printLatencyReport, MeasureOptions } from './input-latency.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
@@ -47,7 +54,7 @@ export const VALID_KEYS = [
   'TV Input HDMI 3',
 ] as const;
 
-type Key = (typeof VALID_KEYS)[number];
+export type Key = (typeof VALID_KEYS)[number];
 
 // iOS XCTest pressKey accepts these values (maps to XCUIKeyboardKey)
 const IOS_KEY_MAP: Partial<Record<Key, 'delete' | 'return' | 'enter' | 'tab' | 'space'>> = {
@@ -133,11 +140,88 @@ const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
   'TV Input HDMI 3': 245,
 };
 
+export type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver;
+
+/**
+ * Send `key` on an already-connected driver. Split out of `pressKey` so
+ * `--measure` can reuse one driver across repeats instead of paying driver
+ * setup on every sample.
+ */
+export async function dispatchKey(
+  driver: AnyDriver,
+  matched: Key,
+  holdSeconds?: number
+): Promise<void> {
+  if (driver instanceof IOSDriver) {
+    if (driver.platform === 'tvos') {
+      const tvosButton = TVOS_REMOTE_BUTTONS[matched];
+      const iosButton = IOS_BUTTON_MAP[matched];
+      if (tvosButton) {
+        await driver.pressButton(tvosButton, holdSeconds);
+      } else if (iosButton) {
+        await driver.pressButton(iosButton, holdSeconds);
+      }
+      // Keys not mapped on tvOS are silently ignored
+    } else {
+      const iosKey = IOS_KEY_MAP[matched];
+      const iosButton = IOS_BUTTON_MAP[matched];
+      if (iosKey) {
+        await driver.pressKey(iosKey);
+      } else if (iosButton) {
+        await driver.pressButton(iosButton);
+      }
+      // Keys not mapped on iOS (e.g. Back, VolumeUp) are silently ignored
+    }
+  } else if (driver instanceof WebDriver) {
+    const WEB_KEY_MAP: Partial<Record<Key, string>> = {
+      Enter: 'Enter',
+      Tab: 'Tab',
+      Backspace: 'Backspace',
+      Delete: 'Delete',
+      Escape: 'Escape',
+      Home: 'Home',
+      End: 'End',
+      // Canvas webtv apps (Lightning/WPE) navigate focus via the D-pad, which they listen
+      // for as arrow keys (and Enter for select). Maps the TV remote onto web keyboard.
+      'Remote Dpad Up': 'ArrowUp',
+      'Remote Dpad Down': 'ArrowDown',
+      'Remote Dpad Left': 'ArrowLeft',
+      'Remote Dpad Right': 'ArrowRight',
+      'Remote Dpad Center': 'Enter',
+    };
+    const webKey = WEB_KEY_MAP[matched];
+    if (webKey) {
+      await driver.pressKey(webKey);
+    }
+  } else if (driver instanceof VegaDriver) {
+    const vegaButton = VEGA_REMOTE_BUTTONS[matched];
+    if (vegaButton) {
+      await driver.pressButton(vegaButton);
+    }
+    // Keys not mapped on vega are silently ignored
+  } else if (driver instanceof AndroidDriver) {
+    const code = ANDROID_KEYCODE[matched];
+    if (code !== undefined) {
+      await driver.pressKeyEvent(code);
+    }
+  }
+}
+
 export async function pressKey(
   key: string,
   opts: OutputOptions = {},
   sessionName = 'default',
-  flags: { longPress?: boolean; duration?: number } = {}
+  flags: {
+    longPress?: boolean;
+    duration?: number;
+    measure?: boolean;
+    repeat?: number;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+    settleMs?: number;
+    sequence?: string[];
+    appId?: string;
+  } = {}
 ): Promise<number> {
   // A held press is requested via --long-press (default 1.5s) or an explicit --duration.
   const holdSeconds = flags.duration ?? (flags.longPress ? 1.5 : undefined);
@@ -153,61 +237,46 @@ export async function pressKey(
     return 1;
   }
 
-  const result = await runDirect(async (driver) => {
-    if (driver instanceof IOSDriver) {
-      if (driver.platform === 'tvos') {
-        const tvosButton = TVOS_REMOTE_BUTTONS[matched];
-        const iosButton = IOS_BUTTON_MAP[matched];
-        if (tvosButton) {
-          await driver.pressButton(tvosButton, holdSeconds);
-        } else if (iosButton) {
-          await driver.pressButton(iosButton, holdSeconds);
-        }
-        // Keys not mapped on tvOS are silently ignored
-      } else {
-        const iosKey = IOS_KEY_MAP[matched];
-        const iosButton = IOS_BUTTON_MAP[matched];
-        if (iosKey) {
-          await driver.pressKey(iosKey);
-        } else if (iosButton) {
-          await driver.pressButton(iosButton);
-        }
-        // Keys not mapped on iOS (e.g. Back, VolumeUp) are silently ignored
+  if (flags.measure) {
+    const sequence: Key[] = [matched];
+    for (const raw of flags.sequence ?? []) {
+      const k = VALID_KEYS.find((v) => v.toLowerCase() === raw.trim().toLowerCase());
+      if (!k) {
+        printError(
+          `Unknown key "${raw}" in --sequence. Valid keys: ${VALID_KEYS.join(', ')}`,
+          opts
+        );
+        return 1;
       }
-    } else if (driver instanceof WebDriver) {
-      const WEB_KEY_MAP: Partial<Record<Key, string>> = {
-        Enter: 'Enter',
-        Tab: 'Tab',
-        Backspace: 'Backspace',
-        Delete: 'Delete',
-        Escape: 'Escape',
-        Home: 'Home',
-        End: 'End',
-        // Canvas webtv apps (Lightning/WPE) navigate focus via the D-pad, which they listen
-        // for as arrow keys (and Enter for select). Maps the TV remote onto web keyboard.
-        'Remote Dpad Up': 'ArrowUp',
-        'Remote Dpad Down': 'ArrowDown',
-        'Remote Dpad Left': 'ArrowLeft',
-        'Remote Dpad Right': 'ArrowRight',
-        'Remote Dpad Center': 'Enter',
-      };
-      const webKey = WEB_KEY_MAP[matched];
-      if (webKey) {
-        await driver.pressKey(webKey);
-      }
-    } else if (driver instanceof VegaDriver) {
-      const vegaButton = VEGA_REMOTE_BUTTONS[matched];
-      if (vegaButton) {
-        await driver.pressButton(vegaButton);
-      }
-      // Keys not mapped on vega are silently ignored
-    } else if (driver instanceof AndroidDriver) {
-      const code = ANDROID_KEYCODE[matched];
-      if (code !== undefined) {
-        await driver.pressKeyEvent(code);
-      }
+      sequence.push(k);
     }
-  }, sessionName);
+    const measureOpts: MeasureOptions = {
+      repeat: flags.repeat ?? 1,
+      timeoutMs: flags.timeoutMs ?? 3000,
+      pollIntervalMs: flags.pollIntervalMs ?? 0,
+      settleMs: flags.settleMs ?? 700,
+      appId: flags.appId,
+      holdSeconds,
+    };
+    try {
+      const report = await measureKeyLatency(sessionName, sequence, measureOpts);
+      if (opts.json) printData({ status: 'ok', ...report }, opts);
+      else printLatencyReport(report);
+      // Nothing measurable at all is a failure; boundary refusals are not.
+      return report.outcomes.moved === 0 && !report.pressToFrame ? 1 : 0;
+    } catch (err) {
+      printError(
+        `press-key ${matched} --measure — ${err instanceof Error ? err.message : String(err)}`,
+        opts
+      );
+      return 1;
+    }
+  }
+
+  const result = await runDirect(
+    (driver) => dispatchKey(driver, matched, holdSeconds),
+    sessionName
+  );
 
   if (result.success) {
     printSuccess(`press-key ${matched} — done`, opts);

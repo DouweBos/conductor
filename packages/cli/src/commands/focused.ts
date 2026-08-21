@@ -216,7 +216,7 @@ function formatWebElement(node: WebElement): Record<string, unknown> {
   };
 }
 
-async function queryFocused(
+export async function queryFocused(
   driver: IOSDriver | AndroidDriver | WebDriver | VegaDriver
 ): Promise<Record<string, unknown> | null> {
   if (driver instanceof IOSDriver) {
@@ -235,6 +235,33 @@ async function queryFocused(
     return node ? formatAndroidNode(node) : null;
   }
   throw new Error('Unknown driver type');
+}
+
+/**
+ * Stable identity for a focused element, for detecting *that focus moved*.
+ *
+ * Deliberately excludes the visible label: TV rows repeat titles, so two
+ * neighbouring cards can print identically. Bounds plus whichever id the
+ * platform exposes distinguishes them.
+ */
+export function focusKey(data: Record<string, unknown> | null): string {
+  if (!data) return '(none)';
+  const bounds = data.bounds as Record<string, number> | null | undefined;
+  const boundsKey = bounds
+    ? Object.entries(bounds)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join(',')
+    : '';
+  const id =
+    (data.identifier as string) ||
+    (data.resourceId as string) ||
+    (data.ref as string) ||
+    (data.contentDesc as string) ||
+    '';
+  const type =
+    (data.elementTypeName as string) || (data.className as string) || (data.role as string) || '';
+  return `${id}|${type}|${boundsKey}`;
 }
 
 export interface FocusedOptions {

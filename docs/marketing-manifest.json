@@ -42,6 +42,12 @@
           "summary": "The same commands you use on iOS and Android, driving Playwright-managed Chromium, Firefox, or WebKit instead."
         },
         {
+          "slug": "tv-performance",
+          "file": "tv-performance.md",
+          "title": "TV performance",
+          "summary": "Measure jank, input latency, JS CPU and GC pressure on Android TV and Fire TV \u2014 which tooling works against which target, and what an emulator can and cannot tell you."
+        },
+        {
           "slug": "experimental",
           "file": "experimental.md",
           "title": "Experimental",

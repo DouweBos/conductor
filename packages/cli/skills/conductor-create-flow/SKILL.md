@@ -14,7 +14,7 @@ existing Maestro flows run unchanged. Use flows for repeatable journeys; use
 
 | Command | Purpose |
 |---|---|
-| `conductor run-flow <file> [--env K=V] [--benchmark]` | Run a Maestro YAML flow file |
+| `conductor run-flow <file> [--env K=V] [--benchmark] [--repeat <n>]` | Run a Maestro YAML flow file. `--benchmark --repeat <n>` reports per-command p50/p90/stddev across runs |
 | `conductor run-flow-inline '<yaml>' [--benchmark]` | Run inline YAML from the command line |
 | `conductor run-sequence [--file path.json]` | Run a JSON sequence of conductor commands serially; reads stdin if no `--file` |
 | `conductor run-parallel --flows-dir <path>` | Shard a directory of flows across all booted devices |

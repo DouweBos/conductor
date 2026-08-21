@@ -106,6 +106,13 @@ import {
   profileReactStop,
   HELP as profileHelp,
 } from './commands/profile.js';
+import { profileFramesReset, profileFramesReport } from './commands/profile-frames.js';
+import {
+  profileJsRecord,
+  profileJsStart,
+  profileJsStop,
+  profileJsHold,
+} from './commands/profile-js.js';
 import { crashesList, crashesShow, crashesTail, HELP as crashesHelp } from './commands/crashes.js';
 import { getActiveRecording, appendStep, commandToYamlStep } from './drivers/flow-recorder.js';
 import { foregroundApp, HELP as foregroundAppHelp } from './commands/foreground-app.js';
@@ -304,6 +311,10 @@ async function main(): Promise<void> {
       'force',
       'yes',
       'update',
+      'measure',
+      'report',
+      'timeline',
+      'baselines',
     ],
     string: [
       'device',
@@ -335,6 +346,9 @@ async function main(): Promise<void> {
       'source',
       'level',
       'save',
+      'save-baseline',
+      'sequence',
+      'settle',
       'diff',
       'vs',
       'top',
@@ -835,6 +849,17 @@ async function main(): Promise<void> {
       exitCode = await pressKey(key, opts, sessionName, {
         longPress: argv['long-press'] as boolean,
         duration: durationArg !== undefined ? Number(durationArg) : undefined,
+        measure: argv['measure'] as boolean,
+        repeat: argv['repeat'] !== undefined ? Number(argv['repeat']) : undefined,
+        timeoutMs: argv['timeout'] !== undefined ? Number(argv['timeout']) : undefined,
+        pollIntervalMs:
+          argv['poll-interval'] !== undefined ? Number(argv['poll-interval']) : undefined,
+        settleMs: argv['settle'] !== undefined ? Number(argv['settle']) : undefined,
+        sequence:
+          typeof argv['sequence'] === 'string'
+            ? (argv['sequence'] as string).split(',')
+            : undefined,
+        appId: argv['app'] as string | undefined,
       });
       break;
     }
@@ -1116,7 +1141,14 @@ async function main(): Promise<void> {
       const flowEnv = Object.fromEntries(
         envPairs.map((e: string) => e.split('=', 2) as [string, string])
       );
-      exitCode = await runFlow(file, opts, sessionName, flowEnv, argv['benchmark'] as boolean);
+      exitCode = await runFlow(
+        file,
+        opts,
+        sessionName,
+        flowEnv,
+        argv['benchmark'] as boolean,
+        argv['repeat'] !== undefined ? Number(argv['repeat']) : 1
+      );
       break;
     }
 
@@ -1217,12 +1249,15 @@ async function main(): Promise<void> {
       const sub = (rest[0] ?? '').toLowerCase();
       const port = argv['port'] !== undefined ? Number(argv['port']) : undefined;
       const targetIndex = argv['target'] !== undefined ? Number(argv['target']) : undefined;
+      const top = argv['top'] !== undefined ? Number(argv['top']) : undefined;
       if (sub === 'cpu') {
         const durationSec = argv['duration'] !== undefined ? Number(argv['duration']) : 10;
         exitCode = await profileCpu(opts, sessionName, {
           durationSec,
           out: argv['out'] as string | undefined,
           appId: rest[1],
+          report: argv['report'] as boolean,
+          top,
         });
       } else if (sub === 'memory') {
         const trackSec = argv['track'] !== undefined ? Number(argv['track']) : 10;
@@ -1232,19 +1267,65 @@ async function main(): Promise<void> {
           intervalMs,
           appId: rest[1],
         });
+      } else if (sub === 'frames') {
+        const sub2 = (rest[1] ?? '').toLowerCase();
+        if (sub2 === 'reset') {
+          exitCode = await profileFramesReset(opts, sessionName, rest[2]);
+        } else if (sub2 === 'report') {
+          exitCode = await profileFramesReport(opts, sessionName, {
+            appId: rest[2],
+            trackSec: argv['track'] !== undefined ? Number(argv['track']) : undefined,
+            intervalMs: argv['interval'] !== undefined ? Number(argv['interval']) : undefined,
+            top,
+            saveBaseline: argv['save-baseline'] as string | undefined,
+            diff: argv['diff'] as string | undefined,
+            listBaselines: argv['baselines'] as boolean,
+          });
+        } else {
+          console.error('Usage: conductor profile frames <reset|report> [<appId>]');
+          exitCode = 1;
+        }
+      } else if (sub === 'js') {
+        const sub2 = (rest[1] ?? '').toLowerCase();
+        const jsOpts = {
+          port,
+          targetIndex,
+          out: argv['out'] as string | undefined,
+          top,
+          durationSec: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
+        };
+        if (sub2 === 'record') {
+          exitCode = await profileJsRecord(opts, sessionName, jsOpts);
+        } else if (sub2 === 'start') {
+          exitCode = await profileJsStart(opts, sessionName, jsOpts);
+        } else if (sub2 === 'stop') {
+          exitCode = await profileJsStop(opts, sessionName, jsOpts);
+        } else if (sub2 === '_hold') {
+          exitCode = await profileJsHold(sessionName, jsOpts);
+        } else {
+          console.error('Usage: conductor profile js <record|start|stop>');
+          exitCode = 1;
+        }
       } else if (sub === 'react') {
         const sub2 = (rest[1] ?? '').toLowerCase();
-        const top = argv['top'] !== undefined ? Number(argv['top']) : 20;
+        const reactOpts = {
+          port,
+          targetIndex,
+          maxCommits: argv['max-commits'] !== undefined ? Number(argv['max-commits']) : undefined,
+          maxComponents:
+            argv['max-components'] !== undefined ? Number(argv['max-components']) : undefined,
+          timeline: argv['timeline'] as boolean,
+        };
         if (sub2 === 'start') {
-          exitCode = await profileReactStart(opts, sessionName, { port, targetIndex });
+          exitCode = await profileReactStart(opts, sessionName, reactOpts);
         } else if (sub2 === 'stop') {
-          exitCode = await profileReactStop(opts, sessionName, { port, targetIndex }, top);
+          exitCode = await profileReactStop(opts, sessionName, reactOpts, top ?? 20);
         } else {
           console.error('Usage: conductor profile react <start|stop>');
           exitCode = 1;
         }
       } else {
-        console.error('Usage: conductor profile <cpu|memory|react> [args]');
+        console.error('Usage: conductor profile <cpu|memory|frames|js|react> [args]');
         exitCode = 1;
       }
       break;

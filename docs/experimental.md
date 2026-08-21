@@ -55,16 +55,26 @@ to pick a specific debugger target when several are connected.
 
 | Command                            | What it does                                                                       |
 | ---------------------------------- | ---------------------------------------------------------------------------------- |
+| `profile frames report [--track <s>]` | Android only. Parse `dumpsys gfxinfo <pkg> framestats` into jank counts, p50–p99 frame times, and a per-phase breakdown of where each frame's time went. Works on release builds and on real Fire TV hardware over adb. `--save-baseline` / `--diff` compare runs. |
+| `profile frames reset`             | Zero the counters, so the next `report` covers only what follows.                  |
 | `profile cpu --duration <s>`       | Record a CPU trace. iOS: `xcrun xctrace record --template "Time Profiler"`. Android: `adb shell simpleperf record`. Writes to `--out <path>` or a `tmp/` file. |
-| `profile memory --track <s>`       | Poll memory at `--interval <ms>` (default 1000ms) for `track` seconds. Reports per-sample app + system memory; suitable for spotting leaks under repeated interactions. |
-| `profile react start`              | Install a React commit-profiler hook via `__REACT_DEVTOOLS_GLOBAL_HOOK__.onCommitFiberRoot`. Subsequent commits are collected into a ring buffer with per-component `actualDuration`. |
-| `profile react stop [--top n]`     | Stop the profiler, summarise the top N components by total render time across commits. |
+| `profile cpu --report [--top n]`   | Android only. Also runs `simpleperf report` on-device and returns a ranked symbol table, so an agent gets something readable instead of a binary `perf.data`. |
+| `profile memory --track <s>`       | Poll memory at `--interval <ms>` (default 1000ms) for `track` seconds. On Android also reports heap growth over the window and ART GC pause counts / durations scraped from logcat. |
+| `profile js record --duration <s>` | Run the Hermes sampling profiler over the Metro CDP connection. Returns a self/total time ranking by function with `file:line`, and writes the raw `.cpuprofile`. |
+| `profile js start` / `js stop`     | The same, bracketing a flow you drive yourself. A detached holder keeps the CDP session open in between. |
+| `profile react start`              | Install a React commit-profiler hook via `__REACT_DEVTOOLS_GLOBAL_HOOK__.onCommitFiberRoot`. `--max-commits` / `--max-components` size the buffers. |
+| `profile react stop [--top n]`     | Stop the profiler and rank components by self time. `--json` carries the per-commit timeline; `--timeline` adds per-commit component detail. |
+| `press-key <key> --measure`        | Time the response to an input. Reports focus→move latency (all platforms, with its own resolution as an error bar) and, on Android, the on-device input→frame latency from gfxinfo. `--repeat n` gives a distribution. |
 
 **Caveats**
 
-- `profile cpu` requires `xctrace` (Xcode) or `simpleperf` (Android NDK) on `PATH`. Argent's profiling tools also have a query layer over saved traces — Conductor only does record + summary today.
+- `profile cpu` requires `xctrace` (Xcode) or `simpleperf` (Android NDK) on `PATH`. `--report` uses the device's own `/system/bin/simpleperf`, which resolves against the libraries actually loaded there; a stripped app library still won't symbolize.
 - `profile react` is Hermes-only and intercepts `onCommitFiberRoot` — interaction with other DevTools clients (the standalone React DevTools window, Flipper) is undefined; only run one profiler at a time.
-- `profile memory` is a polling shim over `memory` — for finer detail use the underlying `conductor memory` directly.
+- `profile react` needs a dev or profiling build. A release build strips React's timing instrumentation, and the command says so rather than reporting zeroes.
+- `profile react` counts a component as having rendered in a commit only when React began work on it in that commit, tracked via an `actualStartTime` watermark. `selfMs` is additive across components; `totalMs` is subtree-inclusive and double-counts parents by design.
+- `profile memory` is a polling shim over `memory` — for finer detail use the underlying `conductor memory` directly. ART only logs collections it considers noteworthy, so a window with no GC lines is a real signal rather than a parse failure.
+- For which of these work against a Fire TV Stick, a Vega VVD, or an emulator — and how far to trust emulator numbers — see [TV performance](/conductor/docs/tv-performance).
+
 
 ---
 
