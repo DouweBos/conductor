@@ -1,9 +1,13 @@
 ---
-"@houwert/conductor": major
+"@houwert/conductor": minor
 "conductor-studio": minor
 ---
 
 Adopt Qase's model for test cases, and remove test cases from the CLI.
+
+**This minor release removes commands.** Released as a minor rather than a
+major by choice; if you automate against `conductor cases`, read the
+breaking notes below before upgrading.
 
 A case is now a Qase case entity — `id`, `title`, `description`,
 `preconditions`, steps as `action`/`data`/`expected_result`, `suite_id`,
