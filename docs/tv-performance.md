@@ -46,13 +46,18 @@ reported problem.
 
 - `profile frames` — reads HWUI's own counters over adb.
 - `profile cpu [--report]` — simpleperf samples the process as it is.
-- `profile memory --track` — `dumpsys meminfo` plus ART's GC logging.
+- `profile memory --track` — `dumpsys meminfo`, plus collections inferred from
+  the heap series (see below; ART's own GC logging is not dependable).
 - `press-key --measure` — its `pressToFrame` figure is derived from device-side
   clocks and gfxinfo, so it needs nothing from the app.
 
 **Needs a dev or profiling build** — both attach over Metro:
 
-- `profile js` needs a Hermes runtime with the inspector reachable.
+- `profile js` needs a Hermes runtime with the inspector reachable. **Release
+  Hermes ships without the inspector and never connects to Metro**, so this is
+  not a configuration you can turn on — there is simply no CDP target to attach
+  to. One consequence worth planning around: the Hermes GC share is not
+  measurable on a release build, so it cannot be compared across build types.
 - `profile react` additionally needs React's profiling instrumentation
   (`actualDuration` on fibers), which release builds strip. It says so
   explicitly rather than reporting zeroes.
@@ -246,6 +251,27 @@ device and not the other. Treat the field as a bonus: `profile frames` reports
 `no-input-timestamps` note when they did not, so absence is never mistaken for
 "no input occurred". For a measurement that does not depend on it, use
 `press-key --measure`, whose `pressToFrame` is derived from device-side clocks.
+
+## ART's GC logging is not dependable — use the heap deltas
+
+`profile memory --track` scrapes ART collections from logcat, and on some builds
+that returns nothing at all. Measured on a Fire TV Stick 4K Max (Fire OS, API
+30), a 30s window under continuous D-pad input reported **no ART collections**
+while the Java heap fell 11.8MB and `systemBytes` fell 21.1MB inside the same
+window. Memory that size is not reclaimed without collections running, so
+collections happened and none were logged.
+
+**Absence of logged collections is therefore not absence of collection.** The
+command reports `inferredGc` alongside the logcat result, counting
+sample-to-sample decreases in the heap series — a heap that shrinks between two
+samples was collected between them, and there is no other mechanism. Treat
+logcat as best-effort and the deltas as the primary signal.
+
+Note also that Android runs *two* collectors here and they can tell different
+stories. On that same window Hermes GC accounted for ~30% of JS samples while
+ART was quiet enough never to log: the JS heap was churning hard and the Java
+heap was not. `profile js`'s `gcPercent` is the number that matters for a
+Hermes app — with the caveat above that it needs a debug build.
 
 ## Correlating frames with React commits
 

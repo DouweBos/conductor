@@ -169,7 +169,9 @@ async function discoverTarget(port: number, host: string, targetIndex?: number):
 
   if (withWs.length === 0) {
     throw new Error(
-      'Metro returned no debugger targets. Is the app running on a device/simulator?'
+      'Metro is reachable but has no debugger targets. Most often the app is a release ' +
+        'build — release Hermes ships without the inspector and never connects to Metro. ' +
+        'Otherwise, check the app is running and pointed at this Metro instance.'
     );
   }
 

@@ -285,6 +285,46 @@ function mb(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
+export interface InferredGc {
+  /** Consecutive-sample decreases in the tracked heap. Each implies a collection. */
+  collections: number;
+  reclaimedBytes: number;
+  series: string;
+}
+
+/**
+ * Infer collections from the heap series rather than from logcat.
+ *
+ * A heap that shrinks between two samples was collected between them — there is
+ * no other mechanism. This matters because ART's GC logging is not reliably on:
+ * measured on a Fire TV Stick (Fire OS, API 30), a window in which the Java heap
+ * fell 11.8MB produced no `art:I` lines at all. Absence of logged collections is
+ * therefore not absence of collection, and the deltas are the sounder signal.
+ */
+export function inferCollections(
+  samples: Array<{ at: number; data: Record<string, unknown> | null }>,
+  series = 'javaHeapBytes'
+): InferredGc | undefined {
+  const values: number[] = [];
+  for (const s of samples) {
+    const app = (s.data as { app?: Record<string, unknown> } | null)?.app;
+    const v = app?.[series];
+    if (typeof v === 'number') values.push(v);
+  }
+  if (values.length < 2) return undefined;
+  let collections = 0;
+  let reclaimedBytes = 0;
+  for (let i = 1; i < values.length; i++) {
+    const drop = values[i - 1] - values[i];
+    // Ignore sampling jitter; only count drops worth a collection.
+    if (drop > 256 * 1024) {
+      collections++;
+      reclaimedBytes += drop;
+    }
+  }
+  return { collections, reclaimedBytes, series };
+}
+
 export async function profileMemory(
   opts: OutputOptions,
   sessionName: string,
@@ -320,6 +360,7 @@ export async function profileMemory(
   });
 
   const growth = heapGrowth(parsed);
+  const inferredGc = isAndroid ? inferCollections(parsed) : undefined;
   let gc: GcReport | undefined;
   if (isAndroid) {
     const events = await collectGcSince(sessionName, gcSince);
@@ -327,7 +368,7 @@ export async function profileMemory(
   }
 
   if (opts.json) {
-    printData({ samples: parsed, durationMs: Date.now() - start, growth, gc }, opts);
+    printData({ samples: parsed, durationMs: Date.now() - start, growth, gc, inferredGc }, opts);
   } else {
     console.log(`profile memory — ${samples.length} samples over ${profileOpts.trackSec}s`);
     for (const p of parsed) {
@@ -363,9 +404,25 @@ export async function profileMemory(
         );
       }
     } else if (isAndroid) {
+      console.log('\n  GC: no ART collections logged in the window.');
+      if (inferredGc && inferredGc.collections > 0) {
+        console.log(
+          `    But ${inferredGc.series} fell ${inferredGc.collections} time(s), reclaiming ` +
+            `${mb(inferredGc.reclaimedBytes)} — so collections did run and were not logged. ` +
+            `ART's logging is off or filtered on this build; trust the heap deltas, not logcat.`
+        );
+      } else {
+        console.log(
+          '    Absence of logged collections is not absence of collection — ART logging is ' +
+            'off or filtered on some builds. The heap deltas above are the sounder signal.'
+        );
+      }
+    }
+
+    if (inferredGc && inferredGc.collections > 0 && gc) {
       console.log(
-        '\n  GC: no ART collections logged in the window. ART only logs collections it ' +
-          'considers noteworthy, so a quiet window here is a real signal.'
+        `    (heap deltas independently imply ${inferredGc.collections} collection(s), ` +
+          `${mb(inferredGc.reclaimedBytes)} reclaimed)`
       );
     }
   }

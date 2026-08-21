@@ -27,6 +27,7 @@ import {
   ReactProfilerReadResult,
 } from '../src/commands/profile.js';
 import { parseGcEvents, summariseGc } from '../src/commands/profile-gc.js';
+import { inferCollections, heapGrowth } from '../src/commands/profile.js';
 import { analyzeCpuProfile } from '../src/commands/profile-js.js';
 import { describe, percentile, hasSamples } from '../src/stats.js';
 import { focusKey } from '../src/commands/focused.js';
@@ -720,6 +721,49 @@ profiling.test('a well-attributed profile raises no low-attribution note', async
   const summary = analyzeCpuProfile(profile, 10);
   assert(summary.attribution.namedJsPercent === 75, `named ${summary.attribution.namedJsPercent}`);
   assert(summary.notes.length === 0, 'no note when the ranking is trustworthy');
+});
+
+// ── GC inferred from heap deltas ──────────────────────────────────────────────
+
+// On a Fire TV Stick the Java heap fell 11.8MB in a window that logged no ART
+// collections at all. A shrinking heap was collected; there is no other
+// mechanism, so the deltas catch what logcat misses.
+function memSamples(javaHeapMb: number[]): Array<{ at: number; data: Record<string, unknown> }> {
+  return javaHeapMb.map((mb, i) => ({
+    at: i * 1000,
+    data: { app: { javaHeapBytes: mb * 1024 * 1024 } },
+  }));
+}
+
+profiling.test('a shrinking heap is counted as a collection logcat missed', async () => {
+  const g = inferCollections(memSamples([22.6, 23.1, 10.8, 12.0]))!;
+  assert(g.collections === 1, `collections ${g.collections}`);
+  assert(Math.round(g.reclaimedBytes / 1024 / 1024) === 12, `reclaimed ${g.reclaimedBytes}`);
+  assert(g.series === 'javaHeapBytes', `series ${g.series}`);
+});
+
+profiling.test('sampling jitter is not mistaken for a collection', async () => {
+  const g = inferCollections(memSamples([22.6, 22.5, 22.55, 22.7]))!;
+  assert(g.collections === 0, `sub-256KB wobble must not count, got ${g.collections}`);
+});
+
+profiling.test('a monotonically growing heap implies no collection', async () => {
+  const g = inferCollections(memSamples([10, 12, 14, 16]))!;
+  assert(g.collections === 0, `collections ${g.collections}`);
+});
+
+profiling.test('inference needs at least two samples', async () => {
+  assert(inferCollections(memSamples([10])) === undefined, 'one sample cannot show a delta');
+  assert(inferCollections([]) === undefined, 'no samples');
+});
+
+profiling.test('heap growth reports start, end, delta and peak per field', async () => {
+  const rows = heapGrowth(memSamples([20, 30, 25]));
+  const java = rows.find((r) => r.key === 'javaHeapBytes')!;
+  assert(Math.round(java.startBytes / 1024 / 1024) === 20, `start ${java.startBytes}`);
+  assert(Math.round(java.endBytes / 1024 / 1024) === 25, `end ${java.endBytes}`);
+  assert(Math.round(java.deltaBytes / 1024 / 1024) === 5, `delta ${java.deltaBytes}`);
+  assert(Math.round(java.peakBytes / 1024 / 1024) === 30, `peak ${java.peakBytes}`);
 });
 
 if (require.main === module) runAll([profiling]);

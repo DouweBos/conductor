@@ -60,8 +60,18 @@ export function selectDebuggerUrl(
   const withWs = targets.filter((t) => t.webSocketDebuggerUrl);
 
   if (withWs.length === 0) {
+    // Metro is reachable but nothing registered. The usual cause is not a
+    // missing app — it is a release build: release Hermes ships without the
+    // inspector and never connects to Metro at all, so asking "is the app
+    // running?" sends people to check something that is already true.
     throw new Error(
-      `Metro on ${host}:${port} returned no debugger targets. Is an app running on a device/simulator?`
+      `Metro on ${host}:${port} is reachable but has no debugger targets.\n` +
+        `Most often the app is a release build — release Hermes ships without the ` +
+        `inspector and never connects to Metro, so no amount of relaunching will help. ` +
+        `Use a debug or profiling build for anything that attaches over Metro ` +
+        `(\`profile js\`, \`profile react\`, \`debug\`, \`network\`).\n` +
+        `Otherwise: check the app is running and foreground, and that it is pointed at ` +
+        `this Metro instance rather than another one.`
     );
   }
 
