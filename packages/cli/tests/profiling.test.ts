@@ -641,4 +641,85 @@ profiling.test('real Shield capture: Uptime anchors frames to the monotonic cloc
   );
 });
 
+// ── Regressions found on a Fire TV Stick 4K Max ───────────────────────────────
+
+// With nothing drawn, gfxinfo still prints percentiles filled from the top
+// histogram bucket. Reported verbatim that reads as catastrophic jank when the
+// truth is that no frame existed.
+const GFXINFO_NO_FRAMES = `Applications Graphics Acceleration Info:
+Uptime: 100000 Realtime: 100000
+
+** Graphics info for pid 999 [com.example.idle] **
+
+Stats since: 1000000ns
+Total frames rendered: 0
+Janky frames: 0 (0.00%)
+50th percentile: 4950ms
+90th percentile: 4950ms
+95th percentile: 4950ms
+99th percentile: 4950ms
+Number Missed Vsync: 0
+Number High input latency: 0
+Number Slow UI thread: 0
+Number Slow bitmap uploads: 0
+Number Slow issue draw commands: 0
+Number Frame deadline missed: 0
+HISTOGRAM: 5ms=0 4950ms=0
+`;
+
+profiling.test('a zero-frame window reports no percentiles at all', async () => {
+  const s = parseGfxinfoSummary(GFXINFO_NO_FRAMES);
+  assert(s.totalFrames === 0, `totalFrames ${s.totalFrames}`);
+  for (const key of ['platformP50Ms', 'platformP90Ms', 'platformP95Ms', 'platformP99Ms'] as const) {
+    assert(s[key] === undefined, `${key} is ${s[key]} — "p99 4950ms" over zero frames is not jank`);
+  }
+  assert(s.jankyPercent === undefined, `jankyPercent ${s.jankyPercent}`);
+});
+
+profiling.test('a window that did draw keeps its percentiles', async () => {
+  const s = parseGfxinfoSummary(SHIELD);
+  assert(s.totalFrames === 115 && s.platformP99Ms === 19, 'real frames still report percentiles');
+});
+
+profiling.test('sample attribution separates GC and empty stacks from real functions', async () => {
+  // Shape observed on a Fire TV Stick: almost everything synthetic.
+  const profile = {
+    startTime: 0,
+    endTime: 100_000,
+    nodes: [
+      { id: 1, callFrame: { functionName: '[root]' } },
+      { id: 2, callFrame: { functionName: '[GC Old Gen (Direct)]' } },
+      { id: 3, callFrame: { functionName: '[GC Young Gen]' } },
+      { id: 4, callFrame: { functionName: 'renderRow', url: 'App.js', lineNumber: 4 } },
+    ],
+    samples: [1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 4],
+    timeDeltas: Array(11).fill(1000),
+  };
+  const summary = analyzeCpuProfile(profile, 10);
+  const a = summary.attribution;
+  assert(a.idlePercent > 60, `idlePercent ${a.idlePercent}`);
+  assert(a.gcPercent > 20, `gcPercent ${a.gcPercent}`);
+  assert(a.namedJsPercent < 15, `namedJsPercent ${a.namedJsPercent}`);
+  assert(
+    summary.notes.some((n) => n.code === 'low-attribution'),
+    'a ranking built on <25% of samples must say so'
+  );
+});
+
+profiling.test('a well-attributed profile raises no low-attribution note', async () => {
+  const profile = {
+    startTime: 0,
+    endTime: 10_000,
+    nodes: [
+      { id: 1, callFrame: { functionName: '[root]' } },
+      { id: 2, callFrame: { functionName: 'work', url: 'App.js', lineNumber: 0 } },
+    ],
+    samples: [2, 2, 2, 1],
+    timeDeltas: [1000, 1000, 1000, 1000],
+  };
+  const summary = analyzeCpuProfile(profile, 10);
+  assert(summary.attribution.namedJsPercent === 75, `named ${summary.attribution.namedJsPercent}`);
+  assert(summary.notes.length === 0, 'no note when the ranking is trustworthy');
+});
+
 if (require.main === module) runAll([profiling]);

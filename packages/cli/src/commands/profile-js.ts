@@ -53,14 +53,51 @@ export interface FunctionStat {
   samples: number;
 }
 
+export interface JsNote {
+  code: 'low-attribution';
+  message: string;
+  namedJsPercent?: number;
+  gcPercent?: number;
+  idlePercent?: number;
+}
+
+/**
+ * Where the sampled time went before any function ranking is attempted.
+ *
+ * Hermes reports synthetic frames — `[root]` when the JS stack was empty at
+ * sample time, `[GC Young Gen]` / `[GC Old Gen (Direct)]` for collections.
+ * Those shares are trustworthy even when the per-function ranking is built on
+ * single-digit hit counts, so they are reported separately rather than being
+ * allowed to sit in the same table as real functions.
+ */
+export interface SampleAttribution {
+  /** Share of sampled time in frames that name a JS function. */
+  namedJsPercent: number;
+  /** Share in Hermes GC frames. High here is a memory finding, not a CPU one. */
+  gcPercent: number;
+  /** Share in `[root]` — the JS stack was empty, i.e. JS was not running. */
+  idlePercent: number;
+}
+
 export interface JsProfileSummary {
   durationMs: number;
   sampleCount: number;
   /** Nominal sampling interval, derived from the observed median delta. */
   medianSampleIntervalMs: number;
+  attribution: SampleAttribution;
   top: FunctionStat[];
   /** Functions omitted from `top` — non-zero means the ranking is truncated. */
   omitted: number;
+  notes: JsNote[];
+}
+
+/** Hermes marks its own frames with brackets; anything else is app code. */
+function classifyFrame(name: string): 'gc' | 'idle' | 'named' {
+  if (/^\[GC\b/i.test(name) || /garbage collector/i.test(name)) return 'gc';
+  if (name === '[root]' || name === '(root)' || name === '(program)' || name === '(idle)') {
+    return 'idle';
+  }
+  return name.startsWith('[') || name.startsWith('(') ? 'idle' : 'named';
 }
 
 function shortFile(url: string | undefined): string {
@@ -122,6 +159,37 @@ export function analyzeCpuProfile(profile: CpuProfile, top: number): JsProfileSu
   }
 
   const totalUs = [...self.values()].reduce((a, b) => a + b, 0);
+
+  // Split before ranking: a top-30 list assembled from 5% of the samples is
+  // noise dressed as a finding, and the reader cannot tell without this.
+  const buckets = { gc: 0, idle: 0, named: 0 };
+  for (const [key, us] of self.entries()) {
+    buckets[classifyFrame(label.get(key)!.functionName || '(anonymous)')] += us;
+  }
+  const share = (v: number): number => (totalUs > 0 ? round((v / totalUs) * 100, 1) : 0);
+  const attribution: SampleAttribution = {
+    namedJsPercent: share(buckets.named),
+    gcPercent: share(buckets.gc),
+    idlePercent: share(buckets.idle),
+  };
+
+  const notes: JsNote[] = [];
+  if (totalUs > 0 && attribution.namedJsPercent < 25) {
+    notes.push({
+      code: 'low-attribution',
+      message:
+        `Only ${attribution.namedJsPercent}% of sampled time landed in a named JS function ` +
+        `(${attribution.idlePercent}% with an empty JS stack, ${attribution.gcPercent}% in GC). ` +
+        `The ranking below is built on what little is left and should not be trusted. ` +
+        `A large empty-stack share means the JS thread was idle when sampled — which is itself ` +
+        `a result: the bottleneck is not JS. A large GC share is a memory finding; follow it ` +
+        `with \`profile memory --track\` rather than a function ranking.`,
+      namedJsPercent: attribution.namedJsPercent,
+      gcPercent: attribution.gcPercent,
+      idlePercent: attribution.idlePercent,
+    });
+  }
+
   const ranked: FunctionStat[] = [...self.entries()]
     .map(([key, selfUs]) => {
       const frame = label.get(key)!;
@@ -143,8 +211,10 @@ export function analyzeCpuProfile(profile: CpuProfile, top: number): JsProfileSu
     sampleCount: samples.length,
     medianSampleIntervalMs:
       sortedDeltas.length > 0 ? round(sortedDeltas[Math.floor(sortedDeltas.length / 2)] / 1000) : 0,
+    attribution,
     top: ranked.slice(0, top),
     omitted: Math.max(0, ranked.length - top),
+    notes,
   };
 }
 
@@ -165,7 +235,10 @@ async function connect(sessionName: string, cdpOpts: CdpOpts): Promise<MetroCdpC
 }
 
 async function startSampling(client: MetroCdpClient): Promise<void> {
-  await client.send('Profiler.enable');
+  // React Native's Fusebox CDP backend answers `Profiler.enable` with
+  // -32601 Unsupported method, but implements `Profiler.start` perfectly well.
+  // Enabling is a courtesy to backends that require it, never a precondition.
+  await client.send('Profiler.enable').catch(() => undefined);
   await client.send('Profiler.start');
 }
 
@@ -193,7 +266,12 @@ function printSummary(summary: JsProfileSummary, out: string): void {
     `profile js — ${summary.durationMs}ms, ${summary.sampleCount} samples ` +
       `(~${summary.medianSampleIntervalMs}ms apart)`
   );
-  console.log(`  ${'self'.padStart(9)} ${'total'.padStart(9)}  ${'%'.padStart(5)}  function`);
+  const a = summary.attribution;
+  console.log(
+    `  sampled time:  ${a.namedJsPercent}% named JS  ${a.gcPercent}% GC  ` +
+      `${a.idlePercent}% empty JS stack`
+  );
+  console.log(`\n  ${'self'.padStart(9)} ${'total'.padStart(9)}  ${'%'.padStart(5)}  function`);
   for (const f of summary.top) {
     console.log(
       `  ${`${f.selfMs}ms`.padStart(9)} ${`${f.totalMs}ms`.padStart(9)}  ` +
@@ -201,6 +279,7 @@ function printSummary(summary: JsProfileSummary, out: string): void {
     );
   }
   if (summary.omitted > 0) console.log(`  ... ${summary.omitted} more (raise --top)`);
+  for (const note of summary.notes) console.log(`\n  note [${note.code}]: ${note.message}`);
   console.log(`\n  raw profile → ${out}`);
   console.log(
     '  open it in Chrome DevTools (Performance → Load profile), or convert with ' +

@@ -30,7 +30,8 @@ export interface Note {
     | 'no-input-timestamps'
     | 'no-clock-anchor'
     | 'baseline-saved'
-    | 'single-window';
+    | 'single-window'
+    | 'no-frames';
   message: string;
   /** Fraction of the window's frames that survived into the per-frame stats. */
   coveragePercent?: number;
@@ -203,18 +204,25 @@ function num(out: string, re: RegExp): number | undefined {
 export function parseGfxinfoSummary(out: string): GfxinfoSummary {
   const header = out.match(/\*\* Graphics info for pid (\d+) \[([^\]]+)\]/);
   const janky = out.match(/Janky frames:\s*(\d+)\s*\(([\d.]+)%\)/);
+  const totalFrames = num(out, /Total frames rendered:\s*(\d+)/);
+  // With nothing drawn the platform still prints percentiles, filled from the
+  // top histogram bucket — "p99 4950ms" for a window in which no frame existed.
+  // A percentile over zero frames is not a slow frame, it is no frame, and it
+  // must not be representable as a value.
+  const drew = totalFrames !== undefined && totalFrames > 0;
+  const pctile = (re: RegExp): number | undefined => (drew ? num(out, re) : undefined);
   // The GPU block repeats these labels as "50th gpu percentile", so matching the
   // exact phrase keeps us on the UI-thread figures.
   return {
     pid: header ? Number(header[1]) : undefined,
     packageName: header ? header[2] : undefined,
-    totalFrames: num(out, /Total frames rendered:\s*(\d+)/),
+    totalFrames,
     jankyFrames: janky ? Number(janky[1]) : undefined,
-    jankyPercent: janky ? Number(janky[2]) : undefined,
-    platformP50Ms: num(out, /50th percentile:\s*(\d+)ms/),
-    platformP90Ms: num(out, /90th percentile:\s*(\d+)ms/),
-    platformP95Ms: num(out, /95th percentile:\s*(\d+)ms/),
-    platformP99Ms: num(out, /99th percentile:\s*(\d+)ms/),
+    jankyPercent: drew && janky ? Number(janky[2]) : undefined,
+    platformP50Ms: pctile(/50th percentile:\s*(\d+)ms/),
+    platformP90Ms: pctile(/90th percentile:\s*(\d+)ms/),
+    platformP95Ms: pctile(/95th percentile:\s*(\d+)ms/),
+    platformP99Ms: pctile(/99th percentile:\s*(\d+)ms/),
     missedVsync: num(out, /Number Missed Vsync:\s*(\d+)/),
     highInputLatency: num(out, /Number High input latency:\s*(\d+)/),
     slowUiThread: num(out, /Number Slow UI thread:\s*(\d+)/),
@@ -806,6 +814,16 @@ export async function profileFramesReport(
         opts
       );
       return 1;
+    }
+
+    if (summary.totalFrames === 0) {
+      notes.push({
+        code: 'no-frames',
+        message:
+          `${appId} drew no frames in this window, so there is nothing to measure — not ` +
+          `smooth, not janky. The app may be idle, backgrounded, or rendering through a ` +
+          `SurfaceView/WebView that HWUI does not count. Drive it, or check it is foreground.`,
+      });
     }
 
     if (!clockAnchor) {
