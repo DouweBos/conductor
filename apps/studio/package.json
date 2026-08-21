@@ -1,6 +1,6 @@
 {
   "name": "conductor-studio",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Conductor Studio \u2014 Maestro test workbench, agentic test writing, and test case management",
   "author": "Houwert",
