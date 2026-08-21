@@ -1,0 +1,16 @@
+# Shared cert storage across all of Douwe's projects — the same repo Argus
+# reads. A Developer ID Application cert is per-team, not per-app, so Studio
+# reuses the existing one rather than issuing its own.
+#
+# First time on a machine:
+#   export MATCH_PASSWORD="<the shared password>"
+#   cd apps/studio && bundle exec fastlane match developer_id --readonly
+
+git_url ENV["MATCH_GIT_URL"] || "git@github.com:DouweBos/apple-certificates.git"
+storage_mode "git"
+type "developer_id"
+platform "macos"
+
+# Developer ID distribution needs no provisioning profile, and asking for one
+# fails against the dev portal.
+skip_provisioning_profiles true

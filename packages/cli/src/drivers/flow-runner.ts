@@ -33,6 +33,27 @@ function fmtMs(ms: number): string {
 
 type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver;
 
+// tvOS remote key names (uppercased, as flow pressKey normalises them) → IOSDriver
+// button values. Without this a flow's `pressKey: "Remote Dpad Up"` would fall
+// through to the software-keyboard path and silently do nothing — tvOS has no
+// keyboard. Mirrors TVOS_REMOTE_BUTTONS in commands/press-key.ts.
+const TVOS_FLOW_BUTTONS: Record<
+  string,
+  'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause'
+> = {
+  'REMOTE DPAD UP': 'up',
+  'REMOTE DPAD DOWN': 'down',
+  'REMOTE DPAD LEFT': 'left',
+  'REMOTE DPAD RIGHT': 'right',
+  'REMOTE DPAD CENTER': 'select',
+  'REMOTE MENU': 'menu',
+  'REMOTE MEDIA PLAY PAUSE': 'playPause',
+  ENTER: 'select',
+  RETURN: 'select',
+  ESCAPE: 'menu',
+  BACK: 'menu',
+};
+
 // vega (Amazon Fire TV) remote key names → VegaDriver button values, for flow pressKey.
 const VEGA_FLOW_BUTTONS: Record<string, VegaButton> = {
   BACK: 'back',
@@ -1237,11 +1258,16 @@ async function executeCommandBody(
     case 'pressKey': {
       const keyName = (val as string).toUpperCase();
       if (driver instanceof IOSDriver) {
+        const tvosButton = driver.platform === 'tvos' ? TVOS_FLOW_BUTTONS[keyName] : undefined;
         // Home and Lock are hardware buttons on iOS, not software keys
-        if (keyName === 'HOME') {
+        if (tvosButton) {
+          await driver.pressButton(tvosButton);
+        } else if (keyName === 'HOME') {
           await driver.pressButton('home');
         } else if (keyName === 'LOCK' || keyName === 'POWER') {
           await driver.pressButton('lock');
+        } else if (driver.platform === 'tvos') {
+          throw new Error(`pressKey: key "${val}" is not supported on tvOS`);
         } else {
           await driver.pressKey(mapIosKey(keyName));
         }

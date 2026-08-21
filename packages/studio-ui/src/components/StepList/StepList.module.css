@@ -1,0 +1,47 @@
+.list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-base);
+  font-family: var(--font-mono);
+}
+
+.marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending {
+  color: var(--text-muted);
+}
+.running {
+  color: var(--accent);
+}
+.passed .marker {
+  color: var(--success);
+}
+.passed .label {
+  color: var(--text-secondary);
+}
+.failed .marker {
+  color: var(--error);
+}
+.failed .label {
+  color: var(--error);
+}

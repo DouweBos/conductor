@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Conductor Studio: a heavy white C on a full-bleed indigo-to-purple gradient.
+
+    The C is a single circular arc with round caps — no font needed at build
+    time, and one solid silhouette that still reads at 16px. Weight is roughly
+    a quarter of the outer diameter, which is what keeps the counter open
+    rather than closing to a dot when it's scaled down.
+
+    The squircle is baked in: macOS does not mask app icons for you.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4a4fe0" />
+      <stop offset="55%" stop-color="#5f47c9" />
+      <stop offset="100%" stop-color="#7d3ba6" />
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="70" y="70" width="884" height="884" rx="198" ry="198" />
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <rect x="70" y="70" width="884" height="884" fill="url(#bg)" />
+    <path
+      d="M 692.5 371 A 229 229 0 1 0 692.5 653"
+      fill="none"
+      stroke="#ffffff"
+      stroke-width="136"
+      stroke-linecap="round"
+    />
+  </g>
+</svg>

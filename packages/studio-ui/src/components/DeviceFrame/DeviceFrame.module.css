@@ -1,0 +1,57 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-4);
+  min-height: 0;
+}
+
+/*
+ * Shrinks to whatever is left after the label. `max-height: 100%` resolved
+ * against the whole wrapper, ignoring its sibling, so the frame claimed the
+ * full height and pushed the label out of view.
+ */
+.frame {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  border-radius: var(--radius-xl);
+  padding: 6px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.screen {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--device-screen);
+}
+
+.screen > :first-child {
+  display: block;
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

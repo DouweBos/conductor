@@ -1,0 +1,173 @@
+/* ==========================================================================
+   Conductor Studio Design System — Tokens (Light + Dark themes)
+   ==========================================================================
+   The default `:root` block is the LIGHT theme; the dark theme lives in
+   `:root[data-theme="dark"]`. The app toggles `data-theme` on <html> based on
+   the system preference + a user override (see app/stores/themeStore.ts).
+
+   Rule: components reference ONLY these tokens — never hardcoded colors. Custom
+   alphas use `color-mix(in srgb, var(--token) N%, transparent)`.
+
+   Token groups:
+     - Backgrounds, borders, text            (theme-aware)
+     - Accent (conductor indigo)             (theme-aware accent surface/fg)
+     - Semantic (success / warning / error)  (hue fixed, surfaces shift)
+     - Radii, spacing, typography, shadows, z-index
+   ========================================================================== */
+
+:root,
+:root[data-theme="light"] {
+  /* ─── Backgrounds ─── */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f7f9;
+  --bg-tertiary: #eceef2;
+  --bg-hover: #e4e7ec;
+  --bg-active: #d9dde4;
+  --bg-inset: #f0f1f4;
+
+  /* ─── Borders ─── */
+  --border: rgba(16, 22, 38, 0.12);
+  --border-subtle: rgba(16, 22, 38, 0.07);
+  --border-strong: rgba(16, 22, 38, 0.2);
+
+  /* ─── Text ─── */
+  --text-primary: #16192a;
+  --text-secondary: #4a4f63;
+  --text-muted: #8a8fa3;
+  --text-inverse: #ffffff;
+  --text-on-accent: #ffffff;
+
+  /* ─── Accent ─── conductor indigo */
+  --accent: #4f5bd5;
+  --accent-hover: #5d69e0;
+  --accent-active: #4048b8;
+  --accent-fg: #ffffff;
+  --accent-subtle: rgba(79, 91, 213, 0.1);
+  --accent-subtle-strong: rgba(79, 91, 213, 0.18);
+  --accent-border: rgba(79, 91, 213, 0.35);
+  --accent-glow: rgba(79, 91, 213, 0.25);
+
+  /* ─── Semantic ─── */
+  --success: #1a9d6f;
+  --success-fg: #ffffff;
+  --success-subtle: rgba(26, 157, 111, 0.12);
+  --warning: #c17d17;
+  --warning-fg: #ffffff;
+  --warning-subtle: rgba(193, 125, 23, 0.14);
+  --error: #d33453;
+  --error-fg: #ffffff;
+  --error-subtle: rgba(211, 52, 83, 0.12);
+  --info: #2274c9;
+  --info-subtle: rgba(34, 116, 201, 0.12);
+
+  /* ─── Surface / scrim ─── */
+  --surface-overlay: rgba(16, 22, 38, 0.04);
+  --surface-overlay-strong: rgba(16, 22, 38, 0.08);
+  --scrim: rgba(16, 22, 38, 0.4);
+
+  /* ─── Shadows ─── */
+  --shadow-sm: 0 1px 2px rgba(16, 22, 38, 0.08);
+  --shadow-md: 0 4px 12px rgba(16, 22, 38, 0.12);
+  --shadow-lg: 0 12px 32px rgba(16, 22, 38, 0.18);
+}
+
+:root[data-theme="dark"] {
+  /* ─── Backgrounds ─── lifted, slightly blue-tinted dark surfaces */
+  --bg-primary: #14151c;
+  --bg-secondary: #1b1d26;
+  --bg-tertiary: #242732;
+  --bg-hover: #2d3040;
+  --bg-active: #363a4c;
+  --bg-inset: #101118;
+
+  /* ─── Borders ─── */
+  --border: rgba(255, 255, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  /* ─── Text ─── */
+  --text-primary: #dce0ea;
+  --text-secondary: #a4a9bd;
+  --text-muted: #6d7288;
+  --text-inverse: #14151c;
+  --text-on-accent: #ffffff;
+
+  /* ─── Accent ─── conductor indigo, brightened for dark */
+  --accent: #7782ee;
+  --accent-hover: #8b95f4;
+  --accent-active: #6570e0;
+  --accent-fg: #14151c;
+  --accent-subtle: rgba(119, 130, 238, 0.14);
+  --accent-subtle-strong: rgba(119, 130, 238, 0.24);
+  --accent-border: rgba(119, 130, 238, 0.4);
+  --accent-glow: rgba(119, 130, 238, 0.3);
+
+  /* ─── Semantic ─── */
+  --success: #35d6a4;
+  --success-fg: #05130d;
+  --success-subtle: rgba(53, 214, 164, 0.16);
+  --warning: #f2c14e;
+  --warning-fg: #1a1405;
+  --warning-subtle: rgba(242, 193, 78, 0.16);
+  --error: #ff5c78;
+  --error-fg: #1a0409;
+  --error-subtle: rgba(255, 92, 120, 0.16);
+  --info: #5aa9f7;
+  --info-subtle: rgba(90, 169, 247, 0.16);
+
+  /* ─── Surface / scrim ─── */
+  --surface-overlay: rgba(255, 255, 255, 0.05);
+  --surface-overlay-strong: rgba(255, 255, 255, 0.1);
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  /* ─── Shadows ─── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ─── Theme-independent scales ─── */
+:root {
+  /* Radii */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Every pane header / toolbar shares one height so they line up across panes. */
+  --bar-height: 40px;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas,
+    monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+
+  /* Physical / fixed identities (not themed surfaces) */
+  --device-screen: #000000;
+
+  /* Z-index */
+  --z-panel: 10;
+  --z-sticky: 100;
+  --z-dropdown: 500;
+  --z-dialog: 1000;
+  --z-toast: 2000;
+}

@@ -1,0 +1,55 @@
+.split {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  width: 100%;
+}
+
+.horizontal {
+  flex-direction: row;
+}
+
+.vertical {
+  flex-direction: column;
+}
+
+.pane {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.flexing {
+  flex: 1 1 0;
+}
+
+.gutter {
+  position: absolute;
+  z-index: var(--z-panel);
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.horizontal > .pane > .gutter {
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.vertical > .pane > .gutter {
+  left: 0;
+  bottom: -3px;
+  height: 6px;
+  width: 100%;
+  cursor: row-resize;
+}
+
+.gutter:hover,
+.gutter:active {
+  background: var(--accent-border);
+}

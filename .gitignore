@@ -11,6 +11,23 @@ DerivedData/
 **/derived-data*/
 .build/
 packages/cli/drivers/
+# Conductor tree bundled into Studio (pnpm prepare-conductor)
+apps/studio/native/
 .claude/settings.local.json
 *.profraw
 *.profdata
+
+# Studio's own per-project artefacts (scene graphs, case results)
+.conductor-studio/
+
+# Conductor Studio build artifacts
+apps/studio/dist/
+apps/studio/dist-electron/
+apps/studio/release/
+packages/studio-ui/storybook-static/
+
+# Keep Studio's signing entitlements (the global `build/` rule would hide them)
+!apps/studio/build/
+!apps/studio/build/**
+# ...but not the intermediate rasters; icon.icns/.png/.svg are the outputs
+apps/studio/build/icon.iconset/

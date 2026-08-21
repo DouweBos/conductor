@@ -1,0 +1,72 @@
+.tree,
+.children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * Size to the widest row so a deep tree scrolls horizontally instead of
+ * squeezing its labels away — indentation used to eat the row width until
+ * nothing but the twisty and the badge were left.
+ */
+.tree {
+  width: max-content;
+  min-width: 100%;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  /* Full content width, so hover and selection span the scrolled row. */
+  width: 100%;
+  gap: var(--space-1);
+  height: 26px;
+  padding-right: var(--space-2);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.row:hover {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+}
+
+.selected,
+.selected:hover {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.twisty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.selected .icon {
+  color: var(--accent);
+}
+
+.label {
+  white-space: nowrap;
+  flex: none;
+}
+
+.meta {
+  margin-left: auto;
+  padding-left: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}

@@ -173,6 +173,41 @@ iosExec.test('pressKey Home calls pressButton("home") on iOS', async () => {
   assert(driver.callsTo('pressKey').length === 0, 'pressKey should NOT be called for Home on iOS');
 });
 
+// tvOS is focus-driven and has no software keyboard: remote keys must reach
+// pressButton, or a recorded flow silently does nothing on replay.
+iosExec.test('pressKey "Remote Dpad Up" calls pressButton("up") on tvOS', async () => {
+  const driver = new MockIOSDriver(undefined, 'tvos');
+  await executeFlow(parseFlowString('---\n- pressKey: "Remote Dpad Up"'), driver);
+  const calls = driver.callsTo('pressButton');
+  assert(calls.length === 1, `expected one pressButton call, got ${calls.length}`);
+  assert(calls[0].args[0] === 'up', `expected "up", got "${calls[0].args[0]}"`);
+  assert(driver.callsTo('pressKey').length === 0, 'pressKey should NOT be called on tvOS');
+});
+
+iosExec.test('pressKey "Remote Menu" calls pressButton("menu") on tvOS', async () => {
+  const driver = new MockIOSDriver(undefined, 'tvos');
+  await executeFlow(parseFlowString('---\n- pressKey: "Remote Menu"'), driver);
+  assert(driver.callsTo('pressButton')[0]?.args[0] === 'menu', 'expected "menu"');
+});
+
+iosExec.test('pressKey Enter maps to select on tvOS, not the keyboard', async () => {
+  const driver = new MockIOSDriver(undefined, 'tvos');
+  await executeFlow(parseFlowString('---\n- pressKey: Enter'), driver);
+  assert(driver.callsTo('pressButton')[0]?.args[0] === 'select', 'expected "select"');
+  assert(driver.callsTo('pressKey').length === 0, 'pressKey should NOT be called on tvOS');
+});
+
+iosExec.test('pressKey with a key tvOS has no button for fails loudly', async () => {
+  const driver = new MockIOSDriver(undefined, 'tvos');
+  let threw = false;
+  try {
+    await executeFlow(parseFlowString('---\n- pressKey: Tab'), driver);
+  } catch {
+    threw = true;
+  }
+  assert(threw, 'expected an unsupported tvOS key to throw rather than no-op');
+});
+
 iosExec.test('pressKey ENTER maps to pressKey("return")', async () => {
   const driver = new MockIOSDriver();
   await executeFlow(parseFlowString('---\n- pressKey: ENTER'), driver);

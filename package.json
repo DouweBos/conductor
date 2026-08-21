@@ -9,6 +9,10 @@
     "test": "pnpm --filter @houwert/conductor test",
     "lint": "pnpm --filter @houwert/conductor lint",
     "lint:fix": "pnpm --filter @houwert/conductor lint:fix",
+    "dev:studio": "pnpm --filter conductor-studio dev",
+    "build:studio": "pnpm --filter conductor-studio build",
+    "dist:studio": "pnpm --filter conductor-studio dist:dev",
+    "storybook": "pnpm --filter @conductor/studio-ui storybook",
     "changeset": "changeset",
     "changeset:version": "changeset version"
   },

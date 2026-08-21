@@ -56,8 +56,8 @@ export class MockIOSDriver extends IOSDriver {
   failNextNTaps = 0;
   private _hierarchy: IOSViewHierarchy;
 
-  constructor(hierarchy?: IOSViewHierarchy) {
-    super(0); // port=0; all network methods are overridden
+  constructor(hierarchy?: IOSViewHierarchy, platform: 'ios' | 'tvos' = 'ios') {
+    super(0, undefined, undefined, platform); // port=0; all network methods are overridden
     this._hierarchy = hierarchy ?? makeIOSHierarchy([]);
   }
 

@@ -13,6 +13,7 @@
  *  - release without id returns exit code 1
  *  - list --json output format
  */
+import { spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -107,6 +108,43 @@ devicePoolSuite.test('acquire skips already-acquired devices', async () => {
     assert(lines[0] !== 'AAAA-1111', 'should not return already-acquired device');
     assert(FAKE_DEVICES.includes(lines[0]), `expected a different fake device, got "${lines[0]}"`);
   } finally { teardown(); }
+});
+
+devicePoolSuite.test('re-acquiring a named device you already hold succeeds', async () => {
+  setup();
+  try {
+    // Studio claims by name and re-claims when an agent and a flow run share a
+    // device; that must stay idempotent, unlike "give me any free device".
+    writePoolFile({
+      devices: [
+        { deviceId: 'AAAA-1111', acquiredBy: String(process.pid), acquiredAt: Date.now() },
+      ],
+    });
+    const lines = await captureLog(async () => {
+      const code = await devicePool('acquire', undefined, {}, 'AAAA-1111');
+      assert(code === 0, `expected exit 0 re-claiming own device, got ${code}`);
+    });
+    assert(lines[0] === 'AAAA-1111', `expected AAAA-1111, got "${lines[0]}"`);
+  } finally { teardown(); }
+});
+
+devicePoolSuite.test('a named device held by someone else is refused', async () => {
+  setup();
+  // A real live process we own: an arbitrary PID would be pruned as stale (or
+  // not) depending on what else the suite happens to be running.
+  const holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    stdio: 'ignore',
+  });
+  try {
+    writePoolFile({
+      devices: [{ deviceId: 'AAAA-1111', acquiredBy: String(holder.pid), acquiredAt: Date.now() }],
+    });
+    const code = await devicePool('acquire', undefined, {}, 'AAAA-1111', process.pid);
+    assert(code === 1, `expected exit 1 for a device held by another owner, got ${code}`);
+  } finally {
+    holder.kill();
+    teardown();
+  }
 });
 
 devicePoolSuite.test('acquire returns exit 1 when all devices are acquired', async () => {

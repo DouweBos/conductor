@@ -1,0 +1,171 @@
+.console {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-secondary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--bar-height);
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.tab {
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+}
+
+.tabActive {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.smallBtn {
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.smallBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-inset);
+}
+
+.steps {
+  padding: var(--space-2) 0;
+}
+
+/* Matches LogView's empty label so all three tabs read identically. */
+.emptyHint {
+  padding: 0 var(--space-3);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.shot {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.shotLabel {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.shotImg {
+  max-width: 220px;
+  max-height: 400px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.repl {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  height: var(--bar-height);
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.mode {
+  appearance: none;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+/* Reads as a text field, not a caption next to the mode picker. */
+.inputWrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+
+.inputWrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.prompt {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.input:focus {
+  outline: none;
+}
+
+.input:disabled {
+  cursor: not-allowed;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}

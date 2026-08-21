@@ -1,0 +1,24 @@
+.canvas {
+  display: block;
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  pointer-events: auto;
+}
+
+/* A TV is driven by the remote, so the overlay is a focus target rather than a
+   pointer surface — make it obvious which state it's in. */
+.remote {
+  cursor: default;
+}
+
+.remote:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

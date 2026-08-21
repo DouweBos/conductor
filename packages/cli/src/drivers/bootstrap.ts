@@ -236,6 +236,11 @@ function findPackageRoot(): string {
 
 const DRIVERS_CACHE_ROOT = path.join(os.homedir(), '.conductor', 'drivers');
 const DRIVERS_DOWNLOAD_BASE = 'https://github.com/DouweBos/conductor/releases/download';
+// Must match the tag `.github/workflows/release.yml` pushes — the two are only
+// ever in sync because a release builds this file and cuts its tag from one
+// commit. Releases up to v0.27.2 predate the prefix and keep their `v<version>`
+// tags, which is fine — each published version only ever fetches its own tag.
+const DRIVERS_TAG_PREFIX = 'cli-v';
 const DRIVERS_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (download can be slow)
 const DRIVERS_LOCK_POLL_MS = 500;
 
@@ -326,7 +331,7 @@ async function ensureDriversCache(pkgRoot: string): Promise<string> {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     const tarball = path.join(tmpDir, 'drivers.tar.gz');
-    const url = `${DRIVERS_DOWNLOAD_BASE}/v${version}/drivers.tar.gz`;
+    const url = `${DRIVERS_DOWNLOAD_BASE}/${DRIVERS_TAG_PREFIX}${version}/drivers.tar.gz`;
     log(`Downloading conductor drivers v${version} from ${url}...`);
     try {
       await downloadToFile(url, tarball);

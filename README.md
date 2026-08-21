@@ -110,8 +110,23 @@ conductor/
 ├── packages/
 │   ├── cli/              # TypeScript CLI (@houwert/conductor)
 │   ├── android-driver/   # Kotlin/Gradle instrumentation driver
-│   └── ios-driver/       # Swift/Xcode XCTest driver
+│   ├── ios-driver/       # Swift/Xcode XCTest driver
+│   └── studio-ui/        # Design system for Conductor Studio
+├── apps/
+│   └── studio/           # Conductor Studio — the desktop app
 └── Makefile
+```
+
+## 🖥️ Conductor Studio
+
+There's also a desktop app: **Conductor Studio**, a Maestro test workbench built
+on this CLI — flow editor with autocomplete, live device stream with element
+picking, an agentic test writer, and test case management. It lives in
+[`apps/studio`](apps/studio); see its
+[README](apps/studio/README.md) for what it does and how to run it.
+
+```bash
+pnpm dev:studio
 ```
 
 ## 🛠️ Development

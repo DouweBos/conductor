@@ -15,6 +15,11 @@ export interface Device {
   name: string;
   platform: string;
   status: string;
+  /**
+   * What kind of screen it is. Android reports phones, tablets and TVs all as
+   * `android`, so a caller that wants a TV can't tell them apart without this.
+   */
+  formFactor?: 'tv' | 'handset';
 }
 
 // Captured during discoverAvailableDevices so listDevices() can report it.
@@ -22,8 +27,30 @@ export interface Device {
 // extra return field onto the public type would ripple beyond this fix.
 let listAvdsError: string | undefined;
 
+/**
+ * Android TV identifies itself through `ro.build.characteristics` (or the
+ * leanback feature). One cheap getprop per device beats guessing from a model
+ * name like `sdk_google_atv_x86` or `AFTKA`.
+ */
+async function annotateAndroidFormFactors(devices: Device[], ids: string[]): Promise<void> {
+  await Promise.all(
+    ids.map(async (id) => {
+      const device = devices.find((d) => d.id === id);
+      if (!device) return;
+      const res = await spawnCommand(
+        resolveAndroidTool('adb'),
+        ['-s', id, 'shell', 'getprop', 'ro.build.characteristics'],
+        { env: androidSpawnEnv() }
+      );
+      if (!res.success) return;
+      device.formFactor = /\btv\b/i.test(res.stdout) ? 'tv' : 'handset';
+    })
+  );
+}
+
 export async function discoverBootedDevices(): Promise<Device[]> {
   const devices: Device[] = [];
+  const androidIds: string[] = [];
 
   // Try adb devices (Android)
   const adb = await spawnCommand(resolveAndroidTool('adb'), ['devices', '-l'], {
@@ -41,9 +68,12 @@ export async function discoverBootedDevices(): Promise<Device[]> {
         const modelMatch = trimmed.match(/model:(\S+)/);
         const name = modelMatch ? modelMatch[1].replace(/_/g, ' ') : id;
         devices.push({ id, name, platform: 'android', status });
+        androidIds.push(id);
       }
     }
   }
+
+  await annotateAndroidFormFactors(devices, androidIds);
 
   // Try xcrun simctl list (iOS simulators)
   const xcrun = await spawnCommand('xcrun', ['simctl', 'list', 'devices', 'booted', '--json']);
@@ -155,7 +185,17 @@ export async function discoverAvailableDevices(): Promise<Device[]> {
     for (const line of emu.stdout.split('\n')) {
       const name = line.trim();
       if (name) {
-        devices.push({ id: name, name, platform: 'android', status: 'available' });
+        // A shut-down AVD can't be probed, so fall back to its name: the AVD
+        // wizard calls TV images "Television"/"Android TV" or `_atv_`.
+        devices.push({
+          id: name,
+          name,
+          platform: 'android',
+          status: 'available',
+          formFactor: /(^|[_\s-])(tv|television|atv|leanback)([_\s-]|$)/i.test(name)
+            ? 'tv'
+            : 'handset',
+        });
       }
     }
   } else {

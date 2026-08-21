@@ -1,2 +1,8 @@
 packages:
   - 'packages/cli'
+  - 'packages/studio-ui'
+  - 'apps/studio'
+
+onlyBuiltDependencies:
+  - electron
+  - esbuild

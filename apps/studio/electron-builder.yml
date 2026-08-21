@@ -1,0 +1,32 @@
+# Local / unsigned packaging (produces an unsigned .app in release/). The signed,
+# notarized, auto-updating build uses electron-builder.release.cjs.
+appId: dev.houwert.conductor-studio
+productName: Conductor Studio
+copyright: © Houwert
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+
+asar: true
+
+# Copies native/conductor/ into Resources — a hook, not extraResources,
+# because electron-builder's matcher strips nested node_modules.
+afterPack: ./scripts/electron-after-pack.cjs
+
+mac:
+  category: public.app-category.developer-tools
+  identity: null
+  target:
+    - target: dir
+      arch:
+        - arm64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist

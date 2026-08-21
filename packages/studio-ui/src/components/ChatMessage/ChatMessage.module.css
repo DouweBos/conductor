@@ -1,0 +1,41 @@
+.row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-2) 0;
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.assistant .avatar {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.user .avatar {
+  background: var(--surface-overlay-strong);
+  color: var(--text-secondary);
+}
+
+.bubble {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.user .bubble {
+  color: var(--text-secondary);
+}

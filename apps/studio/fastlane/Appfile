@@ -1,0 +1,7 @@
+app_identifier "dev.houwert.conductor-studio"
+team_id "CKZT75PN5T"
+
+# Apple ID is resolved per-environment:
+#   - locally: set FASTLANE_APPLE_ID in your shell / .env
+#   - CI: ignored (we authenticate via App Store Connect API key)
+apple_id ENV["FASTLANE_APPLE_ID"] if ENV["FASTLANE_APPLE_ID"]
