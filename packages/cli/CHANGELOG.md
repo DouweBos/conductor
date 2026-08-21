@@ -1,5 +1,63 @@
 # @houwert/conductor
 
+## 0.28.0
+
+### Minor Changes
+
+- eab890e: `list-devices` now reports a `formFactor` for Android devices (`tv` or
+  `handset`), read from `ro.build.characteristics` for booted devices and from the
+  AVD name for available ones. Android reports TVs, phones and tablets alike as
+  `android`, so nothing downstream could tell them apart — a TV test could be sent
+  to a phone emulator. Studio uses it to pick the right device for a flow and to
+  offer tvOS and Android TV as separate choices.
+- eab890e: Turn Studio's test cases from a read-only matrix into test case management:
+  authoring, structured steps that name the page object automating them (so a flow
+  can be scaffolded from a case and checked against it), an execution log fed by
+  flow runs, manual verdicts, the agent and CI, test plans that run a selection on
+  a device, and CSV import/export. Cases and results live under
+  `~/.conductor/studio`, not in the repo under test, and results are local only —
+  there is no CI sync. Adds `conductor cases
+list | report | result` so CI can file JUnit results without Studio running.
+- eab890e: Let a long-running client hold a device reservation. `device-pool --acquire`
+  stamped the claim with the CLI's own PID, and conductor frees claims whose owner
+  has exited — so the reservation was gone the instant the command returned, and
+  nothing could actually reserve a device. It now takes `--owner <pid>` to hold the
+  claim for a process that sticks around, and `--device <id>` to claim a specific
+  device instead of any free one, failing if someone else holds it.
+
+  Conductor Studio uses this: an agent reserves its device for the length of the
+  session and releases it however the session ends, refuses to start on a device
+  another agent holds, and marks reserved devices in the picker.
+
+### Patch Changes
+
+- eab890e: Tag CLI releases `cli-v<version>` instead of `v<version>`, so the conductor
+  repo's release list stays legible now that Conductor Studio publishes
+  `studio-v<version>` releases alongside them.
+
+  The driver bootstrap downloads `drivers.tar.gz` from its own release tag, so it
+  moves in lockstep — a release builds that file and cuts its tag from the same
+  commit. Already-published versions are unaffected: they keep fetching the
+  unprefixed tags, which stay where they are.
+
+- eab890e: Fix `device-pool --acquire` handing back a device the caller already holds when
+  asked for any free device. Re-claiming stays idempotent when the device is named
+  with `--device`, which is how Studio's reservations work, but an unqualified
+  acquire now only returns a genuinely free device — otherwise two parallel runs
+  by the same owner land on one screen.
+- eab890e: Flow runs now reserve their device too, not just agent sessions — a run sharing a
+  device with another agent tests whatever that agent left on screen. Claims are
+  counted, so an agent and a run on the same device share one claim and the device
+  is only released when the last of them finishes. `device-pool --acquire` is also
+  re-entrant: re-claiming a device you already hold succeeds instead of reporting a
+  conflict with yourself.
+- eab890e: Fix `pressKey` in flows on tvOS. `conductor press-key "Remote Dpad Up"` routed
+  remote keys to `pressButton`, but the flow runner didn't — a `pressKey` step
+  fell through to the software-keyboard path, which tvOS doesn't have, so the step
+  silently did nothing. Remote keys now reach `pressButton` on tvOS, `Enter` maps
+  to Select, `Escape`/`Back` to Menu, and a key tvOS has no button for now fails
+  loudly instead of no-opping.
+
 ## 0.27.2
 
 ### Patch Changes
