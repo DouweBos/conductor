@@ -40,7 +40,7 @@ import { registryInstallArgs, writeShim } from "../electron/services/conductor/i
 // Configuration — bump this when upgrading conductor
 // ---------------------------------------------------------------------------
 
-const CONDUCTOR_VERSION = "0.27.2";
+const CONDUCTOR_VERSION = "0.28.0";
 
 // ---------------------------------------------------------------------------
 // Paths
