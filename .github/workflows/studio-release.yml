@@ -87,6 +87,21 @@ jobs:
           CHANNEL=$(node -p "/^\\d+\\.\\d+\\.\\d+-([a-z]+)/.exec('${VERSION}')?.[1] ?? 'latest'")
           echo "Releasing Conductor Studio ${VERSION} as studio-v${VERSION} (${CHANNEL} channel)" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Extract release notes
+        run: |
+          # Top section of apps/studio/CHANGELOG.md — everything between the
+          # first '## ' heading and the next. Written by `changeset version`
+          # during a CLI release, which bumps conductor-studio too.
+          awk '
+            /^## / { if (found) exit; found=1; next }
+            found { print }
+          ' apps/studio/CHANGELOG.md > studio-release-notes.md 2>/dev/null || true
+          if [ -s studio-release-notes.md ]; then
+            echo "STUDIO_RELEASE_NOTES_FILE=$GITHUB_WORKSPACE/studio-release-notes.md" >> "$GITHUB_ENV"
+          else
+            echo "No CHANGELOG section found — release body will be the default." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Build Studio
         run: pnpm --filter conductor-studio build
         env:

@@ -589,9 +589,12 @@ Bash tool where an `electron --run-as-node <entry>` invocation wouldn't survive.
 
 Studio shares the conductor repo with the CLI, so its releases are tagged
 `studio-v<version>` (`tagNamePrefix`) to keep them off the CLI's `v<version>`
-tags. **Bump `apps/studio/package.json` first, then run the workflow** — the
-version is the only input. A prerelease version publishes to that channel and
-is marked a GitHub prerelease; a plain one publishes to stable:
+tags. The version is the only input, and **changesets owns it** — a Studio
+changeset bumps `apps/studio/package.json` during the CLI release workflow's
+`changeset version` step, which also writes `apps/studio/CHANGELOG.md` for the
+release body. So cut a CLI release first, then run this one. Hand-edit the
+version only to move to a prerelease. A prerelease version publishes to that
+channel and is marked a GitHub prerelease; a plain one publishes to stable:
 
 | Version | Tag | Channel | GitHub |
 | --- | --- | --- | --- |

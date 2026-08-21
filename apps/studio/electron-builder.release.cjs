@@ -21,6 +21,11 @@ const { version } = require("./package.json");
 
 const prereleaseChannel = /^\d+\.\d+\.\d+-([a-z]+)/.exec(version)?.[1] ?? null;
 
+// Release body: the CHANGELOG section for this version, extracted by the
+// workflow. Omitted for local runs, where electron-builder falls back to its
+// own default.
+const releaseNotesFile = process.env.STUDIO_RELEASE_NOTES_FILE;
+
 module.exports = {
   appId: "dev.houwert.conductor-studio",
   productName: "Conductor Studio",
@@ -50,6 +55,7 @@ module.exports = {
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
   },
+  ...(releaseNotesFile ? { releaseInfo: { releaseNotesFile } } : {}),
   publish: [
     {
       provider: "github",
