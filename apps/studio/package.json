@@ -19,7 +19,8 @@
     "dist:release": "pnpm prepare-conductor && pnpm build && electron-builder --config electron-builder.release.cjs --publish always",
     "preview": "vite preview",
     "prepare-conductor": "tsx scripts/prepare-conductor.ts",
-    "postinstall": "tsx scripts/prepare-conductor.ts"
+    "postinstall": "tsx scripts/prepare-conductor.ts",
+    "build:icon": "tsx scripts/generate-icon.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.0",
@@ -36,6 +37,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

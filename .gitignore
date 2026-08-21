@@ -29,3 +29,5 @@ packages/studio-ui/storybook-static/
 # Keep Studio's signing entitlements (the global `build/` rule would hide them)
 !apps/studio/build/
 !apps/studio/build/**
+# ...but not the intermediate rasters; icon.icns/.png/.svg are the outputs
+apps/studio/build/icon.iconset/
