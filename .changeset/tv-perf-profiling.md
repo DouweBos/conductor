@@ -124,3 +124,10 @@ carrying the measured injection cost, because spawning a JVM beside the frames
 being measured is load on exactly the resources a memory-constrained TV is
 short of, and `pressToFrame` can exclude the startup time but not the
 contention.
+
+`profile frames report --track` announces the measurement window on stderr when
+stderr is a terminal, so a person driving the physical remote can synchronise
+with it. That path matters more on TV than it sounds: focus moves one discrete
+step per keypress with no momentum, so unlike mobile there is no way to capture
+navigation frames without something driving input — and a human with the remote
+is the only input path that applies no load of its own.

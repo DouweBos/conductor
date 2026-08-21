@@ -87,6 +87,10 @@ The on-device `framestats` ring buffer only holds ~120 frames (about 2s at
 whole window. If polling can't keep up, the report says so in a `note` instead
 of silently reporting the tail. The summary counters are unaffected either way.
 
+Before trusting a navigation capture, read *The harness perturbs what it
+measures* below — on TV you cannot drive focus and measure frames independently,
+and that affects how these numbers should be read.
+
 ## Comparing before and after
 
 ```
@@ -156,6 +160,69 @@ When coverage does drop, the report carries a structured `poll-gap` note with
 the measured `coveragePercent` and a `suggestedIntervalMs` — at 3000ms above it
 suggested 1592ms. A poll merely *seeing* a full buffer is normal on a busy
 device and is not by itself reported as a problem; only actual frame loss is.
+
+## The harness perturbs what it measures, and TV gives you no way around it
+
+`AndroidDriver.pressKeyEvent` — which every input path funnels through
+(`press-key`, `run-flow`'s `pressKey`, `hide-keyboard`, the streaming-input
+backend) — is `adb shell input keyevent`. That spawns an `app_process` JVM on
+the device per keypress, measured at ~713ms. The process starts and tears down
+*alongside* the frames being measured, so on a 1.7GB Stick it competes for
+exactly the resources whose scarcity you are trying to detect.
+
+On mobile this has an easy answer: fling the list and measure the momentum
+scroll after your finger leaves the glass. **That answer does not exist on TV.**
+Focus moves one discrete step per keypress and stops dead — no fling, no
+inertia, nothing self-propelled. Navigation is 100% input-driven by
+construction, which means the contamination lands precisely on the symptom
+users complain about.
+
+What you *can* capture with no harness input at all:
+
+- idle screens
+- screen-load settles and cold start
+- self-running animations — autoplay previews, theme music, carousel
+  auto-advance
+
+That is a genuinely useful set, and an idle-screen capture is a good first
+experiment. But it does not include navigation.
+
+### Options for measuring navigation anyway
+
+**1. A person with the physical remote.** For a diagnostic session — as opposed
+to CI — this is the cleanest signal available: zero harness load, the real input
+path, real event timestamps. Start the window and press the D-pad steadily:
+
+```
+conductor profile frames report <appId> --device <serial> --track 20
+```
+
+When stderr is a terminal the command announces the window (`▶ measuring … —
+drive the device now` / `■ window closed`) so you can synchronise. `--json` on
+stdout is unaffected. It doesn't automate and won't gate a PR, but for "is
+navigation actually janky on this device" it beats every automated option, and
+it is the correct cross-check on any automated number: **if the automated and
+human-driven figures diverge, the harness is the difference.**
+
+**2. `monkey -f <script>` — one JVM for a whole sequence.** `monkey`'s script
+mode reads a file of `DispatchKey` / `UserWait` events and injects them from a
+single `app_process` that lives for the entire run. Start it, let it get past
+its own startup, and open the measurement window after — N spawn/teardown cycles
+collapse to one, amortised outside the frames you care about. Coarser timing
+granularity and a fiddlier event syntax than the alternatives, but it needs no
+special permissions and no per-device node discovery.
+
+**3. `sendevent` — fastest, least portable.** Writing raw events to
+`/dev/input/eventN` costs ~60ms for a full key press versus ~713ms, and being a
+`write()` to a chardev rather than a process spawn, it largely removes the
+contention too. It needs the shell user to be in the `input` group (true on an
+NVIDIA SHIELD; **unverified on stock Fire OS**), per-device node selection by
+capability rather than a hardcoded path, and Linux input codes (`KEY_RIGHT=106`)
+rather than Android keycodes (`22`).
+
+Whichever you use, `press-key --measure` reports a `driver-perturbation` note
+carrying the measured injection cost whenever the harness is doing the driving,
+so a contaminated window is never silently presented as a clean one.
 
 ## `NewestInputEvent` is opportunistic — check before relying on it
 

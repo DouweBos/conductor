@@ -764,9 +764,11 @@ export async function profileFramesReport(
     if (frameOpts.trackSec !== undefined) {
       for (let i = 0; i < repeat; i++) {
         await resetFrameCounters(target.deviceId, appId);
+        announceWindow(i, repeat, frameOpts.trackSec, appId);
         const started = Date.now();
         track = await trackFrames(target.deviceId, appId, frameOpts.trackSec * 1000, intervalMs);
         const elapsed = Date.now() - started;
+        announceWindowEnd(i, repeat);
         const windowSummary = parseGfxinfoSummary(track.lastDump);
         const windowFrames = track.rows
           .map((r) => toFrameSample(r))
@@ -900,6 +902,28 @@ export async function profileFramesReport(
     printError(`profile frames report — ${err instanceof Error ? err.message : String(err)}`, opts);
     return 1;
   }
+}
+
+/**
+ * Tell a watching human when the window opens and closes.
+ *
+ * TV navigation has no momentum — focus moves one step per keypress and stops —
+ * so there is no such thing as capturing navigation frames without something
+ * driving input. Where that something is a person with the physical remote,
+ * they need to know when to start, and they are the only input path with no
+ * harness load at all. Goes to stderr so `--json` on stdout stays clean, and
+ * only when stderr is a terminal so piped runs stay quiet.
+ */
+function announceWindow(index: number, repeat: number, sec: number, appId: string): void {
+  if (!process.stderr.isTTY) return;
+  const which = repeat > 1 ? ` (window ${index + 1}/${repeat})` : '';
+  process.stderr.write(`\n▶ measuring ${appId} for ${sec}s${which} — drive the device now\n`);
+}
+
+function announceWindowEnd(index: number, repeat: number): void {
+  if (!process.stderr.isTTY) return;
+  const more = index + 1 < repeat ? ' — next window starts shortly' : '';
+  process.stderr.write(`■ window closed${more}\n`);
 }
 
 function pct(n: number | undefined): string {

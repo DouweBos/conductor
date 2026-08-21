@@ -31,9 +31,20 @@ they need a dev/profiling build.
 | `conductor profile frames report --track <s> [--interval <ms>]` | Reset, sample for N seconds, then report |
 | `conductor profile frames report --save-baseline <name>` / `--diff <name>` / `--baselines` | Save and compare runs |
 
-Reads `dumpsys gfxinfo <pkg> framestats`, so it needs no instrumentation and
-does not perturb what it measures. Not available on `vega` — but a **physical
-Fire TV Stick runs Fire OS (Android)** over adb and works fine.
+Reads `dumpsys gfxinfo <pkg> framestats`, so it needs no instrumentation.
+
+**On TV, be deliberate about who is driving.** `press-key` injects with
+`adb shell input keyevent`, which spawns a JVM on the device (~713ms) beside
+the frames you are measuring. Mobile's answer — fling and measure the momentum
+scroll — does not exist on TV, where focus moves one step per press and stops.
+So a navigation capture is always partly a measurement of the harness. Idle
+screens, load settles, cold start and self-running animations are clean; for
+navigation, prefer asking a human to drive the physical remote during the
+window (the command announces the window on stderr for exactly this), and treat
+a divergence between human-driven and automated numbers as the harness.
+
+Not available on `vega` — but a **physical Fire TV Stick runs Fire OS
+(Android)** over adb and works fine.
 
 Attribute jank by comparing each phase's p95 against its p50: `vsyncDelay` means
 the UI thread was blocked elsewhere, `traversal` means measure/layout,
@@ -43,14 +54,26 @@ the UI thread was blocked elsewhere, `traversal` means measure/layout,
 
 | Command | Purpose |
 |---|---|
-| `conductor press-key <key> --measure` | Time how long focus takes to move after the press |
-| `conductor press-key <key> --measure --repeat <n>` | Take n samples, report p50/p90/p99 and timeouts |
-| `--timeout <ms>` / `--poll-interval <ms>` | Per-sample give-up time; delay between focus polls |
+| `conductor press-key <key> --measure` | Time the app's response to the press |
+| `conductor press-key <key> --measure --repeat <n>` | Take n samples and report a distribution |
+| `--sequence <k1,k2>` | Cycle keys so repeats oscillate instead of drifting across the UI |
+| `--timeout <ms>` / `--poll-interval <ms>` / `--settle <ms>` | Give-up time; poll delay; render time to allow |
 
-Reports two numbers. `focusChange` works everywhere but is bounded by how long
-one hierarchy dump takes, so `pollCost` is printed as its error bar. On Android
-it also reports `inputToFrame`, measured on-device in nanoseconds from gfxinfo —
-**prefer that number**, it excludes adb round-trip and is what the user feels.
+Read `outcome` per sample before the aggregates. `moved` is a measurement;
+`unchanged` means focus queries kept working and the app simply declined to move
+(a rail edge, or a key this screen ignores) and is **not** a hang;
+`query-failed` is the one that suggests something is wedged.
+
+`--repeat` is not repeated measurement of one event — pressing Right twenty
+times walks twenty different transitions. Read `byTransition` before the
+aggregate, or use `--sequence` to oscillate between two positions.
+
+On Android `pressToFrame` is derived from device-side clocks and is the figure
+to trust. `focusChange` is bounded by how long one hierarchy dump takes, and a
+`round-trip-bound` note fires when that floor dominates. gfxinfo's own
+`inputLatency` appears only when the device populates `NewestInputEvent` — it
+does on a Fire TV Stick, it never does on an NVIDIA SHIELD — so treat it as a
+bonus, never as something whose absence means no input occurred.
 
 ## JS CPU (Hermes sampling profiler)
 
