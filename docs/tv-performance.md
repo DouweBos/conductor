@@ -42,14 +42,23 @@ This is usually the constraint that matters: a debug build is already slower
 than what users run, so a measurement that requires one can't confirm the
 reported problem.
 
-**Release-safe** — no debugger, no DevTools hook, no instrumentation:
+**Release-safe** — nothing required of the app at all:
 
 - `profile frames` — reads HWUI's own counters over adb.
-- `profile cpu [--report]` — simpleperf samples the process as it is.
 - `profile memory --track` — `dumpsys meminfo`, plus collections inferred from
   the heap series (see below; ART's own GC logging is not dependable).
 - `press-key --measure` — its `pressToFrame` figure is derived from device-side
   clocks and gfxinfo, so it needs nothing from the app.
+
+That is the whole list. Everything else needs the build to permit it.
+
+**Needs `android:debuggable` or `<profileable android:shell="true"/>`:**
+
+- `profile cpu [--report]` — simpleperf refuses to attach to a process that is
+  neither. A stock release APK is neither, and the failure is otherwise opaque
+  (`exited with 1` under a wall of PMU-probing chatter), so conductor checks the
+  package flags and says which manifest change would fix it. `profileable` is
+  the right one for a perf build: one line, and the build stays a release build.
 
 **Needs a dev or profiling build** — both attach over Metro:
 
@@ -251,6 +260,32 @@ device and not the other. Treat the field as a bonus: `profile frames` reports
 `no-input-timestamps` note when they did not, so absence is never mistaken for
 "no input occurred". For a measurement that does not depend on it, use
 `press-key --measure`, whose `pressToFrame` is derived from device-side clocks.
+
+## One window is not a measurement
+
+Frame timing on TV varies enough between identical captures to invent a
+regression. Five consecutive release-build captures of the same screen on a Fire
+TV Stick 4K Max, same app, same alternating D-pad input:
+
+| run | janky | frame p50 | `issueDraw` p50 |
+|---|---|---|---|
+| 1 | 72.9% | 26.3ms | 12.73ms |
+| 2 | 67.6% | 24.9ms | 13.03ms |
+| 3 | 61.3% | 24.4ms | 12.31ms |
+| 4 | 59.4% | 24.3ms | 12.91ms |
+| 5 | 37.8% | 13.6ms | 6.19ms |
+
+Jank spans 37.8–72.9% and `issueDraw` p50 spans 6.2–13.0ms **with nothing
+changed**. A debug-build capture of the same screen (59.7% janky, 11.64ms) sits
+inside both ranges, so on this evidence debug and release are indistinguishable
+— a conclusion the single captures on either side appeared to contradict.
+
+What moves it is content: run 5 scrolled fewer and smaller tiles into view.
+
+**So treat `--repeat 5` as the default posture on TV, not an option.** A single
+`--track` window carries no variance, cannot support a `--diff`, and the report
+says so with a `single-window` note. Judge a change against the baseline's own
+spread, which `--repeat` records and `--diff` then tests against.
 
 ## ART's GC logging is not dependable — use the heap deltas
 

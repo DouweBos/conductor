@@ -25,6 +25,7 @@ import { printError, printData, printSuccess, OutputOptions } from '../output.js
 import { detectPlatform } from '../drivers/bootstrap.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { spawnCommand } from '../runner.js';
+import { adbShell } from '../android/device.js';
 import { memory } from './memory.js';
 import { MetroCdpClient } from '../drivers/metro-cdp.js';
 import { collectGcSince, deviceLogcatTimestamp, summariseGc, GcReport } from './profile-gc.js';
@@ -33,6 +34,95 @@ export interface SimpleperfEntry {
   percent: number;
   dso: string;
   symbol: string;
+}
+
+/** A library's total share, so one dominant .so is legible as one thing. */
+export interface DsoRollup {
+  dso: string;
+  percent: number;
+  symbols: number;
+  /** True when every sample in this library landed at a raw offset. */
+  unsymbolised: boolean;
+}
+
+/** simpleperf renders an unresolved address as `libfoo.so[+1a62f8]`. */
+export function isUnsymbolised(symbol: string): boolean {
+  return /\[\+[0-9a-fx]+\]\s*$/i.test(symbol);
+}
+
+function shortDso(dso: string): string {
+  return dso.includes('/') ? dso.slice(dso.lastIndexOf('/') + 1) : dso;
+}
+
+/**
+ * Sum a flat symbol table by library.
+ *
+ * A stripped app library shows up as a dozen `libfoo.so[+offset]` rows that a
+ * reader cannot tell apart from a dozen unrelated hotspots. Rolled up, one
+ * library dominating is immediately visible — which is the actual finding when
+ * a profile has no single hot symbol.
+ */
+export function rollupByDso(entries: SimpleperfEntry[]): DsoRollup[] {
+  const byDso = new Map<string, { percent: number; symbols: number; unsym: number }>();
+  for (const e of entries) {
+    const key = shortDso(e.dso);
+    const slot = byDso.get(key) ?? { percent: 0, symbols: 0, unsym: 0 };
+    slot.percent += e.percent;
+    slot.symbols++;
+    if (isUnsymbolised(e.symbol)) slot.unsym++;
+    byDso.set(key, slot);
+  }
+  return [...byDso.entries()]
+    .map(([dso, v]) => ({
+      dso,
+      percent: Math.round(v.percent * 100) / 100,
+      symbols: v.symbols,
+      unsymbolised: v.unsym === v.symbols,
+    }))
+    .sort((a, b) => b.percent - a.percent);
+}
+
+/** Share of the sampled overhead that resolved to no function name. */
+export function unsymbolisedPercent(entries: SimpleperfEntry[]): number {
+  const total = entries.reduce((a, e) => a + e.percent, 0);
+  if (total <= 0) return 0;
+  const unsym = entries.filter((e) => isUnsymbolised(e.symbol)).reduce((a, e) => a + e.percent, 0);
+  return Math.round((unsym / total) * 10000) / 100;
+}
+
+/**
+ * Turn a simpleperf failure into something actionable.
+ *
+ * simpleperf needs the target to be `android:debuggable` or to declare
+ * `<profileable android:shell="true"/>`. A stock release APK is neither, and
+ * the resulting error says only `exited with 1`.
+ */
+async function explainSimpleperfFailure(
+  deviceId: string,
+  appId: string | undefined,
+  stderr: string
+): Promise<string> {
+  // Drop simpleperf's PMU probing chatter; it is present on every run.
+  const meaningful = stderr
+    .split(/\r?\n/)
+    .filter((l) => l.trim() && !/cannot read event type|Failed to read event type/i.test(l))
+    .slice(-4)
+    .join('\n');
+
+  if (appId) {
+    const pkg = await adbShell(deviceId, ['dumpsys', 'package', appId]);
+    if (pkg.success && /^\s*flags=\[/m.test(pkg.stdout) && !/\bDEBUGGABLE\b/.test(pkg.stdout)) {
+      return (
+        `simpleperf cannot profile ${appId}: the installed APK is neither debuggable nor ` +
+        `profileable.\nsimpleperf needs android:debuggable, or ` +
+        `\`<profileable android:shell="true"/>\` inside <application> — the latter is a ` +
+        `one-line manifest change that keeps the build a release build and is the right fix ` +
+        `for a perf build.\n` +
+        (meaningful ? `simpleperf said:\n${meaningful}` : '')
+      );
+    }
+  }
+  return `simpleperf record failed.\n${meaningful || '(no diagnostic output)'}`;
 }
 
 /**
@@ -121,13 +211,13 @@ async function recordAndroidCpu(
   } else {
     recordArgs.push('-a');
   }
-  await new Promise<void>((resolve, reject) => {
-    const proc = spawn(adb, recordArgs, { stdio: 'inherit', env });
-    proc.on('close', (code) =>
-      code === 0 ? resolve() : reject(new Error(`simpleperf record exited with ${code}`))
-    );
-    proc.on('error', reject);
-  });
+  // Capture rather than inherit: simpleperf prints a wall of `cannot read event
+  // type` lines while probing PMU support, and those are not the error. Letting
+  // them through buries whatever actually went wrong.
+  const rec = await spawnCommand(adb, recordArgs, { env });
+  if (!rec.success) {
+    throw new Error(await explainSimpleperfFailure(deviceId, appId, rec.stderr));
+  }
   // Symbolize on-device before pulling: /system/bin/simpleperf resolves against
   // the libraries actually loaded there, which a host-side report cannot do
   // without a matching symfs.
@@ -223,15 +313,46 @@ export async function profileCpu(
       printError(`profile cpu is not supported on platform ${platform ?? '(unknown)'}`, opts);
       return 1;
     }
+    const byDso = entries ? rollupByDso(entries) : undefined;
+    const unsymPercent = entries ? unsymbolisedPercent(entries) : undefined;
     if (opts.json) {
-      printData({ out, durationSec: profileOpts.durationSec, platform, symbols: entries }, opts);
+      printData(
+        {
+          out,
+          durationSec: profileOpts.durationSec,
+          platform,
+          symbols: entries,
+          byDso,
+          unsymbolisedPercent: unsymPercent,
+        },
+        opts
+      );
     } else {
       printSuccess(`profile cpu — recorded ${profileOpts.durationSec}s → ${out}`, opts);
+      if (byDso && byDso.length > 0) {
+        // Lead with the rollup: a flat profile has no hot symbol, and the real
+        // finding is usually which library the samples are spread across.
+        console.log(`\n  by library`);
+        for (const d of byDso.slice(0, 10)) {
+          console.log(
+            `  ${`${d.percent}%`.padStart(9)}  ${d.dso}  (${d.symbols} symbol${d.symbols === 1 ? '' : 's'}` +
+              `${d.unsymbolised ? ', unsymbolised' : ''})`
+          );
+        }
+      }
       if (entries) {
-        console.log(`  ${'overhead'.padStart(9)}  symbol`);
+        console.log(`\n  ${'overhead'.padStart(9)}  symbol`);
         for (const e of entries) {
           console.log(`  ${`${e.percent}%`.padStart(9)}  ${e.symbol}  [${e.dso}]`);
         }
+      }
+      if (unsymPercent !== undefined && unsymPercent > 10) {
+        console.log(
+          `\n  note: ${unsymPercent}% of sampled overhead resolved to a raw address rather ` +
+            `than a function — those libraries are stripped. Read the by-library rollup above ` +
+            `instead of the symbol table; a dozen \`lib.so[+offset]\` rows are one library, ` +
+            `not a dozen findings.`
+        );
       }
     }
     return 0;

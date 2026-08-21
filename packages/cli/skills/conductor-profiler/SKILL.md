@@ -18,9 +18,14 @@ Measure a running app's performance and inspect crashes.
 | "Which component re-renders on every input?" | `profile react start` → interact → `profile react stop` |
 | "Memory grows / it stutters periodically" | `profile memory --track 30` |
 
-`profile frames`, `profile cpu` and `profile memory` work on **release builds**
-and on real hardware. `profile js` and `profile react` attach over Metro, so
-they need a dev/profiling build.
+Only `profile frames` and `profile memory` work on a **stock release build**.
+`profile cpu` needs `android:debuggable` or `<profileable android:shell="true"/>`
+in the manifest; `profile js` and `profile react` attach over Metro, and release
+Hermes ships without the inspector so there is no target to attach to.
+
+On TV, run `profile frames --track` with `--repeat 5`. Identical captures of one
+screen have been measured spanning 37.8-72.9% janky — a single window can invent
+a regression or hide one, and cannot support a `--diff`.
 
 ## Frame timing & jank (Android, incl. Fire TV / Android TV)
 

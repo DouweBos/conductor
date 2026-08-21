@@ -877,8 +877,10 @@ export async function profileFramesReport(
       notes.push({
         code: 'single-window',
         message:
-          'One window carries no run-to-run variance, so a later --diff cannot tell a real ' +
-          'change from noise. Capture a baseline with --repeat 5 to record its own spread.',
+          'One window carries no run-to-run variance, so nothing here can be called a change. ' +
+          'Measured on a Fire TV Stick, five identical captures of the same screen ranged ' +
+          '37.8-72.9% janky and 6.2-13.0ms issueDraw p50 — wide enough to invent a regression ' +
+          'or hide one. Treat --repeat 5 as the default on TV, not an option.',
       });
     }
 

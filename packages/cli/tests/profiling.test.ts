@@ -27,7 +27,13 @@ import {
   ReactProfilerReadResult,
 } from '../src/commands/profile.js';
 import { parseGcEvents, summariseGc } from '../src/commands/profile-gc.js';
-import { inferCollections, heapGrowth } from '../src/commands/profile.js';
+import {
+  inferCollections,
+  heapGrowth,
+  rollupByDso,
+  unsymbolisedPercent,
+  isUnsymbolised,
+} from '../src/commands/profile.js';
 import { analyzeCpuProfile } from '../src/commands/profile-js.js';
 import { describe, percentile, hasSamples } from '../src/stats.js';
 import { focusKey } from '../src/commands/focused.js';
@@ -764,6 +770,50 @@ profiling.test('heap growth reports start, end, delta and peak per field', async
   assert(Math.round(java.endBytes / 1024 / 1024) === 25, `end ${java.endBytes}`);
   assert(Math.round(java.deltaBytes / 1024 / 1024) === 5, `delta ${java.deltaBytes}`);
   assert(Math.round(java.peakBytes / 1024 / 1024) === 30, `peak ${java.peakBytes}`);
+});
+
+// ── Stripped libraries in a flat native profile ───────────────────────────────
+
+// Shape observed on a Fire TV Stick: no hot symbol anywhere, and the app's own
+// .so files stripped, so one dominant library reads as a dozen unrelated rows.
+const STRIPPED = `Cmdline: simpleperf record
+Samples: 5000
+
+Overhead  Shared Object                Symbol
+1.66%     /data/app/x/lib/libhermesvm.so   libhermesvm.so[+1a62f8]
+1.40%     /data/app/x/lib/libhermesvm.so   libhermesvm.so[+1a7010]
+1.21%     /data/app/x/lib/libhermesvm.so   libhermesvm.so[+0x2b3c]
+0.90%     /system/lib/libutils.so          utf8_to_utf16_length
+0.67%     /apex/com.android.runtime/lib/bionic/libc.so   __memcpy_base_a55
+`;
+
+profiling.test('an unresolved address is recognised as unsymbolised', async () => {
+  assert(isUnsymbolised('libhermesvm.so[+1a62f8]'), 'hex offset');
+  assert(isUnsymbolised('libfoo.so[+0x2b3c]'), '0x-prefixed offset');
+  assert(!isUnsymbolised('utf8_to_utf16_length'), 'a real symbol is not an offset');
+  assert(!isUnsymbolised('art::mirror::String::AllocFromUtf16'), 'C++ symbol');
+});
+
+profiling.test('rolling up by library makes one dominant .so legible', async () => {
+  const rollup = rollupByDso(parseSimpleperfReport(STRIPPED));
+  assert(rollup[0].dso === 'libhermesvm.so', `top dso ${rollup[0].dso}`);
+  // 1.66 + 1.40 + 1.21 — bigger than any single row, which is the whole point.
+  assert(Math.abs(rollup[0].percent - 4.27) < 0.01, `percent ${rollup[0].percent}`);
+  assert(rollup[0].symbols === 3, `symbols ${rollup[0].symbols}`);
+  assert(rollup[0].unsymbolised === true, 'every row was a raw offset');
+  const utils = rollup.find((r) => r.dso === 'libutils.so')!;
+  assert(utils.unsymbolised === false, 'a library that symbolised is not flagged');
+});
+
+profiling.test('reports how much of the profile resolved to no function', async () => {
+  const pct = unsymbolisedPercent(parseSimpleperfReport(STRIPPED));
+  // 4.27 of 5.84 total.
+  assert(pct > 70 && pct < 75, `unsymbolisedPercent ${pct}`);
+  assert(unsymbolisedPercent([]) === 0, 'empty input');
+});
+
+profiling.test('a fully symbolised profile reports zero unsymbolised', async () => {
+  assert(unsymbolisedPercent(parseSimpleperfReport(SIMPLEPERF)) === 0, 'system libs symbolise');
 });
 
 if (require.main === module) runAll([profiling]);
