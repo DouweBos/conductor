@@ -34,9 +34,15 @@ jobs:
       # one Argus reads) — a Developer ID cert is per-team, so there's nothing
       # Studio-specific to issue. Installed into a throwaway keychain here
       # because electron-builder signs from the keychain, not from a file.
-      - name: Install fastlane
-        working-directory: apps/studio
-        run: bundle install
+      # The runner image's default bundler is 1.17.2, which cannot run on its
+      # Ruby 3.3 at all: it calls String#untaint, removed in Ruby 3.2. Pin our
+      # own Ruby and a modern bundler instead of inheriting the image's.
+      # bundler-cache also runs `bundle install`, so fastlane lands here.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: apps/studio
 
       - name: Create build keychain
         env:
@@ -100,6 +106,25 @@ jobs:
             echo "STUDIO_RELEASE_NOTES_FILE=$GITHUB_WORKSPACE/studio-release-notes.md" >> "$GITHUB_ENV"
           else
             echo "No CHANGELOG section found — release body will be the default." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Create the tag before packaging. electron-builder publishes the dmg and
+      # the zip concurrently, and each asks GitHub to create the release; with
+      # no tag yet, the losing request dies on "Published releases must have a
+      # valid tag" mid-upload, leaving a release missing artifacts. With the tag
+      # already present there is nothing to race over.
+      - name: Create the release tag
+        run: |
+          VERSION=$(node -p "require('./apps/studio/package.json').version")
+          TAG="studio-v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists — reusing it."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "${TAG}"
+            git push origin "${TAG}"
+            echo "Created ${TAG}."
           fi
 
       - name: Build Studio
