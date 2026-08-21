@@ -102,7 +102,7 @@ const VEGA_REMOTE_BUTTONS: Partial<Record<Key, VegaButton>> = {
 };
 
 // Android keyevent codes
-const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
+export const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
   Home: 3,
   Back: 4,
   Enter: 66,

@@ -25,14 +25,9 @@
 import { getDriver, detectFirstDevice } from '../runner.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 import { queryFocused, focusKey } from './focused.js';
-import { dispatchKey, Key, AnyDriver } from './press-key.js';
+import { dispatchKey, ANDROID_KEYCODE, Key, AnyDriver } from './press-key.js';
 import { describe, round, fmt, Distribution, hasSamples } from '../stats.js';
-import {
-  adbShell,
-  shellBracketed,
-  parseProcUptimeMs,
-  resolveAndroidForegroundApp,
-} from '../android/device.js';
+import { adbShell, shellBracketed, resolveAndroidForegroundApp } from '../android/device.js';
 import { parseFramestats, toFrameSample, FrameSample } from './profile-frames.js';
 
 export interface MeasureOptions {
@@ -51,11 +46,18 @@ export interface MeasureOptions {
 export type SampleOutcome = 'moved' | 'unchanged' | 'query-failed';
 
 export interface LatencyNote {
-  code: 'round-trip-bound' | 'no-press-to-frame' | 'boundary-refusals' | 'query-failures';
+  code:
+    | 'round-trip-bound'
+    | 'no-press-to-frame'
+    | 'boundary-refusals'
+    | 'query-failures'
+    | 'driver-perturbation';
   message: string;
   pollCostP50Ms?: number;
   focusChangeP50Ms?: number;
   ratio?: number;
+  /** For driver-perturbation: what the injection itself costs on the device. */
+  injectionCostMs?: number;
 }
 
 /** Device-side view of what the app did in response to one press. */
@@ -88,6 +90,8 @@ export interface LatencySample {
   from: string;
   to: string;
   response?: PressResponse;
+  /** On-device cost of the injection itself. Load applied beside the measurement. */
+  injectionCostMs?: number;
 }
 
 export interface TransitionStats {
@@ -125,48 +129,62 @@ async function resolveDeviceId(sessionName: string): Promise<string> {
 }
 
 /**
- * Bracket the press with device-side monotonic reads so its timing is known in
- * the device's own clock domain. adb round-trip and the cost of the dispatch
- * itself fall outside the bracket and so cannot inflate the result.
+ * Reset, inject, timestamp, settle and dump — all inside one device-side shell.
+ *
+ * The timestamp is taken *after* the injection command returns rather than
+ * before it. `adb shell input keyevent` costs ~713ms on the device because it
+ * spawns an `app_process` JVM per invocation, and that cost lands entirely
+ * before the event is dispatched (`input` injects with WAIT_FOR_FINISH and then
+ * exits). Reading the clock afterwards therefore puts the press timestamp
+ * within a few ms of the actual injection instead of 713ms early, which is the
+ * difference between reporting the app's latency and reporting JVM startup.
+ *
+ * What this does *not* fix is contention: spawning and tearing down a JVM
+ * beside the frames being measured is load, and on a 1.7GB device it competes
+ * for exactly the resources whose scarcity we are looking for. That residual is
+ * reported as a `driver-perturbation` note rather than hidden.
  */
 async function measurePressResponse(
   deviceId: string,
   appId: string,
-  settleMs: number,
-  press: () => Promise<void>
-): Promise<PressResponse | undefined> {
-  const before = await shellBracketed(deviceId, `dumpsys gfxinfo ${appId} reset; cat /proc/uptime`);
-  const t0 = before ? parseProcUptimeMs(before.stdout) : undefined;
-  if (t0 === undefined) return undefined;
-
-  await press();
-
-  const after = await shellBracketed(
+  keycode: number,
+  settleMs: number
+): Promise<{ response: PressResponse; injectionCostMs: number } | undefined> {
+  const bracket = await shellBracketed(
     deviceId,
-    `cat /proc/uptime; sleep ${(settleMs / 1000).toFixed(2)}; dumpsys gfxinfo ${appId} framestats`
+    `dumpsys gfxinfo ${appId} reset; cat /proc/uptime; input keyevent ${keycode}; ` +
+      `cat /proc/uptime; sleep ${(settleMs / 1000).toFixed(2)}; ` +
+      `dumpsys gfxinfo ${appId} framestats`
   );
-  const t1 = after ? parseProcUptimeMs(after.stdout) : undefined;
-  if (!after || t1 === undefined) return undefined;
+  if (!bracket) return undefined;
+  const stamps = [...bracket.stdout.matchAll(/^\s*(\d+\.\d+)\s+\d+\.\d+\s*$/gm)].map(
+    (m) => Number(m[1]) * 1000
+  );
+  if (stamps.length < 2) return undefined;
+  const [beforeInject, afterInject] = stamps;
 
-  const frames = parseFramestats(after.stdout)
+  const frames = parseFramestats(bracket.stdout)
     .map((r) => toFrameSample(r))
     .filter((f): f is FrameSample => f !== null)
     .sort((a, b) => a.vsyncNs - b.vsyncNs);
 
-  // The counters were reset immediately before the press, so anything in the
-  // buffer was drawn after it.
-  const responding = frames.filter((f) => f.vsyncNs / 1e6 >= t0);
+  // A frame that *started* after the injection is a response to it. Frames
+  // drawn during JVM startup are in the buffer too and must not be counted.
+  const responding = frames.filter((f) => f.vsyncNs / 1e6 >= afterInject);
   if (responding.length === 0) return undefined;
 
   const first = responding[0];
   const last = responding[responding.length - 1];
   return {
-    pressToFrameMs: round(first.completedNs / 1e6 - t1),
-    pressToFrameUpperMs: round(first.completedNs / 1e6 - t0),
-    dispatchWindowMs: round(t1 - t0),
-    renderBurstMs: round((last.completedNs - first.vsyncNs) / 1e6),
-    framesInBurst: responding.length,
-    jankyInBurst: responding.filter((f) => f.totalMs > 16.67).length,
+    injectionCostMs: round(afterInject - beforeInject),
+    response: {
+      pressToFrameMs: round(first.completedNs / 1e6 - afterInject),
+      pressToFrameUpperMs: round(first.completedNs / 1e6 - beforeInject),
+      dispatchWindowMs: round(afterInject - beforeInject),
+      renderBurstMs: round((last.completedNs - first.vsyncNs) / 1e6),
+      framesInBurst: responding.length,
+      jankyInBurst: responding.filter((f) => f.totalMs > 16.67).length,
+    },
   };
 }
 
@@ -197,24 +215,28 @@ async function sampleOnce(
   const beforeKey = focusKey(before);
 
   let response: PressResponse | undefined;
+  let injectionCostMs: number | undefined;
   let dispatchMs = 0;
-  const doPress = async (): Promise<void> => {
+
+  const t0 = performance.now();
+  const keycode = androidTarget ? ANDROID_KEYCODE[key] : undefined;
+  if (androidTarget && keycode !== undefined) {
+    // Injection happens inside the device-side bracket, so the press is timed
+    // in the device's own clock domain with no host or adb time in the window.
+    const measured = await measurePressResponse(
+      androidTarget.deviceId,
+      androidTarget.appId,
+      keycode,
+      opts.settleMs
+    );
+    dispatchMs = round(performance.now() - t0);
+    response = measured?.response;
+    injectionCostMs = measured?.injectionCostMs;
+    // The bracket already waited out the settle, so focus has landed.
+  } else {
     const t = performance.now();
     await dispatchKey(driver, key, opts.holdSeconds);
     dispatchMs = round(performance.now() - t);
-  };
-
-  const t0 = performance.now();
-  if (androidTarget) {
-    response = await measurePressResponse(
-      androidTarget.deviceId,
-      androidTarget.appId,
-      opts.settleMs,
-      doPress
-    );
-    // measurePressResponse already waited out the settle, so focus has landed.
-  } else {
-    await doPress();
   }
 
   const deadline = performance.now() + opts.timeoutMs;
@@ -248,6 +270,7 @@ async function sampleOnce(
         from: beforeKey,
         to: lastKey,
         response,
+        injectionCostMs,
       };
     }
     if (opts.pollIntervalMs > 0) {
@@ -267,6 +290,7 @@ async function sampleOnce(
     from: beforeKey,
     to: lastKey,
     response,
+    injectionCostMs,
   };
 }
 
@@ -354,6 +378,28 @@ export async function measureKeyLatency(
         pollCostP50Ms: pollCost.p50Ms,
         focusChangeP50Ms: focusChange.p50Ms,
         ratio,
+      });
+    }
+  }
+
+  // The harness spawns a JVM per keypress. On a memory-constrained TV that is
+  // load landing on exactly the resources whose scarcity we are measuring, so
+  // it is declared rather than left for the reader to infer.
+  const injectionCosts = samples
+    .map((s) => s.injectionCostMs)
+    .filter((v): v is number => v !== undefined);
+  if (injectionCosts.length > 0) {
+    const cost = describe(injectionCosts);
+    if (hasSamples(cost) && cost.p50Ms > 100) {
+      notes.push({
+        code: 'driver-perturbation',
+        message:
+          `Each press is injected with \`adb shell input keyevent\`, which spawns an ` +
+          `app_process JVM on the device and cost ${cost.p50Ms}ms here. That process starts and ` +
+          `tears down alongside the frames being measured, so on a memory-constrained device ` +
+          `some of the jank in this window is the harness. pressToFrame excludes the startup ` +
+          `time but cannot exclude the contention.`,
+        injectionCostMs: cost.p50Ms,
       });
     }
   }

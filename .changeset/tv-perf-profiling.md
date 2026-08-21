@@ -114,3 +114,13 @@ Stick 4K Max and an NVIDIA SHIELD: `--track --interval` defaults to 1000ms
 (100% frame coverage on a saturated Stick, versus 66% at 3000ms), and
 `docs/tv-performance.md` records adb transport costs, the ~713ms on-device cost
 of `adb shell input keyevent`, and the device-dependence of `NewestInputEvent`.
+
+`press-key --measure` on Android now injects inside the device-side bracket and
+timestamps the press *after* the injection returns. `adb shell input keyevent`
+costs ~713ms on the device because it spawns an `app_process` JVM per call, and
+that cost lands before the event is dispatched — timestamping beforehand
+attributed all of it to the app. It also reports a `driver-perturbation` note
+carrying the measured injection cost, because spawning a JVM beside the frames
+being measured is load on exactly the resources a memory-constrained TV is
+short of, and `pressToFrame` can exclude the startup time but not the
+contention.
