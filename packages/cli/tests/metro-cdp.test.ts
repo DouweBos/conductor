@@ -6,7 +6,7 @@
  * exercised without a live Metro server.
  */
 import { TestSuite, assert } from './runner.js';
-import { selectDebuggerUrl } from '../src/drivers/metro-cdp.js';
+import { selectDebuggerUrl, resolveMetroPort } from '../src/drivers/metro-cdp.js';
 import type { MetroTarget } from '../src/drivers/log-sources/metro.js';
 
 export const metroCdp = new TestSuite('metro-cdp target selection');
@@ -125,4 +125,32 @@ metroCdp.test('falls back to the first target when nothing else matches', async 
     target({ webSocketDebuggerUrl: 'ws://second', title: 'Beta' }),
   ];
   assert(selectDebuggerUrl(targets, {}) === 'ws://first', 'should fall back to the first target');
+});
+
+// ── Port resolution ───────────────────────────────────────────────────────────
+
+// These guard the two branches that must never reach discovery, because both
+// are what stop port auto-detection from changing behaviour for anyone who was
+// relying on the old fixed default.
+
+metroCdp.test('an explicit port wins and is never second-guessed', async () => {
+  const port = await resolveMetroPort({ port: 8082, deviceId: 'emulator-5554', platform: 'android' });
+  assert(port === 8082, `expected 8082, got ${port}`);
+});
+
+metroCdp.test('an explicit port is honoured even when it is the old default', async () => {
+  const port = await resolveMetroPort({ port: 8081, deviceId: 'emulator-5554', platform: 'android' });
+  assert(port === 8081, `expected 8081, got ${port}`);
+});
+
+metroCdp.test('falls back to 8081 with no device to ask', async () => {
+  assert((await resolveMetroPort({})) === 8081, 'no device/platform');
+  assert((await resolveMetroPort({ deviceId: 'x' })) === 8081, 'device without platform');
+  assert((await resolveMetroPort({ platform: 'android' })) === 8081, 'platform without device');
+});
+
+metroCdp.test('falls back to 8081 when discovery finds nothing', async () => {
+  // A device id that cannot resolve: discovery must fail soft, not throw.
+  const port = await resolveMetroPort({ deviceId: 'no-such-device-9999', platform: 'android' });
+  assert(port === 8081, `expected the 8081 fallback, got ${port}`);
 });
