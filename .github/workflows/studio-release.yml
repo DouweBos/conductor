@@ -132,9 +132,15 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=6144
 
-      - name: Package, sign, notarize, and publish
+      # --publish never, then upload with gh. electron-builder uploads the dmg
+      # and the zip concurrently and exited once while the zip was still in
+      # flight, producing a release whose channel manifest pointed at a file
+      # that was never there — and still reporting success. The channel yml is
+      # written to release/ either way, so nothing is lost by publishing it
+      # ourselves and checking the result.
+      - name: Package, sign, and notarize
         working-directory: apps/studio
-        run: pnpm electron-builder --config electron-builder.release.cjs --publish always
+        run: pnpm electron-builder --config electron-builder.release.cjs --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signing: the bare common name — electron-builder adds the
@@ -148,3 +154,60 @@ jobs:
           # the "Materialize App Store Connect API key" step.
           APPLE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+
+      - name: Publish the release
+        working-directory: apps/studio
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="studio-v${VERSION}"
+          CHANNEL=$(node -p "/^\\d+\\.\\d+\\.\\d+-([a-z]+)/.exec('${VERSION}')?.[1] ?? 'latest'")
+
+          ASSETS=(
+            "release/conductor-studio-${VERSION}-arm64.dmg"
+            "release/conductor-studio-${VERSION}-arm64.dmg.blockmap"
+            "release/conductor-studio-${VERSION}-arm64.zip"
+            "release/conductor-studio-${VERSION}-arm64.zip.blockmap"
+            "release/${CHANNEL}-mac.yml"
+          )
+          for f in "${ASSETS[@]}"; do
+            [ -f "$f" ] || { echo "::error::electron-builder did not produce $f"; exit 1; }
+          done
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            ARGS=(--title "$VERSION")
+            [ "$CHANNEL" != "latest" ] && ARGS+=(--prerelease)
+            [ -n "${STUDIO_RELEASE_NOTES_FILE:-}" ] && ARGS+=(--notes-file "$STUDIO_RELEASE_NOTES_FILE")
+            [ -n "${STUDIO_RELEASE_NOTES_FILE:-}" ] || ARGS+=(--generate-notes)
+            gh release create "$TAG" "${ARGS[@]}" "${ASSETS[@]}"
+          fi
+
+      # A release whose manifest names a file that never uploaded looks fine
+      # from the outside, so assert every artifact actually landed.
+      - name: Verify every artifact landed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./apps/studio/package.json').version")
+          TAG="studio-v${VERSION}"
+          CHANNEL=$(node -p "/^\\d+\\.\\d+\\.\\d+-([a-z]+)/.exec('${VERSION}')?.[1] ?? 'latest'")
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+            --jq '.assets[] | select(.state == "uploaded") | .name' > uploaded.txt
+          FAILED=0
+          for name in \
+            "conductor-studio-${VERSION}-arm64.dmg" \
+            "conductor-studio-${VERSION}-arm64.zip" \
+            "${CHANNEL}-mac.yml"; do
+            if grep -qx "$name" uploaded.txt; then
+              echo "  ok       $name"
+            else
+              echo "::error::$name is missing from ${TAG}"
+              FAILED=1
+            fi
+          done
+          exit $FAILED
