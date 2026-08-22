@@ -76,7 +76,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./packages/cli/package.json').version")
           gh release create "cli-v${VERSION}" \
-            --title "conductor CLI v${VERSION}" \
+            --title "CLI v${VERSION}" \
             --notes-file release-notes.md \
             dist-drivers/drivers.tar.gz
 

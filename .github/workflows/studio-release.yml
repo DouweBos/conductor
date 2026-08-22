@@ -179,7 +179,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
           else
-            ARGS=(--title "$VERSION")
+            ARGS=(--title "Studio v${VERSION}")
             [ "$CHANNEL" != "latest" ] && ARGS+=(--prerelease)
             [ -n "${STUDIO_RELEASE_NOTES_FILE:-}" ] && ARGS+=(--notes-file "$STUDIO_RELEASE_NOTES_FILE")
             [ -n "${STUDIO_RELEASE_NOTES_FILE:-}" ] || ARGS+=(--generate-notes)
