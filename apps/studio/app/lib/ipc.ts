@@ -9,6 +9,7 @@ import type {
   PlanRunEntry,
   StepCoverage,
   CaseInput,
+  CaseProject,
   CasesDatasource,
   PullSummary,
   TestPlan,
@@ -155,13 +156,39 @@ export const deleteCase = (id: number) => invoke<void>("case_delete", { id });
 export const listCaseResults = () => invoke<CaseResult[]>("cases_results");
 export const caseStats = (ref: string) => invoke<CaseStats>("case_stats", { ref });
 
+// ── Case sub-projects (a monorepo's mobile app and tv app) ──
+export const caseProjects = () =>
+  invoke<{ projects: CaseProject[]; active: string }>("case_projects_get");
+export const saveCaseProject = (project: CaseProject, token?: string | null) =>
+  invoke<CaseProject[]>("case_project_save", { project, token });
+export const deleteCaseProject = (id: string) =>
+  invoke<CaseProject[]>("case_project_delete", { id });
+export const activateCaseProject = (id: string) =>
+  invoke<void>("case_project_activate", { id });
+
 // ── Case datasource (local, or mirrored from Qase) ──
 export const casesDatasource = () => invoke<CasesDatasource>("cases_datasource_get");
 export const saveCasesDatasource = (datasource: CasesDatasource, token?: string | null) =>
   invoke<CasesDatasource>("cases_datasource_set", { datasource, token });
 export const pullCases = () => invoke<PullSummary>("cases_pull");
-export const testCasesDatasource = () =>
-  invoke<{ ok: boolean; project?: string; error?: string }>("cases_datasource_test");
+/** Projects the token can see. Pass a just-typed token to preview it before saving. */
+export const listQaseProjects = (token?: string | null, projectId?: string) =>
+  invoke<{ ok: boolean; projects?: { code: string; title: string }[]; error?: string }>(
+    "cases_qase_projects",
+    { token, projectId },
+  );
+
+/** Pass the on-screen token/code to test them before they're saved. */
+export const testCasesDatasource = (
+  token?: string | null,
+  projectCode?: string,
+  projectId?: string,
+) =>
+  invoke<{ ok: boolean; project?: string; error?: string }>("cases_datasource_test", {
+    token,
+    projectCode,
+    projectId,
+  });
 export const recordCaseResult = (result: Omit<CaseResult, "id" | "at">) =>
   invoke<CaseResult>("case_record_result", { result });
 export const pickCaseCsv = () => invoke<string | null>("cases_pick_csv");

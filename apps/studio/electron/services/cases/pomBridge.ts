@@ -8,6 +8,7 @@ import { getProjectInfo } from "../file/fileService";
 import { loadFlowCatalog } from "../flow/catalog";
 import { indexReferences } from "../flow/references";
 import { listTags } from "../flow/suite";
+import { targetProject } from "./projects";
 import { listCases, saveCase, toInput } from "./casesService";
 
 /**
@@ -76,7 +77,11 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
       ? `${options.column}-draft`
       : options.column
     : undefined;
+  // The sub-project's tag is how its suite selects flows, so a scaffold that
+  // skips it is a flow the tv (or mobile) suite will never run.
+  const projectTag = targetProject().flowTag;
   const tags = [
+    ...(projectTag ? [projectTag] : []),
     ...(columnTag ? [columnTag] : []),
     ...(testCase.suite ? [testCase.suite] : []).map((a) => a.toLowerCase().replace(/[^a-z0-9]+/g, "-")),
     ...(options.tags ?? []),

@@ -15,7 +15,7 @@ import path from "node:path";
 
 import { Document, parseDocument, parse as parseYaml } from "yaml";
 
-import { fileNameFor, parseCase, writeCase } from "./caseFile";
+import { codeInFileName, fileNameFor, parseCase, writeCase } from "./caseFile";
 import {
   BEHAVIORS,
   CASE_STATUSES,
@@ -41,11 +41,27 @@ interface Existing {
   parsed: Case;
 }
 
-async function readExisting(dir: string, projectCode: string): Promise<Map<number, Existing>> {
+/**
+ * The cases in this store that belong to the project being pulled. Anything
+ * written under a different project code is left out entirely: it is not a case
+ * Qase dropped, it is another project's case sitting in the same store — after
+ * a datasource is repointed, or in a store from before sub-projects existed.
+ * Including it would deprecate a whole project's worth of cases in one sync.
+ */
+async function readExisting(
+  dir: string,
+  projectCode: string,
+): Promise<{ byId: Map<number, Existing>; foreign: number }> {
   const byId = new Map<number, Existing>();
-  if (!existsSync(dir)) return byId;
+  let foreign = 0;
+  if (!existsSync(dir)) return { byId, foreign };
   for (const file of (await readdir(dir)).filter((f) => /\.ya?ml$/i.test(f))) {
     const filePath = path.join(dir, file);
+    const code = codeInFileName(filePath);
+    if (code && code.toUpperCase() !== projectCode.toUpperCase()) {
+      foreign++;
+      continue;
+    }
     try {
       const raw = parseYaml(await readFile(filePath, "utf8")) as Record<string, unknown>;
       const parsed = parseCase(raw, filePath, projectCode);
@@ -54,7 +70,7 @@ async function readExisting(dir: string, projectCode: string): Promise<Map<numbe
       // A malformed file can't own an id; the pull will write a fresh one.
     }
   }
-  return byId;
+  return { byId, foreign };
 }
 
 /**
@@ -155,6 +171,8 @@ export async function pullCases(opts: PullOptions): Promise<PullSummary> {
     created: 0,
     updated: 0,
     deprecated: [],
+    unchanged: 0,
+    foreign: 0,
     lostPoms: [],
     errors: [],
   };
@@ -168,7 +186,8 @@ export async function pullCases(opts: PullOptions): Promise<PullSummary> {
   const fields = new Map(fieldList.map((f) => [f.id, f.title]));
 
   await mkdir(casesDir, { recursive: true });
-  const existing = await readExisting(casesDir, projectCode);
+  const { byId: existing, foreign } = await readExisting(casesDir, projectCode);
+  summary.foreign = foreign;
   const seen = new Set<number>();
 
   for (const entity of entities) {
@@ -185,16 +204,23 @@ export async function pullCases(opts: PullOptions): Promise<PullSummary> {
     }
 
     try {
-      const doc = prior
-        ? parseDocument(await readFile(prior.filePath, "utf8"))
-        : new Document({});
+      const before = prior ? await readFile(prior.filePath, "utf8") : null;
+      const doc = before !== null ? parseDocument(before) : new Document({});
       writeCase(doc, next);
-      await writeFile(prior?.filePath ?? target, doc.toString({ lineWidth: 0 }), "utf8");
-      // Keep the filename in step with the title it now carries.
-      if (prior && path.resolve(prior.filePath) !== path.resolve(target)) {
-        await rename(prior.filePath, target);
-      }
+      const text = doc.toString({ lineWidth: 0 });
+      const renamed = Boolean(prior) && path.resolve(prior!.filePath) !== path.resolve(target);
       summary.pulled++;
+
+      // A pull that changes nothing writes nothing: "120 updated" every sync is
+      // noise, and rewriting an identical file only churns its mtime.
+      if (before === text && !renamed) {
+        summary.unchanged++;
+        continue;
+      }
+
+      await writeFile(prior?.filePath ?? target, text, "utf8");
+      // Keep the filename in step with the title it now carries.
+      if (renamed) await rename(prior!.filePath, target);
       if (prior) summary.updated++;
       else summary.created++;
     } catch (error) {

@@ -6,8 +6,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import type { PlanRun, PlanRunEntry, TestPlan, TestPlanInput } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
-import { getProjectInfo } from "../file/fileService";
-import { studioDir } from "../util/studioPaths";
+import { caseProjectDir, selectedProjects, targetProject } from "./projects";
 import { awaitRun, cancelRun, runFlow } from "../flow/flowRunner";
 import { listCases } from "./casesService";
 import type { Case } from "./model";
@@ -23,14 +22,17 @@ import { claimRunForPlan, recordResult } from "./resultsService";
  * to be skipped, rather than quietly dropped.
  */
 
-function plansRoot(): string {
-  const project = getProjectInfo();
-  if (!project) throw new Error("No project is open.");
-  return studioDir("plans", project.root);
+/** Plans are per sub-project: a plan's case refs only mean something in one. */
+function plansRoot(projectId?: string): string {
+  return caseProjectDir("plans", projectId ?? targetProject().id);
 }
 
 export async function listPlans(): Promise<TestPlan[]> {
-  const root = plansRoot();
+  const perProject = await Promise.all(selectedProjects().map((p) => readPlans(plansRoot(p.id))));
+  return perProject.flat().sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function readPlans(root: string): Promise<TestPlan[]> {
   if (!existsSync(root)) return [];
   const plans: TestPlan[] = [];
   for (const file of (await readdir(root)).filter((f) => /\.(ya?ml)$/i.test(f))) {
@@ -53,7 +55,7 @@ export async function listPlans(): Promise<TestPlan[]> {
       // skip malformed plans
     }
   }
-  return plans.sort((a, b) => a.name.localeCompare(b.name));
+  return plans;
 }
 
 function normalizeFilter(raw: unknown): Record<string, string[]> | undefined {

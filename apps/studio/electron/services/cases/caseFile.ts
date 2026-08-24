@@ -4,6 +4,8 @@
  * order in a hand-edited file survive a round trip.
  */
 
+import path from "node:path";
+
 import { Document, isMap, isSeq } from "yaml";
 
 import {
@@ -91,6 +93,15 @@ function parseConductor(raw: unknown): ConductorBlock | undefined {
     flows: Object.keys(flows).length ? flows : undefined,
   };
   return block.flow || block.flows ? block : undefined;
+}
+
+/**
+ * The Qase project a case file came from, off its name (`MC-12-login.yaml`).
+ * A file written under a different code is that project's case, not this one's
+ * — the store can hold both after a datasource is repointed.
+ */
+export function codeInFileName(filePath: string): string | null {
+  return /^([A-Za-z][A-Za-z0-9_]*)-\d+/.exec(path.basename(filePath))?.[1] ?? null;
 }
 
 /** `raw` is an already-parsed YAML mapping. Returns null for a malformed file. */

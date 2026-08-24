@@ -58,7 +58,7 @@ export function allFlows(c: Case): { column?: string; flow: string }[] {
 interface CaseDetailProps {
   testCase: Case;
   onClose: () => void;
-  onRun: (flow: string, platform?: string) => void;
+  onRun: (flow: string, platform?: string, projectId?: string) => void;
   onChanged: () => void;
 }
 
@@ -232,7 +232,7 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
                 <span className={styles.flowPath}>{flow}</span>
               </div>
               <div className={styles.flowActions}>
-                <Button size="sm" variant="secondary" icon="play" onClick={() => onRun(flow, column)}>
+                <Button size="sm" variant="secondary" icon="play" onClick={() => onRun(flow, column, c.project)}>
                   Run
                 </Button>
                 <Button size="sm" variant="ghost" icon="file" onClick={() => selectFlow(flow)}>

@@ -187,6 +187,7 @@ export type {
   Case,
   CaseInput,
   CaseMatrix,
+  CaseProject,
   CaseResult,
   CaseResultSource,
   CaseStats,
@@ -203,6 +204,7 @@ export type {
   StepsType,
 } from "../../electron/services/cases/model";
 export {
+  ALL_PROJECTS,
   BEHAVIORS,
   CASE_STATUSES,
   CASE_TYPES,

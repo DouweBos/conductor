@@ -102,6 +102,16 @@ async function paged<T>(path: string, token: string): Promise<T[]> {
   return all;
 }
 
+export interface QaseProject {
+  code: string;
+  title: string;
+}
+
+/** Every project the token can see — powers the project picker. */
+export async function listProjects(token: string): Promise<QaseProject[]> {
+  return paged<QaseProject>("/project", token);
+}
+
 /** Validates the token and that the project code exists. */
 export async function verifyProject(code: string, token: string): Promise<string> {
   const response = await request<never>(`/project/${encodeURIComponent(code)}`, token);

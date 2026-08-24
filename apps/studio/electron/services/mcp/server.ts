@@ -14,7 +14,8 @@ import http from "node:http";
 import { z } from "zod";
 
 import type { AppFingerprint, ResultStatus, SceneNode, TestVerdict } from "../../../app/lib/types";
-import { datasource, listCases, pull as pullCasesFromQase, saveCase, toInput } from "../cases/casesService";
+import { listCases, pull as pullCasesFromQase, saveCase, toInput } from "../cases/casesService";
+import { activeProjectId, selectedProjects } from "../cases/projects";
 import { scaffoldFlow } from "../cases/pomBridge";
 import { recordResult } from "../cases/resultsService";
 import { createReportDir, writeReport } from "../report/reportService";
@@ -437,20 +438,26 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "get_cases_datasource",
-    "Where this project's test cases come from, and whether their content is yours to edit. Check this before proposing any change to a case.",
+    "Where this project's test cases come from, and whether their content is yours to edit. A repo can hold several sub-projects (a mobile app and a tv app), each mirroring its own Qase project — this says which are in view. Check it before proposing any change to a case.",
     {},
     async () => {
-      const config = datasource();
+      const selected = selectedProjects();
+      const readOnly = selected.some((p) => p.datasource.mode === "qase");
       return text({
-        mode: config.mode,
-        projectCode: config.projectCode,
-        lastPulledAt: config.qase?.lastPulledAt ?? null,
-        matrixField: config.qase?.matrixField ?? "suite",
-        caseContentReadOnly: config.mode === "qase",
-        guidance:
-          config.mode === "qase"
-            ? "Cases are authored in Qase. Link flows and assign page objects; never rewrite a title, step, tag or custom field — the next sync would revert it."
-            : "Cases are local to this machine and fully editable.",
+        selection: activeProjectId(),
+        projects: selected.map((p) => ({
+          id: p.id,
+          name: p.name,
+          mode: p.datasource.mode,
+          projectCode: p.datasource.projectCode,
+          flowTag: p.flowTag ?? null,
+          lastPulledAt: p.datasource.qase?.lastPulledAt ?? null,
+          matrixField: p.datasource.qase?.matrixField ?? "suite",
+        })),
+        caseContentReadOnly: readOnly,
+        guidance: readOnly
+          ? "Cases in `qase` mode are authored in Qase. Link flows and assign page objects; never rewrite a title, step, tag or custom field — the next sync would revert it."
+          : "Cases are local to this machine and fully editable.",
       });
     },
   );

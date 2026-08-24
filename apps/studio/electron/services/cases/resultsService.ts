@@ -5,7 +5,7 @@ import path from "node:path";
 import type { RunRecord } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { getProjectInfo } from "../file/fileService";
-import { studioDir } from "../util/studioPaths";
+import { caseProjectDir, caseProjects, selectedProjects } from "./projects";
 import type { Case, CaseResult, CaseStats, ResultStatus } from "./model";
 
 /**
@@ -28,14 +28,24 @@ export function claimRunForPlan(runId: string, planRunId: string): void {
   planClaims.set(runId, planRunId);
 }
 
-function logPath(): string | null {
-  const project = getProjectInfo();
-  if (!project) return null;
-  return path.join(studioDir("cases", project.root), LOG);
+function logPath(projectId: string): string | null {
+  if (!getProjectInfo()) return null;
+  return path.join(caseProjectDir("cases", projectId), LOG);
 }
 
-export async function listResults(): Promise<CaseResult[]> {
-  const file = logPath();
+/**
+ * The sub-project a result belongs to, from its ref — `MC-12` is the mobile
+ * project's, `TV-4` the tv one's. Falls back to the only project there is.
+ */
+function projectForRef(ref: string): string | null {
+  const projects = caseProjects();
+  const code = ref.split("-")[0];
+  const match = projects.find((p) => p.datasource.projectCode === code);
+  return (match ?? (projects.length === 1 ? projects[0] : undefined))?.id ?? null;
+}
+
+async function readLog(projectId: string): Promise<CaseResult[]> {
+  const file = logPath(projectId);
   if (!file || !existsSync(file)) return [];
   const lines = (await readFile(file, "utf8")).split("\n").filter((l) => l.trim());
   const results: CaseResult[] = [];
@@ -46,13 +56,22 @@ export async function listResults(): Promise<CaseResult[]> {
       // A half-written line (or a bad merge) must not hide the rest of the log.
     }
   }
-  return results.sort((a, b) => b.at - a.at);
+  return results;
+}
+
+/** Executions across whatever the current selection covers. */
+export async function listResults(): Promise<CaseResult[]> {
+  const logs = await Promise.all(selectedProjects().map((p) => readLog(p.id)));
+  return logs.flat().sort((a, b) => b.at - a.at);
 }
 
 export async function recordResult(
   input: Omit<CaseResult, "id" | "at"> & { at?: number },
 ): Promise<CaseResult> {
-  const file = logPath();
+  // A result files against the sub-project that owns the case, not the one on
+  // screen — a run can finish long after the user switched projects.
+  const projectId = projectForRef(input.ref);
+  const file = projectId ? logPath(projectId) : null;
   if (!file) throw new Error("No project is open.");
   counter += 1;
   const result: CaseResult = {
@@ -71,9 +90,13 @@ export async function recordResult(
  * history and stays; only the pointer to missing evidence goes.
  */
 export async function detachReport(reportId: string): Promise<void> {
-  const file = logPath();
+  for (const project of caseProjects()) await detachReportFrom(project.id, reportId);
+}
+
+async function detachReportFrom(projectId: string, reportId: string): Promise<void> {
+  const file = logPath(projectId);
   if (!file || !existsSync(file)) return;
-  const results = await listResults();
+  const results = await readLog(projectId);
   if (!results.some((r) => r.report_id === reportId)) return;
   const kept = results
     .slice()

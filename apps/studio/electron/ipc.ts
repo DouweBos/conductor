@@ -6,6 +6,7 @@ import { appState } from "./state";
 import type {
   AgentStartResult,
   CaseMatrix,
+  CaseProject,
   CasePreview,
   CaseResult,
   CaseStats,
@@ -66,7 +67,7 @@ import {
   saveCase,
   saveDatasource,
 } from "./services/cases/casesService";
-import { verifyProject } from "./services/cases/qaseClient";
+import { listProjects, verifyProject, type QaseProject } from "./services/cases/qaseClient";
 import { exportCsv, importCsv, previewCsv, type ImportOptions } from "./services/cases/importService";
 import {
   cancelPlanRun,
@@ -148,11 +149,16 @@ import {
   loadSceneGraph,
 } from "./services/scenegraph/sceneGraphService";
 import {
+  deleteCaseProject,
   deleteEnvProfile,
+  getActiveCaseProject,
+  getCaseProjects,
   getEnvProfiles,
   getQaseToken,
   getTheme,
+  saveCaseProject,
   saveEnvProfile,
+  setActiveCaseProject,
   setQaseToken,
   setTheme,
 } from "./services/settings/settingsService";
@@ -168,6 +174,19 @@ import {
   setConductorOverrideVersion,
 } from "./services/conductor/override";
 import { listConductorVersions } from "./services/conductor/registry";
+
+function requireRoot(): string {
+  const project = getProjectInfo();
+  if (!project) throw new Error("No project is open.");
+  return project.root;
+}
+
+/** Stored token for a named sub-project, or the selected one. */
+function storedToken(projectId?: string): string | undefined {
+  const root = getProjectInfo()?.root;
+  if (!root) return undefined;
+  return getQaseToken(root, projectId ?? getActiveCaseProject(root));
+}
 
 // Wrap ipcMain.handle: unwrap the single args object and re-throw as a plain
 // string so the renderer promise rejects with a readable message.
@@ -300,14 +319,36 @@ export function registerIpcHandlers(): void {
     statsFor(a.ref, await listResults()),
   );
 
+  // ── Case sub-projects (a monorepo's mobile app and tv app) ──
+  handle<void, { projects: CaseProject[]; active: string }>("case_projects_get", () => ({
+    projects: getCaseProjects(requireRoot()),
+    active: getActiveCaseProject(requireRoot()),
+  }));
+  handle<{ project: CaseProject; token?: string | null }, CaseProject[]>(
+    "case_project_save",
+    (a) => {
+      const root = requireRoot();
+      if (a.token !== undefined) setQaseToken(root, a.project.id, a.token);
+      saveCaseProject(root, a.project);
+      return getCaseProjects(root);
+    },
+  );
+  handle<{ id: string }, CaseProject[]>("case_project_delete", (a) =>
+    deleteCaseProject(requireRoot(), a.id),
+  );
+  handle<{ id: string }, void>("case_project_activate", (a) => {
+    setActiveCaseProject(requireRoot(), a.id);
+    // Everything on the Cases screen is scoped to the selection, so it all reloads.
+    broadcastToRenderers("cases:project-changed", a.id);
+  });
+
   // ── Case datasource (local, or mirrored from Qase) ──
   handle<void, CasesDatasource>("cases_datasource_get", () => datasource());
   handle<{ datasource: CasesDatasource; token?: string | null }, CasesDatasource>(
     "cases_datasource_set",
     (a) => {
-      const project = getProjectInfo();
-      if (!project) throw new Error("No project is open.");
-      if (a.token !== undefined) setQaseToken(project.root, a.token);
+      const root = requireRoot();
+      if (a.token !== undefined) setQaseToken(root, getActiveCaseProject(root), a.token);
       return saveDatasource(a.datasource);
     },
   );
@@ -316,20 +357,35 @@ export function registerIpcHandlers(): void {
     broadcastToRenderers("cases:pulled", summary);
     return summary;
   });
-  handle<void, { ok: boolean; project?: string; error?: string }>(
-    "cases_datasource_test",
-    async () => {
-      const root = getProjectInfo()?.root;
-      const config = datasource();
-      const token = root ? getQaseToken(root) : undefined;
-      if (!token) return { ok: false, error: "No Qase API token is set for this project." };
-      try {
-        return { ok: true, project: await verifyProject(config.projectCode, token) };
-      } catch (e) {
-        return { ok: false, error: String(e instanceof Error ? e.message : e) };
-      }
-    },
-  );
+  // The picker runs before Save, so an unsaved token has to come in by argument.
+  handle<
+    { token?: string | null; projectId?: string },
+    { ok: boolean; projects?: QaseProject[]; error?: string }
+  >("cases_qase_projects", async (a) => {
+    const token = a.token?.trim() || storedToken(a.projectId);
+    if (!token) return { ok: false, error: "No Qase API token is set for this project." };
+    try {
+      return { ok: true, projects: await listProjects(token) };
+    } catch (e) {
+      return { ok: false, error: String(e instanceof Error ? e.message : e) };
+    }
+  });
+  // Like the project list, this runs before Save — so it tests what's on screen,
+  // falling back to what's stored.
+  handle<
+    { token?: string | null; projectCode?: string; projectId?: string },
+    { ok: boolean; project?: string; error?: string }
+  >("cases_datasource_test", async (a) => {
+    const token = a?.token?.trim() || storedToken(a?.projectId);
+    const code = a?.projectCode?.trim();
+    if (!token) return { ok: false, error: "No Qase API token is set for this project." };
+    if (!code) return { ok: false, error: "No Qase project is selected." };
+    try {
+      return { ok: true, project: await verifyProject(code, token) };
+    } catch (e) {
+      return { ok: false, error: String(e instanceof Error ? e.message : e) };
+    }
+  });
   handle<{ result: Omit<CaseResult, "id" | "at"> }, CaseResult>("case_record_result", (a) =>
     recordResult(a.result),
   );

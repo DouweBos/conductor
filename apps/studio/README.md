@@ -284,7 +284,7 @@ commit.
 
 A **case** follows **Qase's model** — id, title, description, steps as
 action/data/expected_result, suite, severity/priority/type, custom fields, tags —
-kept as a YAML file under `~/.conductor/studio/cases/<project>/`, scoped by the
+kept as a YAML file under `~/.conductor/studio/<project>/cases/`, scoped by the
 project's path. Studio does not write cases, results or plans into the repo under
 test: the flows a case names are the tests, and those are what belong in git. The
 Cases screen is the matrix over them: a switchable custom field for the columns,
@@ -347,12 +347,40 @@ button in the toolbar. In Qase mode:
   is read off the existing file and re-attached, and any page object that could
   not be re-attached because its step changed is reported rather than dropped.
 - A case Qase no longer returns is marked `status: deprecated`, never deleted —
-  deleting it would take its flow link with it.
+  deleting it would take its flow link with it. Only cases of the project being
+  pulled are considered: a case written under another project code is another
+  project's, not a missing one, so repointing a datasource no longer deprecates
+  everything that was there before.
 - Qase-owned fields are **read-only** in the editor. What stays yours is the
   automation wiring: the flow that implements the case, and each step's page
   object.
-- The API token is stored per project, encrypted with Electron's `safeStorage`.
-  `QASE_API_TOKEN` in the environment overrides it.
+- The API token is stored per sub-project, encrypted with Electron's
+  `safeStorage`. `QASE_API_TOKEN` in the environment overrides all of them.
+- Once a token is entered the project code becomes a picker of the projects that
+  token can see, so there is nothing to look up in Qase and retype.
+
+**Sub-projects.** One repo can hold more than one app — a mobile app and a tv
+app in the same monorepo — and each mirrors its own Qase project. The toolbar's
+project picker switches between them, and **all projects** merges them for
+reading. Each sub-project keeps its own:
+
+- cases, plans and results, under
+  `~/.conductor/studio/<repo>/<store>/<sub-project>/<local|qase>/`;
+- Qase project code and API token;
+- Maestro tag, which scaffolded flows are given so they land in that app's suite;
+- default device, so a tv case doesn't open on whichever phone was last selected.
+
+Mirrored and hand-written cases never share a store: a sub-project keeps
+`local` and `qase` apart, so switching a sub-project to Qase doesn't bury the
+cases it was authoring, and switching back returns them untouched. Which Qase
+project a sub-project mirrors is the sub-project's business — repoint it and the
+cases the old code pulled stay on disk, out of the matrix and out of every sync,
+rather than being relabelled or deprecated.
+
+Authoring is scoped to one sub-project: adding, importing and syncing are
+disabled under **all projects**, because a new case has to land somewhere. An
+install from before sub-projects existed keeps working — its datasource becomes
+a sub-project called `default` and its cases move under it on first read.
 
 The mirror is deliberate: the matrix re-reads cases constantly and lint runs on
 every flow change, so neither should wait on a network round trip, and a flaky

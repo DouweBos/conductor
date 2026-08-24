@@ -1,6 +1,7 @@
 import type { DeviceInfo, SceneGraph } from "../../../app/lib/types";
 import { getProjectInfo } from "../file/fileService";
-import { datasource, listCases } from "../cases/casesService";
+import { listCases } from "../cases/casesService";
+import { selectedProjects } from "../cases/projects";
 import { listPoms } from "../pom/pomService";
 import { appFingerprint } from "../conductor/conductorService";
 import { loadSceneGraph } from "../scenegraph/sceneGraphService";
@@ -64,11 +65,11 @@ export async function buildAgentSystemPrompt(device: DeviceInfo | null): Promise
     const uncovered = cases.filter(
       (c) => !c.conductor?.flow && !Object.keys(c.conductor?.flows ?? {}).length,
     );
-    const source = datasource();
+    const qaseProjects = selectedProjects().filter((p) => p.datasource.mode === "qase");
     lines.push(
       "",
       "## Test cases",
-      "Studio tracks test cases as YAML under `~/.conductor/studio/cases/` —",
+      "Studio tracks test cases as YAML under `~/.conductor/studio/<project>/cases/` —",
       "outside this repo, so testing a project never adds files to it. A case",
       "follows Qase's model (id, title, steps with action/data/expected_result,",
       "suite, custom fields, tags); the flow it names, which does live in the",
@@ -76,9 +77,9 @@ export async function buildAgentSystemPrompt(device: DeviceInfo | null): Promise
       "Use `list_test_cases` / `describe_test_case` to read them, `link_case_flow`",
       "to attach a flow you wrote, and `record_case_result` when you verify one",
       "by driving the device.",
-      ...(source.mode === "qase"
+      ...(qaseProjects.length
         ? [
-            `Cases come from Qase project ${source.projectCode} and are read-only here:`,
+            `Cases come from Qase (${qaseProjects.map((p) => p.datasource.projectCode).join(", ")}) and are read-only here:`,
             "link flows and assign page objects, never rewrite a title, step or tag.",
             "`sync_test_cases` pulls the latest before you start.",
           ]

@@ -125,6 +125,8 @@ export interface Case {
   lastResult?: CaseResult;
   /** Executions recorded for this case, newest first. */
   results?: CaseResult[];
+  /** Sub-project this case belongs to, so a merged matrix can say which. */
+  project?: string;
   filePath: string;
 }
 
@@ -247,12 +249,44 @@ export interface CasesDatasource {
 
 export const DEFAULT_DATASOURCE: CasesDatasource = { mode: "local", projectCode: "TC" };
 
+/**
+ * A sub-project inside one repo. A monorepo often holds a mobile app and a tv
+ * app, each mirroring a different Qase project, with its own cases, plans,
+ * results and flows — so everything the Cases screen shows is scoped to one.
+ */
+export interface CaseProject {
+  /** Stable id; also the directory these cases and plans live under. */
+  id: string;
+  name: string;
+  datasource: CasesDatasource;
+  /** Maestro tag its flows carry (`tv`, `mobile`) — scaffolds get it too. */
+  flowTag?: string;
+  /** Device its runs start on, since a tv case has no business on a phone. */
+  defaultDeviceId?: string;
+}
+
+/** The "every sub-project at once" selection. Read-only: authoring needs a target. */
+export const ALL_PROJECTS = "all";
+
+/**
+ * The directory a datasource's cases live in, under its sub-project: mirrored
+ * cases and hand-written ones are different material and never share a store.
+ * Which Qase project it mirrors is the sub-project's business, not the store's.
+ */
+export function datasourceKey(datasource: CasesDatasource): string {
+  return datasource.mode === "qase" ? "qase" : "local";
+}
+
 /** What one pull did, surfaced in the UI and to agents rather than swallowed. */
 export interface PullSummary {
   pulled: number;
   created: number;
   updated: number;
   deprecated: string[];
+  /** Cases Qase returned identical to what was already stored. */
+  unchanged: number;
+  /** Cases in the store from another Qase project code — left untouched. */
+  foreign: number;
   /** Steps whose `pom` could not be re-attached because the step changed. */
   lostPoms: { ref: string; action: string; pom: string }[];
   errors: string[];

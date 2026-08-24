@@ -1,7 +1,6 @@
 import { BrowserWindow } from "electron";
 import { existsSync, statSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -9,6 +8,7 @@ import type { TestReport, TestRunLog, TestVerdict } from "../../../app/lib/types
 import { broadcastToRenderers } from "../../broadcast";
 import { appState } from "../../state";
 import { detachReport } from "../cases/resultsService";
+import { studioDir } from "../util/studioPaths";
 import { renderReportHtml } from "./reportHtml";
 import { renderReportMarkdown } from "./reportMarkdown";
 import { finishSession, mergeSession } from "./testSession";
@@ -19,16 +19,8 @@ import { finishSession, mergeSession } from "./testSession";
  * can read. Kept outside the repo like scene graphs — a report is a run
  * artefact, not something to commit.
  */
-const REPORTS_ROOT = path.join(homedir(), ".conductor", "studio", "reports");
-
-function projectSlug(): string {
-  const root = appState.projectRoot;
-  if (!root) return "no-project";
-  return `${slug(path.basename(root))}-${hash(root)}`;
-}
-
 function projectDir(): string {
-  return path.join(REPORTS_ROOT, projectSlug());
+  return studioDir("reports");
 }
 
 function slug(text: string): string {
@@ -39,12 +31,6 @@ function slug(text: string): string {
       .replace(/^-|-$/g, "")
       .slice(0, 48) || "test"
   );
-}
-
-function hash(text: string): string {
-  let h = 0;
-  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
-  return Math.abs(h).toString(36);
 }
 
 /** `2026-08-10-2304-17` — sorts chronologically and is safe as a folder name. */

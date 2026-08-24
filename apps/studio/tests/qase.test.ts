@@ -5,6 +5,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
 import { parseCase } from "../electron/services/cases/caseFile";
+import { listProjects } from "../electron/services/cases/qaseClient";
 import { pullCases } from "../electron/services/cases/qaseSync";
 import { assert, assertEqual, TestSuite } from "./runner";
 
@@ -246,4 +247,130 @@ qase.test("an unknown enum value is left off rather than guessed", async () => {
   } finally {
     fake.restore();
   }
+});
+
+qase.test("lists every project the token can see, across pages", async () => {
+  const all = Array.from({ length: 120 }, (_, i) => ({ code: `P${i + 1}`, title: `Project ${i + 1}` }));
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL) => {
+    const params = new URL(String(url)).searchParams;
+    const offset = Number(params.get("offset") ?? 0);
+    const limit = Number(params.get("limit") ?? 100);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: true,
+        result: { total: all.length, entities: all.slice(offset, offset + limit) },
+      }),
+    };
+  }) as typeof fetch;
+
+  try {
+    const projects = await listProjects("t");
+    assertEqual(projects.length, 120, "every page returned");
+    assertEqual(projects[119].code, "P120", "last project present");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+// Each datasource has its own store, so this only arises in a pre-sub-project
+// store that a repointed datasource left mixed — where it wiped out a project.
+qase.test("a pull never deprecates cases another Qase project put in the store", async () => {
+  const dir = store();
+
+  // A first project's cases are pulled into the store.
+  let fake = fakeQase(Array.from({ length: 3 }, (_, i) => entity({ id: i + 1 })));
+  try {
+    await pullCases({ casesDir: dir, projectCode: "MC", token: "t" });
+  } finally {
+    fake.restore();
+  }
+  assertEqual(readdirSync(dir).length, 3, "three cases from the first project");
+
+  // The datasource is repointed at another project, which shares case ids.
+  fake = fakeQase([entity({ id: 1, title: "A TV case" })]);
+  let summary;
+  try {
+    summary = await pullCases({ casesDir: dir, projectCode: "TV", token: "t" });
+  } finally {
+    fake.restore();
+  }
+
+  assertEqual(summary.deprecated, [], "the other project's cases are not 'missing from Qase'");
+  assertEqual(summary.foreign, 3, "they are reported as another project's, and skipped");
+  assertEqual(summary.created, 1, "the new project's case is written alongside them");
+
+  const files = readdirSync(dir).sort();
+  assertEqual(files.length, 4, "nothing was overwritten despite the shared id");
+  assert(files.some((f) => f.startsWith("MC-1-")), "MC-1 still exists");
+  assert(files.some((f) => f.startsWith("TV-1-")), "TV-1 was created beside it");
+
+  const mcFile = path.join(dir, files.find((f) => f.startsWith("MC-1-"))!);
+  const untouched = parseCase(
+    parseYaml(readFileSync(mcFile, "utf8")) as Record<string, unknown>,
+    mcFile,
+    "MC",
+  )!;
+  assertEqual(untouched.status, "actual", "still actual, not deprecated");
+  assertEqual(untouched.title, entity().title, "and still holds its own project's content");
+});
+
+qase.test("a second sync of unchanged cases updates nothing", async () => {
+  const dir = store();
+  let fake = fakeQase([entity(), entity({ id: 13, title: "Second case" })]);
+  try {
+    const first = await pullCases({ casesDir: dir, projectCode: PROJECT, token: "t" });
+    assertEqual([first.created, first.updated, first.unchanged], [2, 0, 0], "first pull writes both");
+  } finally {
+    fake.restore();
+  }
+
+  const before = readdirSync(dir)
+    .filter((f) => f.endsWith(".yaml"))
+    .map((f) => readFileSync(path.join(dir, f), "utf8"));
+
+  fake = fakeQase([entity(), entity({ id: 13, title: "Second case" })]);
+  let second;
+  try {
+    second = await pullCases({ casesDir: dir, projectCode: PROJECT, token: "t" });
+  } finally {
+    fake.restore();
+  }
+
+  assertEqual([second.pulled, second.created, second.updated], [2, 0, 0], "nothing counted as changed");
+  assertEqual(second.unchanged, 2, "both are reported as unchanged");
+  assertEqual(
+    readdirSync(dir).filter((f) => f.endsWith(".yaml")).map((f) => readFileSync(path.join(dir, f), "utf8")),
+    before,
+    "and the files are byte-identical",
+  );
+});
+
+qase.test("a case Qase actually edited still counts as updated", async () => {
+  const dir = store();
+  let fake = fakeQase([entity(), entity({ id: 13, title: "Second case" })]);
+  try {
+    await pullCases({ casesDir: dir, projectCode: PROJECT, token: "t" });
+  } finally {
+    fake.restore();
+  }
+
+  fake = fakeQase([entity({ priority: 1 }), entity({ id: 13, title: "Second case" })]);
+  let summary;
+  try {
+    summary = await pullCases({ casesDir: dir, projectCode: PROJECT, token: "t" });
+  } finally {
+    fake.restore();
+  }
+
+  assertEqual([summary.updated, summary.unchanged], [1, 1], "only the edited case is updated");
+  const file = readdirSync(dir).find((f) => f.startsWith("DEMO-12-"))!;
+  const edited = parseCase(
+    parseYaml(readFileSync(path.join(dir, file), "utf8")) as Record<string, unknown>,
+    path.join(dir, file),
+    PROJECT,
+  )!;
+  assertEqual(edited.priority, "high", "Qase's edit landed in the file");
 });

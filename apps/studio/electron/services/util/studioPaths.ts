@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import { appState } from "../../state";
+import { adoptLegacyDir } from "./legacyStore";
 
 /**
  * Where Studio keeps the things it owns: `~/.conductor/studio`, scoped per
@@ -36,7 +37,15 @@ export function projectSlug(root?: string | null): string {
   return `${slug(path.basename(target))}-${hash(target)}`;
 }
 
-/** Per-project directory under a Studio store, e.g. `cases`. */
+/**
+ * A store belonging to one project, e.g. `cases`. The project comes first:
+ * everything Studio keeps about a checkout sits in one directory, so it reads
+ * (and deletes) as a unit rather than as a row in every store.
+ */
 export function studioDir(store: string, root?: string | null): string {
-  return path.join(STUDIO_ROOT, store, projectSlug(root));
+  const project = projectSlug(root);
+  const dir = path.join(STUDIO_ROOT, project, store);
+  // The layout before that put the store first.
+  adoptLegacyDir(path.join(STUDIO_ROOT, store, project), dir);
+  return dir;
 }

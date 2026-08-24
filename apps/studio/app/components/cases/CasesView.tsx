@@ -13,7 +13,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useIpcEvent } from "../../hooks/useIpcEvent";
 import {
-  casesDatasource,
+  activateCaseProject,
+  caseProjects as fetchCaseProjects,
   casesMatrix,
   exportCases,
   pickCaseExportPath,
@@ -21,7 +22,8 @@ import {
   runFlow,
 } from "../../lib/ipc";
 import { useRoute } from "../../lib/router";
-import type { Case, CaseMatrix, CaseResult, CasesDatasource } from "../../lib/types";
+import type { Case, CaseMatrix, CaseProject, CaseResult } from "../../lib/types";
+import { ALL_PROJECTS } from "../../lib/types";
 import { devicesFor } from "../../lib/platforms";
 import { refreshDevices, useDevices, useSelectedDeviceId } from "../../stores/deviceStore";
 import { useProject } from "../../stores/projectStore";
@@ -77,7 +79,7 @@ function CaseCell({
 }: {
   testCase: Case;
   column: string;
-  onRun: (flow: string, platform?: string) => void;
+  onRun: (flow: string, platform?: string, projectId?: string) => void;
 }) {
   const flow = flowFor(c, column);
   // Newest result covering this column: scoped to it, or case-level (a manual
@@ -120,7 +122,7 @@ function CaseCell({
           title={`Run ${flow}`}
           onClick={(e) => {
             e.stopPropagation();
-            onRun(flow, column);
+            onRun(flow, column, c.project);
           }}
         >
           <span className={styles.dot} />
@@ -143,7 +145,8 @@ export function CasesView() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pane, setPane] = useState<"case" | "plans" | "new" | "wizard" | "datasource">("case");
-  const [source, setSource] = useState<CasesDatasource | null>(null);
+  const [projects, setProjects] = useState<CaseProject[]>([]);
+  const [activeProject, setActiveProject] = useState<string>(ALL_PROJECTS);
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
   // Survives leaving the screen: a run you started is still going, and coming
@@ -201,10 +204,26 @@ export function CasesView() {
   }, [dimension, projectRoot]);
 
   const refreshSource = useCallback(() => {
-    casesDatasource()
-      .then(setSource)
-      .catch(() => setSource(null));
+    fetchCaseProjects()
+      .then(({ projects: list, active }) => {
+        setProjects(list);
+        setActiveProject(active);
+      })
+      .catch(() => setProjects([]));
   }, [projectRoot]);
+
+  /** The sub-project being shown; nothing under "all projects", which is read-only. */
+  const selectedProject = projects.find((p) => p.id === activeProject) ?? null;
+  const mergedView = activeProject === ALL_PROJECTS && projects.length > 1;
+
+  /** Switching sub-project re-scopes everything the screen shows. */
+  const switchProject = async (id: string) => {
+    await activateCaseProject(id);
+    setActiveProject(id);
+    setSelectedId(null);
+    refresh();
+    refreshSource();
+  };
 
   useEffect(refresh, [refresh]);
   useEffect(refreshSource, [refreshSource]);
@@ -214,6 +233,10 @@ export function CasesView() {
   useIpcEvent<unknown>("plans:run-updated", refresh);
   // A sync from the agent's `sync_test_cases` lands here too.
   useIpcEvent<unknown>("cases:pulled", () => {
+    refresh();
+    refreshSource();
+  });
+  useIpcEvent<unknown>("cases:project-changed", () => {
     refresh();
     refreshSource();
   });
@@ -228,8 +251,11 @@ export function CasesView() {
       refreshSource();
       setNotice(
         [
-          `Synced ${summary.pulled} cases (${summary.created} new, ${summary.updated} updated)`,
+          `Synced ${summary.pulled} cases (${summary.created} new, ${summary.updated} updated, ${summary.unchanged} unchanged)`,
           summary.deprecated.length ? `${summary.deprecated.length} no longer in Qase` : null,
+          summary.foreign
+            ? `${summary.foreign} left alone (they belong to another Qase project)`
+            : null,
           summary.lostPoms.length
             ? `${summary.lostPoms.length} page object(s) could not be re-attached: ${summary.lostPoms
                 .map((l) => `${l.ref} → ${l.pom}`)
@@ -248,14 +274,16 @@ export function CasesView() {
   };
 
   /** Run one case's flow, then follow it into the workbench where the console lives. */
-  const run = async (flow: string, platform?: string) => {
+  const run = async (flow: string, platform?: string, projectId?: string) => {
     try {
       setNotice(null);
       // The column's device wins: it's the explicit answer to "tvOS or Android
-      // TV", which the platform alone can't give.
+      // TV", which the platform alone can't give. Then the case's sub-project
+      // default, so a tv case doesn't open on whatever phone was last selected.
+      const projectDevice = projects.find((p) => p.id === projectId)?.defaultDeviceId;
       const { runId, deviceId: ranOn } = await runFlow(
         flow,
-        (platform ? columnDevice[platform] : "") || deviceId || undefined,
+        (platform ? columnDevice[platform] : "") || projectDevice || deviceId || undefined,
         getRunOptions(),
         platform,
       );
@@ -471,10 +499,25 @@ export function CasesView() {
           </p>
         </div>
         <div className={styles.controls}>
-          <Button size="sm" variant="secondary" icon="plus" onClick={() => setPane("new")}>
+          {/* Authoring needs one target project — "all projects" is a reading view. */}
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="plus"
+            disabled={mergedView}
+            title={mergedView ? "Choose a single project to add a case" : undefined}
+            onClick={() => setPane("new")}
+          >
             New case
           </Button>
-          <Button size="sm" variant="ghost" icon="folder" onClick={() => setImporting(true)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            icon="folder"
+            disabled={mergedView}
+            title={mergedView ? "Choose a single project to import into" : undefined}
+            onClick={() => setImporting(true)}
+          >
             Import
           </Button>
           <Button size="sm" variant="ghost" icon="file" onClick={() => void exportCsv()}>
@@ -509,13 +552,30 @@ export function CasesView() {
             value={dimension}
             onChange={(e) => setDimension(e.target.value)}
           />
-          {source?.mode === "qase" ? (
+          {projects.length > 1 ? (
+            <>
+              <span className={styles.controlLabel}>Project:</span>
+              <Select
+                options={[
+                  ...projects.map((p) => ({ value: p.id, label: p.name })),
+                  { value: ALL_PROJECTS, label: "all projects" },
+                ]}
+                value={activeProject}
+                onChange={(e) => void switchProject(e.target.value)}
+              />
+            </>
+          ) : null}
+          {selectedProject?.datasource.mode === "qase" ? (
             <Button size="sm" variant="secondary" icon="refresh" disabled={syncing} onClick={() => void sync()}>
               {syncing ? "Syncing…" : "Sync"}
             </Button>
           ) : null}
           <Button size="sm" variant="ghost" icon="settings" onClick={() => setPane("datasource")}>
-            {source?.mode === "qase" ? `Qase · ${source.projectCode}` : "Local cases"}
+            {selectedProject
+              ? selectedProject.datasource.mode === "qase"
+                ? `Qase · ${selectedProject.datasource.projectCode}`
+                : "Local cases"
+              : "Projects"}
           </Button>
           <Button size="sm" variant="ghost" icon="refresh" onClick={refresh}>
             Refresh
@@ -587,7 +647,7 @@ export function CasesView() {
               description={
                 cases.length
                   ? "Clear the search or filters to see the rest."
-                  : "Create one, or import a CSV from the tool you're moving off. Cases are YAML files under ~/.conductor/studio/cases/, kept out of the repo under test."
+                  : "Create one, or import a CSV from the tool you're moving off. Cases are YAML files under ~/.conductor/studio/<project>/cases/, kept out of the repo under test."
               }
             />
           ) : (
