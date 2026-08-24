@@ -1,5 +1,28 @@
 # conductor-studio
 
+## 0.4.0
+
+### Minor Changes
+
+- 19760d9: Support several projects in one repo. A monorepo holding a mobile app and a tv app can now mirror a Qase project for each: the Cases toolbar switches between them, and "all projects" merges them into one read-only matrix.
+
+  Each sub-project owns its cases, plans, results, Qase project code and API token, plus a Maestro tag that scaffolded flows are given and a default device its runs start on. Authoring, importing and syncing require a single sub-project to be selected, since a new case has to land somewhere.
+
+  Existing setups migrate on first read: the repo's datasource becomes a sub-project called `default` and its cases, plans and results move under it.
+
+- 19760d9: Pick the Qase project from a list instead of typing its code. Once an API token is entered (or already stored), Studio fetches every project that token can see and offers them as a dropdown; the plain text field remains as the fallback when the token is missing or Qase can't be reached.
+
+  Test connection also works before saving: it now checks the token and project code currently on screen instead of only what's already stored.
+
+### Patch Changes
+
+- 19760d9: Keep mirrored and hand-written cases in separate stores, and put the repo first on disk. A sub-project's cases now live under `~/.conductor/studio/<repo>/<store>/<sub-project>/<local|qase>/`, so everything Studio keeps about a checkout sits in one directory, and switching a sub-project between local and Qase no longer buries what it was authoring. Reports moved to the same layout; existing directories are moved on first read.
+
+  This also settles a destructive sync: pointing a datasource at a different Qase project used to make the next sync mark every case already in the store as "no longer in Qase" — they were never missing, they belonged to the project you switched away from. Cases another Qase project put in the store are now skipped by both the matrix and the sync, and reported as left alone rather than deprecated.
+
+- 19760d9: Stop reporting every synced case as updated. A pull counted a case as "updated" whenever a file for it already existed, so syncing twice in a row claimed it had rewritten everything. It now compares what Qase returned against what is on disk, writes only what actually differs, and reports the rest as unchanged — which also stops an identical sync churning every file's mtime.
+- 085db80: Name Studio's GitHub releases `Studio v<version>` so they match the CLI's `CLI v<version>` instead of showing a bare version number.
+
 ## 0.3.0
 
 ### Minor Changes
