@@ -60,6 +60,8 @@ function createWindow(): void {
 
 // Single-instance lock — focus the existing window instead of opening another.
 if (!app.requestSingleInstanceLock()) {
+  // Otherwise the second launch dies silently with exit 0 and looks like a crash.
+  console.error("[studio] another Conductor Studio instance is already running — exiting.");
   app.quit();
 } else {
   app.on("second-instance", () => {
