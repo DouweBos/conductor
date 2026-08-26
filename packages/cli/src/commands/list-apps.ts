@@ -32,6 +32,13 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
       opts
     );
     return 1;
+  } else if (platform === 'roku') {
+    // ECP can name only the *active* channel, not enumerate installed ones.
+    printError(
+      'list-apps is not supported on roku. Use foreground-app to get the active channel id.',
+      opts
+    );
+    return 1;
   } else if (platform === 'vega') {
     // Vega is driven through Amazon's CLI, not adb; strip the `vega:` id prefix.
     appIds = (await new VegaCli(deviceId.replace(/^vega:/, '')).listInstalledApps()).sort();

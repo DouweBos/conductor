@@ -8,6 +8,7 @@ import { isPlaywrightBrowserInstalled, webBrowserName } from '../drivers/bootstr
 import { listDaemonSessions, daemonStatus } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
 import { VegaCli } from '../drivers/vega/cli.js';
+import { discoverRokuDevices } from '../drivers/roku/discovery.js';
 import { discoverCdpDevices } from '../drivers/cdp-discovery.js';
 
 export interface Device {
@@ -137,6 +138,18 @@ export async function discoverBootedDevices(): Promise<Device[]> {
     }
   } catch {
     /* vega CLI not installed */
+  }
+
+  // Roku: the pinned CONDUCTOR_ROKU_HOST device, plus SSDP hits when
+  // CONDUCTOR_ROKU_DISCOVERY is on. Physical hardware only — Roku has no emulator.
+  for (const d of await discoverRokuDevices().catch(() => [])) {
+    devices.push({
+      id: `roku:${d.host}`,
+      name: d.friendlyName || d.modelName,
+      platform: 'roku',
+      status: 'booted',
+      formFactor: 'tv',
+    });
   }
 
   // External CDP endpoints (e.g. an Electron app started with

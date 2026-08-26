@@ -103,7 +103,7 @@ function dlog(msg: string): void {
 // ── Driver lifecycle ──────────────────────────────────────────────────────────
 
 let driverPort = 1075;
-let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' | 'vega' = 'ios';
+let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku' = 'ios';
 let logCollector: LogCollector | null = null;
 let inputServer: InputServerHandle | null = null;
 let inputPort: number | null = null;
@@ -198,8 +198,9 @@ let _driverStartError: string | null = null;
 
 async function ensureDriverRunning(): Promise<void> {
   if (_restartInProgress || !_driverStarted) return;
-  // Vega has no driver process/port to health-check — control is host-side via the CLI.
-  if (driverPlatform === 'vega') return;
+  // Vega and Roku have no driver process/port to health-check — control is
+  // host-side (the vega CLI) or over the network (Roku ECP).
+  if (driverPlatform === 'vega' || driverPlatform === 'roku') return;
 
   let alive: boolean;
   if (driverPlatform === 'android') {
@@ -332,6 +333,8 @@ async function main(): Promise<void> {
         dlog('tvOS: leaving driver running to preserve app state');
       } else if (driverPlatform === 'vega') {
         dlog('vega: no driver process to stop (control is host-side via the CLI)');
+      } else if (driverPlatform === 'roku') {
+        dlog('roku: no driver process to stop (control is ECP over the network)');
       } else if (driverPlatform === 'web') {
         dlog('Stopping web driver');
         try {
@@ -471,6 +474,11 @@ async function main(): Promise<void> {
           if (platform === 'vega') {
             _driverStarted = true;
             dlog('vega: no driver process to start; collecting logs only');
+          } else if (platform === 'roku') {
+            // Roku has neither a driver process nor a log stream to collect, so
+            // the daemon has nothing to do — commands drive the device directly.
+            _driverStarted = true;
+            dlog('roku: no driver process and no device logs; daemon is idle');
           } else {
             await startDriverForPlatform(platform);
           }
@@ -521,8 +529,8 @@ async function main(): Promise<void> {
 }
 
 /**
- * Bring up the driver process for a non-vega platform. Sets `_driverStarted` /
- * `_driverStartError`. Extracted so the vega path can skip it entirely.
+ * Bring up the driver process for a platform that has one. Sets `_driverStarted` /
+ * `_driverStartError`. Extracted so the vega and roku paths can skip it entirely.
  */
 async function startDriverForPlatform(platform: 'ios' | 'android' | 'tvos' | 'web'): Promise<void> {
   let driverAlive: boolean;

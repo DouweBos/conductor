@@ -25,6 +25,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../drivers/wait.js';
 import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 import { isRefQuery, loadSnapshot, resolveRef } from '../snapshot-store.js';
@@ -120,8 +121,8 @@ export async function tap(
       );
     } else if (driver instanceof WebDriver) {
       el = await waitForWebElement(() => driver.viewHierarchy(), sel);
-    } else if (driver instanceof VegaDriver) {
-      // Vega emits uiautomator-style XML, so it reuses the Android resolver.
+    } else if (driver instanceof VegaDriver || driver instanceof RokuDriver) {
+      // Vega and Roku emit uiautomator-style XML, so they reuse the Android resolver.
       el = await waitForAndroidElement(() => driver.viewHierarchy(), sel);
     } else if (driver instanceof AndroidDriver) {
       el = await waitForAndroidElement(() => driver.viewHierarchy(), sel);

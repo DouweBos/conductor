@@ -1389,6 +1389,12 @@ export async function memory(
     return 1;
   }
 
+  if (platform === 'roku') {
+    // ECP exposes no memory counters, and there is no host-side tooling to ask.
+    printError('memory is not supported on roku', opts);
+    return 1;
+  }
+
   let report: MemoryReport;
   if (platform === 'web') {
     report = await collectWeb(deviceId, sessionName, memOpts);

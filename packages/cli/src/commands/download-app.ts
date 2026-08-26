@@ -42,6 +42,11 @@ export async function downloadApp(
     return 1;
   }
 
+  if (platform === 'roku') {
+    printError('download-app is not supported on roku.', opts);
+    return 1;
+  }
+
   if (platform === 'ios' || platform === 'tvos') {
     // Get the .app bundle path from the simulator
     const getPath = await spawnCommand('xcrun', [

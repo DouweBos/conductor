@@ -7,6 +7,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 
 export async function stopApp(
   appId?: string,
@@ -26,7 +27,7 @@ export async function stopApp(
       await driver.terminateApp(resolvedAppId);
     } else if (driver instanceof WebDriver) {
       await driver.terminateApp();
-    } else if (driver instanceof VegaDriver) {
+    } else if (driver instanceof VegaDriver || driver instanceof RokuDriver) {
       await driver.stopApp(resolvedAppId);
     } else if (driver instanceof AndroidDriver) {
       await driver.stopApp(resolvedAppId);

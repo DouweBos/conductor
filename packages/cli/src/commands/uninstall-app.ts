@@ -6,6 +6,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 
 export async function uninstallApp(
   appId: string,
@@ -24,6 +25,8 @@ export async function uninstallApp(
       throw new Error('uninstall-app is not supported on web');
     } else if (driver instanceof VegaDriver) {
       throw new Error('uninstall-app is not supported on vega (Amazon Fire TV)');
+    } else if (driver instanceof RokuDriver) {
+      throw new Error('uninstall-app is not supported on roku');
     } else if (driver instanceof AndroidDriver) {
       await driver.uninstallApp(appId);
     }

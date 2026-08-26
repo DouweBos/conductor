@@ -41,7 +41,7 @@ export const ENUM_PARAMS: EnumParam[] = [
     param: '<key>',
     description: 'Key, hardware button, or remote button to press',
     values: VALID_KEYS.map((value) => ({ value })),
-    note: 'Matched case-insensitively. Availability varies by platform: "Remote …" / "TV …" keys target tvOS, Android TV, and vega (Amazon Fire TV); hardware buttons (Home, Lock, Power, Volume…) target iOS/Android.',
+    note: 'Matched case-insensitively. Availability varies by platform: "Remote …" / "TV …" keys target tvOS, Android TV, vega (Amazon Fire TV), and roku; hardware buttons (Home, Lock, Power, Volume…) target iOS/Android.',
   },
   {
     command: 'scroll',
@@ -79,6 +79,7 @@ export const ENUM_PARAMS: EnumParam[] = [
       { value: 'tvos' },
       { value: 'web' },
       { value: 'vega' },
+      { value: 'roku' },
     ],
   },
   {
@@ -127,6 +128,7 @@ export const ENUM_PARAMS: EnumParam[] = [
       { value: 'tvos' },
       { value: 'web' },
       { value: 'vega' },
+      { value: 'roku' },
     ],
   },
 ];

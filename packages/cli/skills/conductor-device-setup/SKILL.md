@@ -1,6 +1,6 @@
 ---
 name: conductor-device-setup
-description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, Vega (Amazon Fire TV) virtual devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
+description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, Vega (Amazon Fire TV) virtual devices, Roku devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD or a Roku device, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
 ---
 
 # Conductor — device & app setup
@@ -21,7 +21,7 @@ conductor list-apps          # installed app ids / package names (--json adds ap
 
 | Command                                                               | Purpose                                                                    |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `conductor start-device --platform <ios\|android\|tvos\|web\|vega>`   | Boot a simulator/emulator, start the web driver, or attach to a Vega VVD    |
+| `conductor start-device --platform <ios\|android\|tvos\|web\|vega\|roku>` | Boot a simulator/emulator, start the web driver, attach to a Vega VVD, or check a Roku device |
 | `conductor start-device --os-version <n> --device-type <name>`        | Pick OS version + device type (creates if needed)                          |
 | `conductor start-device --platform android --avd <name> --device-type <profile> --memory <mb>` | Create an Android AVD with a RAM floor (default 4096MB; only raises, creation-time only) |
 | `conductor stop-device [<name-or-id>] [--all]`                        | Shut down device(s)                                                        |
@@ -68,6 +68,39 @@ app launch — so launch the app under test via conductor. Navigate with the D-p
 (`press-key "Remote Dpad …"` / `"Remote Dpad Center"`); coordinate `tap-on` also
 works. Unsupported on Vega: deep links (`open-link`), `set-location`, gestures,
 screen recording, clipboard, `clear-state`/`uninstall-app`.
+
+### Roku
+
+Roku is driven over the network with the **External Control Protocol** (ECP — an
+HTTP REST API on device port 8060). There is no emulator and no driver process:
+physical hardware only, and every command is a stateless ECP call.
+
+Device setup, once per device:
+
+1. Enable developer mode (Home ×3, Up ×2, Right, Left, Right, Left, Right) and
+   set a dev password.
+2. Set **Settings > System > Advanced system settings > Control by mobile apps >
+   Network access** to **Permissive** — recent Roku OS versions answer `403` to
+   every keypress otherwise, while still serving the view hierarchy.
+
+Environment:
+
+```bash
+export CONDUCTOR_ROKU_HOST=192.168.1.100   # pin a device by IP (primary)
+export CONDUCTOR_ROKU_PASSWORD=devpwd      # dev-mode password (screenshots only)
+export CONDUCTOR_ROKU_DISCOVERY=true       # optional: SSDP LAN scan (~1s per listing)
+```
+
+Devices show up in `list-devices` as `roku:<host>`;
+`conductor start-device --platform roku [--name <host>]` checks reachability
+rather than booting anything. The view hierarchy comes from `/query/app-ui`,
+which **only reports sideloaded dev-mode channels** — a store channel inspects as
+empty. A sideloaded channel's app id is `dev`. Screenshots need
+`CONDUCTOR_ROKU_PASSWORD`.
+
+Unsupported on Roku: `install-app`/`uninstall-app` (sideload via the device's dev
+web server at `http://<device-ip>`), `list-apps`, `clear-state`, gestures,
+screen recording, clipboard, `set-location`, memory/CPU profiling, and device logs.
 
 ## App lifecycle
 

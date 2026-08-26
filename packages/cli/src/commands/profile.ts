@@ -297,6 +297,9 @@ export async function profileCpu(
         out,
         profileOpts.report ? { top: profileOpts.top ?? 30 } : undefined
       );
+    } else if (platform === 'roku') {
+      printError('profile cpu is not supported on roku — ECP exposes no CPU counters.', opts);
+      return 1;
     } else if (platform === 'vega') {
       // Vega is Amazon's own OS, not Android — no simpleperf, no dumpsys. A
       // physical Fire TV Stick runs Fire OS (Android) over adb and is a

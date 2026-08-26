@@ -22,7 +22,7 @@ import { resolveAndroidTool } from '../android/sdk.js';
 
 // ── Platform detection ────────────────────────────────────────────────────────
 
-export type Platform = 'ios' | 'android' | 'tvos' | 'web' | 'vega';
+export type Platform = 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku';
 
 /** Cache: deviceId → platform */
 const _platformCache = new Map<string, Platform>();
@@ -40,6 +40,12 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
   if (deviceId === 'vega' || deviceId.startsWith('vega:')) {
     _platformCache.set(deviceId, 'vega');
     return 'vega';
+  }
+
+  // Roku: "roku:<host>" (e.g. "roku:192.168.1.100")
+  if (deviceId === 'roku' || deviceId.startsWith('roku:')) {
+    _platformCache.set(deviceId, 'roku');
+    return 'roku';
   }
 
   // Check if it looks like an iOS/tvOS simulator UUID (8-4-4-4-12 hex chars)
@@ -164,6 +170,10 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
       port = state.nextWebPort++;
     } else if (platform === 'vega') {
       port = state.nextVegaPort++;
+    } else if (platform === 'roku') {
+      // Roku is driven entirely over the network (ECP on the device's own port
+      // 8060) — there is no host-side driver process, so no port to reserve.
+      return 0;
     } else {
       port = state.nextAndroidPort++;
     }

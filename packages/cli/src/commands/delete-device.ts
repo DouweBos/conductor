@@ -129,6 +129,11 @@ export async function deleteDevice(
     );
     return 1;
   }
+  // A Roku is physical hardware conductor never created.
+  if (platform === 'roku' || (nameOrId && nameOrId.startsWith('roku:'))) {
+    printError('delete-device is not supported on roku — it is physical hardware.', opts);
+    return 1;
+  }
   const includeIOS = !platform || platform === 'ios';
   const includeTvOS = !platform || platform === 'tvos';
   const includeAndroid = !platform || platform === 'android';

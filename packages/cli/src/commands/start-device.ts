@@ -1,5 +1,5 @@
 export const HELP = `  start-device
-    --platform <ios|android|tvos|web|vega> Boot a simulator/emulator, start the web driver (Playwright), or boot/attach a Vega VVD
+    --platform <ios|android|tvos|web|vega|roku> Boot a simulator/emulator, start the web driver (Playwright), attach a Vega VVD, or check a Roku device
     --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
     --avd <name>                      Android AVD name (default: first available; created if missing + --device-type)
     --name <name>                     Set a custom name on the device after creation (iOS/tvOS/web)
@@ -23,6 +23,7 @@ import { generateWebSessionId } from '../drivers/bootstrap.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { sleep } from '../utils.js';
 import { VegaCli, VegaDevice } from '../drivers/vega/cli.js';
+import { describe as describeRoku, discoverRokuDevices } from '../drivers/roku/discovery.js';
 
 const IOS_BOOT_TIMEOUT_MS = 120_000;
 const ANDROID_BOOT_TIMEOUT_MS = 120_000;
@@ -967,6 +968,38 @@ async function startVega(opts: OutputOptions, deviceName?: string): Promise<numb
   return 0;
 }
 
+// ── Roku ────────────────────────────────────────────────────────────────────
+
+/**
+ * Roku is physical hardware with no emulator, so there is nothing to boot: this
+ * resolves the target device (explicit `--name <host>`, else `CONDUCTOR_ROKU_HOST`
+ * or an SSDP hit) and confirms it answers on ECP, so a misconfigured device is
+ * reported here rather than on the first `tap-on`.
+ */
+async function startRoku(opts: OutputOptions, deviceName?: string): Promise<number> {
+  const host = deviceName?.replace(/^roku:/, '') ?? process.env.CONDUCTOR_ROKU_HOST?.trim();
+
+  const device = host ? await describeRoku(host) : (await discoverRokuDevices())[0];
+
+  if (!device) {
+    printError(
+      host
+        ? `Cannot reach the Roku device at ${host} on ECP port 8060. Check that it is on ` +
+            `this network and in developer mode.`
+        : 'No Roku device found. Set CONDUCTOR_ROKU_HOST=<device-ip>, pass --name <device-ip>, ' +
+            'or set CONDUCTOR_ROKU_DISCOVERY=true to scan the LAN.',
+      opts
+    );
+    return 1;
+  }
+
+  printSuccess(
+    `Roku device ready: ${device.friendlyName || device.modelName} (roku:${device.host})`,
+    opts
+  );
+  return 0;
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function startDevice(
@@ -983,7 +1016,7 @@ export async function startDevice(
   }
 ): Promise<number> {
   if (!platform) {
-    printError('start-device requires --platform ios|android|tvos|web|vega', opts);
+    printError('start-device requires --platform ios|android|tvos|web|vega|roku', opts);
     return 1;
   }
 
@@ -1005,8 +1038,13 @@ export async function startDevice(
       return startWebDriver(opts, flags.browser, flags.name);
     case 'vega':
       return startVega(opts, flags.name);
+    case 'roku':
+      return startRoku(opts, flags.name);
     default:
-      printError(`Unknown platform "${platform}". Use ios, android, tvos, web, or vega.`, opts);
+      printError(
+        `Unknown platform "${platform}". Use ios, android, tvos, web, vega, or roku.`,
+        opts
+      );
       return 1;
   }
 }

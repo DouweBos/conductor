@@ -6,6 +6,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 
 async function resolveDeviceId(sessionName: string): Promise<string | undefined> {
   if (sessionName !== 'default') return sessionName;
@@ -39,7 +40,11 @@ export async function foregroundApp(
       appId = await driver.runningApp(appIds);
     } else if (driver instanceof WebDriver) {
       appId = await driver.runningApp();
-    } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
+    } else if (
+      driver instanceof AndroidDriver ||
+      driver instanceof VegaDriver ||
+      driver instanceof RokuDriver
+    ) {
       appId = await driver.getForegroundApp();
     } else {
       throw new Error('Unsupported driver');

@@ -195,6 +195,9 @@ export async function crashesList(
   } else if (platform === 'vega') {
     // No crash-log retrieval channel on Vega in v1.
     if (!opts.json) console.error('note: crash reports are not supported on vega (Amazon Fire TV)');
+  } else if (platform === 'roku') {
+    // ECP exposes no crash log; Roku's are read from the dev console by hand.
+    if (!opts.json) console.error('note: crash reports are not supported on roku');
   }
 
   if (opts.json) {

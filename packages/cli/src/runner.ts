@@ -8,6 +8,8 @@ import { AndroidDriver } from './drivers/android.js';
 import { WebDriver } from './drivers/web.js';
 import { VegaDriver } from './drivers/vega.js';
 import { VegaCli } from './drivers/vega/cli.js';
+import { RokuDriver } from './drivers/roku.js';
+import { discoverRokuDevices } from './drivers/roku/discovery.js';
 import {
   detectPlatform,
   getDriverPort,
@@ -101,6 +103,15 @@ export async function detectFirstDevice(): Promise<string | undefined> {
     /* vega CLI not installed */
   }
 
+  // Roku: pinned via CONDUCTOR_ROKU_HOST (or an opt-in SSDP scan). Best-effort —
+  // neither is configured unless the user set up a Roku device.
+  const roku = (await discoverRokuDevices().catch(() => []))[0];
+  if (roku) {
+    log(`detectFirstDevice: found Roku device "${roku.host}"`);
+    _cachedDeviceId = `roku:${roku.host}`;
+    return _cachedDeviceId;
+  }
+
   _cachedDeviceId = null;
   return undefined;
 }
@@ -114,11 +125,16 @@ export interface RunResult {
 
 // ── Driver management ─────────────────────────────────────────────────────────
 
-type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver;
+type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver;
 
 /** Strip the `vega:` prefix to recover the bare Vega selector. */
 function vegaSerial(deviceId: string): string {
   return deviceId.startsWith('vega:') ? deviceId.slice('vega:'.length) : deviceId;
+}
+
+/** Strip the `roku:` prefix to recover the bare device host. */
+export function rokuHost(deviceId: string): string {
+  return deviceId.startsWith('roku:') ? deviceId.slice('roku:'.length) : deviceId;
 }
 
 /** Per-session driver cache (process lifetime). */
@@ -230,6 +246,26 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
       );
     }
     driver = vegaDriver;
+  } else if (platform === 'roku') {
+    // Roku has no driver process and no daemon: control is ECP over the network,
+    // and the device exposes no log stream to collect.
+    const host = rokuHost(deviceId);
+    if (!host || host === 'roku') {
+      throw new Error(
+        'No Roku device specified. Set CONDUCTOR_ROKU_HOST=<device-ip>, or pass ' +
+          '--device roku:<device-ip>.'
+      );
+    }
+    const rokuDriver = new RokuDriver(host);
+    if (!(await rokuDriver.isAlive())) {
+      throw new Error(
+        `Cannot reach the Roku device at ${host} on ECP port 8060.\n` +
+          `Check that it is on this network and in developer mode, and that ` +
+          `Settings > System > Advanced system settings > Control by mobile apps > ` +
+          `Network access is set to "Permissive".`
+      );
+    }
+    driver = rokuDriver;
   } else {
     // Ensure the daemon is running — it handles APK install and driver startup.
     await startDaemon(deviceId);

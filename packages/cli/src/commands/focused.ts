@@ -7,6 +7,7 @@ import { IOSDriver, AXElement } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver, WebElement } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 import { parseAndroidHierarchy } from '../drivers/element-resolver.js';
 
 // XCUIElementType rawValue → human-readable name.
@@ -217,7 +218,7 @@ function formatWebElement(node: WebElement): Record<string, unknown> {
 }
 
 export async function queryFocused(
-  driver: IOSDriver | AndroidDriver | WebDriver | VegaDriver
+  driver: IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver
 ): Promise<Record<string, unknown> | null> {
   if (driver instanceof IOSDriver) {
     const hierarchy = await driver.viewHierarchy(false);
@@ -227,8 +228,12 @@ export async function queryFocused(
     const hierarchy = await driver.viewHierarchy();
     const node = findFocusedWeb(hierarchy.elements);
     return node ? formatWebElement(node) : null;
-  } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
-    // Vega emits uiautomator-style XML, so it reuses the Android parser.
+  } else if (
+    driver instanceof AndroidDriver ||
+    driver instanceof VegaDriver ||
+    driver instanceof RokuDriver
+  ) {
+    // Vega and Roku emit uiautomator-style XML, so they reuse the Android parser.
     const xml = await driver.viewHierarchy();
     const nodes = parseAndroidHierarchy(xml);
     const node = nodes.find((n) => n.focused);

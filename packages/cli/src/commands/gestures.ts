@@ -13,6 +13,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 
 export interface PinchOptions {
   scale?: number;
@@ -150,6 +151,8 @@ export async function pinch(
     if (driver instanceof WebDriver) throw new Error('pinch is not supported on Web');
     if (driver instanceof VegaDriver)
       throw new Error('pinch is not supported on vega (Amazon Fire TV)');
+    if (driver instanceof RokuDriver)
+      throw new Error('pinch is not supported on roku — Roku is D-pad driven, with no touch input');
     const { width, height, cx: defCx, cy: defCy } = await screenCenter(driver);
     const center = parseCenter(pinchOpts.center) ?? { x: defCx, y: defCy };
     // Start span is half the shorter screen dimension; end is scaled.
@@ -179,6 +182,10 @@ export async function rotateGesture(
     if (driver instanceof WebDriver) throw new Error('rotate-gesture is not supported on Web');
     if (driver instanceof VegaDriver)
       throw new Error('rotate-gesture is not supported on vega (Amazon Fire TV)');
+    if (driver instanceof RokuDriver)
+      throw new Error(
+        'rotate-gesture is not supported on roku — Roku is D-pad driven, with no touch input'
+      );
     const { width, height, cx: defCx, cy: defCy } = await screenCenter(driver);
     const center = parseCenter(rotateOpts.center) ?? { x: defCx, y: defCy };
     const radius = Math.min(width, height) * 0.25;
@@ -255,6 +262,10 @@ export async function gesture(
     if (driver instanceof WebDriver) throw new Error('gesture is not supported on Web');
     if (driver instanceof VegaDriver)
       throw new Error('gesture is not supported on vega (Amazon Fire TV)');
+    if (driver instanceof RokuDriver)
+      throw new Error(
+        'gesture is not supported on roku — Roku is D-pad driven, with no touch input'
+      );
     await playPaths(driver as IOSDriver | AndroidDriver, paths);
   }, sessionName);
 

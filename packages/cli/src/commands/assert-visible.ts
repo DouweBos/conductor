@@ -19,6 +19,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 import {
   waitForIOSElement,
   waitForAndroidElement,
@@ -85,8 +86,12 @@ export async function assertVisible(
         );
       } else if (driver instanceof WebDriver) {
         return waitForWebElement(() => driver.viewHierarchy(), sel, timeoutMs);
-      } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
-        // Vega emits uiautomator-style XML, so it reuses the Android resolver.
+      } else if (
+        driver instanceof AndroidDriver ||
+        driver instanceof VegaDriver ||
+        driver instanceof RokuDriver
+      ) {
+        // Vega and Roku emit uiautomator-style XML, so they reuse the Android resolver.
         return waitForAndroidElement(() => driver.viewHierarchy(), sel, timeoutMs);
       }
     };

@@ -48,7 +48,7 @@ navigation, prefer asking a human to drive the physical remote during the
 window (the command announces the window on stderr for exactly this), and treat
 a divergence between human-driven and automated numbers as the harness.
 
-Not available on `vega` — but a **physical Fire TV Stick runs Fire OS
+Not available on `roku` (ECP exposes no counters) or `vega` — but a **physical Fire TV Stick runs Fire OS
 (Android)** over adb and works fine.
 
 Attribute jank by comparing each phase's p95 against its p50: `vsyncDelay` means

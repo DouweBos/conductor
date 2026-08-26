@@ -6,6 +6,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 
 export async function eraseText(
   characters: number,
@@ -13,7 +14,11 @@ export async function eraseText(
   sessionName = 'default'
 ): Promise<number> {
   const result = await runDirect(async (driver) => {
-    if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
+    if (
+      driver instanceof AndroidDriver ||
+      driver instanceof VegaDriver ||
+      driver instanceof RokuDriver
+    ) {
       await driver.eraseAllText(characters);
     } else if (driver instanceof WebDriver) {
       await driver.eraseAllText(characters);

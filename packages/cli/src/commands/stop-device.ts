@@ -1,5 +1,5 @@
 export const HELP = `  stop-device [<name-or-id>]
-    --platform <ios|tvos|android|web|vega> Scope to a single platform
+    --platform <ios|tvos|android|web|vega|roku> Scope to a single platform
     --all                             Stop all booted simulators / running emulators / web sessions`;
 
 import { spawnCommand } from '../runner.js';
@@ -44,6 +44,7 @@ export async function stopDevice(
   const includeAndroid = !platform || platform === 'android';
   const includeWeb = !platform || platform === 'web';
   const includeVega = !platform || platform === 'vega';
+  const includeRoku = !platform || platform === 'roku';
   const stopped: { id: string; name: string; platform: string }[] = [];
 
   // ── --all mode ───────────────────────────────────────────────────────────
@@ -57,6 +58,7 @@ export async function stopDevice(
       if (d.platform === 'android' && !includeAndroid) continue;
       if (d.platform === 'web' && !includeWeb) continue;
       if (d.platform === 'vega' && !includeVega) continue;
+      if (d.platform === 'roku' && !includeRoku) continue;
 
       try {
         if (d.platform === 'ios' || d.platform === 'tvos') {
@@ -66,6 +68,9 @@ export async function stopDevice(
         } else if (d.platform === 'web' || d.platform === 'vega') {
           // Vega VVD lifecycle is owned by Amazon's tooling — we only stop our log daemon.
           await stopDaemon(d.id);
+        } else if (d.platform === 'roku') {
+          // A Roku is physical hardware we never booted; there is nothing to stop.
+          continue;
         }
         stopped.push({ id: d.id, name: d.name, platform: d.platform });
       } catch (e) {
@@ -112,6 +117,12 @@ export async function stopDevice(
     } else if (match.platform === 'web' || match.platform === 'vega') {
       // Vega VVD lifecycle is owned by Amazon's tooling — we only stop our log daemon.
       await stopDaemon(match.id);
+    } else if (match.platform === 'roku') {
+      printError(
+        `${match.name} is a physical Roku device — conductor never booted it, so there is nothing to stop.`,
+        opts
+      );
+      return 1;
     }
   } catch (e) {
     printError(e instanceof Error ? e.message : String(e), opts);

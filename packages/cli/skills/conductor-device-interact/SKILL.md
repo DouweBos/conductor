@@ -1,6 +1,6 @@
 ---
 name: conductor-device-interact
-description: Drive a running iOS simulator, Android emulator, tvOS simulator, Vega (Amazon Fire TV) virtual device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements (by selector or raw coordinate), typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys, opening URLs or deep links, navigating back, granting/denying app permissions, adding media to the gallery, setting GPS location or a travel route, toggling airplane mode, recording a screen video, or verifying an app change in the real running app.
+description: Drive a running iOS simulator, Android emulator, tvOS simulator, Vega (Amazon Fire TV) virtual device, Roku device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements (by selector or raw coordinate), typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys, opening URLs or deep links, navigating back, granting/denying app permissions, adding media to the gallery, setting GPS location or a travel route, toggling airplane mode, recording a screen video, or verifying an app change in the real running app.
 ---
 
 # Conductor — device interaction
@@ -41,7 +41,7 @@ conductor assert-visible "Dashboard"
 | `conductor copy-text-from <element>` | Print an element's text (and copy to the iOS clipboard) |
 | `conductor input-text <text>` | Type into the focused field |
 | `conductor erase-text [n]` | Erase n characters (default 50) |
-| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`) for tvOS / Android TV / vega. `--long-press` / `--duration <seconds>` holds it; `--measure` times the response (see `conductor-profiler`) |
+| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`) for tvOS / Android TV / vega / roku. `--long-press` / `--duration <seconds>` holds it; `--measure` times the response (see `conductor-profiler`) |
 | `conductor hide-keyboard` | Dismiss the on-screen keyboard |
 | `conductor back` | Press back |
 | `conductor scroll [--direction down\|up\|left\|right]` | Scroll |
@@ -125,8 +125,9 @@ relaunch without the flag. (See `conductor-device-setup`.)
 
 ## Tips
 
-- `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web|vega>` scopes by platform.
+- `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web|vega|roku>` scopes by platform.
 - Vega (Amazon Fire TV) is D-pad driven: navigate with `press-key "Remote Dpad …"`; coordinate `tap-on` also works. `open-link`, `set-location`, gestures, and clipboard are unsupported. See `conductor-device-setup`.
+- Roku is D-pad only — there is no touch. `tap-on <selector>` resolves the element but presses `Select`, which activates whatever currently holds **focus**, so navigate focus onto the target with `press-key "Remote Dpad …"` first and use `tap-on` to confirm. `scroll`/`swipe` become repeated D-pad presses in the direction the content moves. `open-link` needs an app id (it becomes a channel launch parameter). Only sideloaded dev-mode channels are inspectable. See `conductor-device-setup`.
 - Add `--json` for machine-readable output; failed assertions exit non-zero.
 - Run a per-session daemon for many commands (see `conductor-device-setup`).
 - `conductor <command> --help` for exact flags.

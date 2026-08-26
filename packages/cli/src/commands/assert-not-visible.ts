@@ -9,6 +9,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 import { ElementSelector } from '../drivers/element-resolver.js';
 import {
   waitUntilIOSElementGone,
@@ -69,7 +70,11 @@ export async function assertNotVisible(
       );
     } else if (driver instanceof WebDriver) {
       await waitUntilWebElementGone(() => driver.viewHierarchy(), sel, flags.timeout);
-    } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
+    } else if (
+      driver instanceof AndroidDriver ||
+      driver instanceof VegaDriver ||
+      driver instanceof RokuDriver
+    ) {
       // Vega emits uiautomator-style XML, so it reuses the Android resolver.
       await waitUntilAndroidElementGone(() => driver.viewHierarchy(), sel, flags.timeout);
     }

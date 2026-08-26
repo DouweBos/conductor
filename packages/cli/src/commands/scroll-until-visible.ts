@@ -10,6 +10,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 import {
   findIOSElement,
   findAndroidElement,
@@ -109,8 +110,12 @@ export async function scrollUntilVisible(
             coords.endY * h,
             500
           );
-        } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
-          // Vega emits uiautomator-style XML, so it reuses the Android resolver.
+        } else if (
+          driver instanceof AndroidDriver ||
+          driver instanceof VegaDriver ||
+          driver instanceof RokuDriver
+        ) {
+          // Vega and Roku emit uiautomator-style XML, so they reuse the Android resolver.
           const xml = await driver.viewHierarchy();
           if (findAndroidElement(xml, sel)) {
             printSuccess(`scroll-until-visible ${label} — found`, opts);

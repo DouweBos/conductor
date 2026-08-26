@@ -6,6 +6,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 import { Direction, swipeCoords } from '../utils.js';
 
 export async function scroll(
@@ -48,7 +49,11 @@ export async function scroll(
         coords.endY * h,
         500
       );
-    } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
+    } else if (
+      driver instanceof AndroidDriver ||
+      driver instanceof VegaDriver ||
+      driver instanceof RokuDriver
+    ) {
       const info = await driver.deviceInfo();
       const { widthPixels: w, heightPixels: h } = info;
       await driver.swipe(

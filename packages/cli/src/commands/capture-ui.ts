@@ -8,6 +8,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 import {
   buildIOSA11y,
   buildAndroidA11y,
@@ -20,7 +21,7 @@ export interface CaptureBundle {
   version: 1;
   capturedAt: string;
   device: {
-    platform: 'ios' | 'android' | 'web' | 'tvos' | 'vega';
+    platform: 'ios' | 'android' | 'web' | 'tvos' | 'vega' | 'roku';
     deviceId: string;
     width: number;
     height: number;
@@ -97,9 +98,14 @@ export async function captureUI(
       hierarchy = { ...vh, elements: built.hierarchy };
       a11ySnapshot = built.a11ySnapshot;
       screenshotBuf = shot;
-    } else if (driver instanceof AndroidDriver || driver instanceof VegaDriver) {
-      // Vega emits uiautomator-style XML, so it reuses the Android a11y builder.
-      platform = driver instanceof VegaDriver ? 'vega' : 'android';
+    } else if (
+      driver instanceof AndroidDriver ||
+      driver instanceof VegaDriver ||
+      driver instanceof RokuDriver
+    ) {
+      // Vega and Roku emit uiautomator-style XML, so they reuse the Android a11y builder.
+      platform =
+        driver instanceof VegaDriver ? 'vega' : driver instanceof RokuDriver ? 'roku' : 'android';
       const [info, xml, shot] = await Promise.all([
         driver.deviceInfo(),
         driver.viewHierarchy(),

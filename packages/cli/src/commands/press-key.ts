@@ -16,6 +16,8 @@ import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
 import { VegaButton } from '../drivers/vega/input.js';
+import { RokuDriver } from '../drivers/roku.js';
+import { rokuEcpKey } from '../drivers/roku/key-mapping.js';
 
 export const VALID_KEYS = [
   'Enter',
@@ -52,6 +54,9 @@ export const VALID_KEYS = [
   'TV Input HDMI 1',
   'TV Input HDMI 2',
   'TV Input HDMI 3',
+  'Remote Info',
+  'Remote Instant Replay',
+  'Remote Search',
 ] as const;
 
 export type Key = (typeof VALID_KEYS)[number];
@@ -138,9 +143,12 @@ export const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
   'TV Input HDMI 1': 243,
   'TV Input HDMI 2': 244,
   'TV Input HDMI 3': 245,
+  'Remote Info': 165,
+  'Remote Instant Replay': 273, // KEYCODE_MEDIA_SKIP_BACKWARD
+  'Remote Search': 84,
 };
 
-export type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver;
+export type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver;
 
 /**
  * Send `key` on an already-connected driver. Split out of `pressKey` so
@@ -199,6 +207,12 @@ export async function dispatchKey(
       await driver.pressButton(vegaButton);
     }
     // Keys not mapped on vega are silently ignored
+  } else if (driver instanceof RokuDriver) {
+    // Keys not mapped on roku are silently ignored, as on tvOS and vega — but a
+    // mapped key that the device rejects must still fail.
+    if (rokuEcpKey(matched)) {
+      await driver.pressKeyNamed(matched);
+    }
   } else if (driver instanceof AndroidDriver) {
     const code = ANDROID_KEYCODE[matched];
     if (code !== undefined) {

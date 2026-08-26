@@ -26,7 +26,7 @@ conductor assert-visible "Dashboard"
 conductor take-screenshot --output /tmp/screen.png
 ```
 
-Targets iOS and tvOS simulators, physical iOS/tvOS devices, Android emulators and devices, Amazon Fire TV, and web via Playwright.
+Targets iOS and tvOS simulators, physical iOS/tvOS devices, Android emulators and devices, Amazon Fire TV, Roku, and web via Playwright.
 
 ## Quick start
 

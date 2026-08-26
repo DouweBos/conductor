@@ -34,6 +34,13 @@ export async function installApp(
   if (platform === 'web') {
     printError('install-app is not supported on web. Use launch-app with a URL instead.', opts);
     return 1;
+  } else if (platform === 'roku') {
+    printError(
+      'install-app is not supported on roku — sideload the channel through the ' +
+        "device's developer web server (http://<device-ip>).",
+      opts
+    );
+    return 1;
   } else if (platform === 'vega') {
     // Vega installs a `.vpkg` through Amazon's CLI; strip the `vega:` id prefix.
     try {

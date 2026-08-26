@@ -6,6 +6,7 @@ import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 
 export async function hideKeyboard(
   opts: OutputOptions = {},
@@ -20,6 +21,9 @@ export async function hideKeyboard(
       // No virtual keyboard on web — no-op
     } else if (driver instanceof VegaDriver) {
       // Vega has no keyboard-hide primitive — no-op
+    } else if (driver instanceof RokuDriver) {
+      // Roku dismisses its on-screen keyboard with Back.
+      await driver.back();
     } else if (driver instanceof AndroidDriver) {
       await driver.pressKeyEvent(111); // KEYCODE_ESCAPE
     }

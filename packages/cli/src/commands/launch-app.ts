@@ -22,6 +22,7 @@ import fs from 'fs';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
+import { RokuDriver } from '../drivers/roku.js';
 
 export async function launchApp(
   appId: string,
@@ -60,7 +61,8 @@ export async function launchApp(
     if (shouldStop) {
       if (driver instanceof IOSDriver) await driver.terminateApp(appId);
       else if (driver instanceof WebDriver) await driver.terminateApp();
-      else if (driver instanceof VegaDriver) await driver.terminateApp(appId);
+      else if (driver instanceof VegaDriver || driver instanceof RokuDriver)
+        await driver.terminateApp(appId);
       else if (driver instanceof AndroidDriver) await driver.stopApp(appId);
     }
 
@@ -86,7 +88,7 @@ export async function launchApp(
       }
     } else if (driver instanceof WebDriver) {
       await driver.launchApp(appId);
-    } else if (driver instanceof VegaDriver) {
+    } else if (driver instanceof VegaDriver || driver instanceof RokuDriver) {
       await driver.launchApp(appId, flags.launchArgs);
     } else if (driver instanceof AndroidDriver) {
       await driver.launchApp(appId, flags.launchArgs);

@@ -12,6 +12,8 @@ import { AndroidDriver } from './android.js';
 import { WebDriver } from './web.js';
 import { VegaDriver } from './vega.js';
 import { VegaButton } from './vega/input.js';
+import { RokuDriver } from './roku.js';
+import { rokuEcpKey } from './roku/key-mapping.js';
 import {
   waitForIOSElement,
   waitForAndroidElement,
@@ -31,7 +33,7 @@ function fmtMs(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver;
+type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver;
 
 // tvOS remote key names (uppercased, as flow pressKey normalises them) → IOSDriver
 // button values. Without this a flow's `pressKey: "Remote Dpad Up"` would fall
@@ -677,7 +679,9 @@ function getConductorObj(
         ? 'web'
         : driver instanceof VegaDriver
           ? 'vega'
-          : 'android';
+          : driver instanceof RokuDriver
+            ? 'roku'
+            : 'android';
   return {
     platform,
     copiedText: (output['__copiedText'] as string) ?? '',
@@ -850,7 +854,7 @@ async function executeCommandBody(
       if (driver instanceof IOSDriver) {
         for (let i = 0; i < n; i++) await driver.pressKey('delete');
       } else {
-        // Android, web, and vega all expose eraseAllText.
+        // Android, web, vega, and roku all expose eraseAllText.
         await driver.eraseAllText(n);
       }
       break;
@@ -998,7 +1002,7 @@ async function executeCommandBody(
     case 'back': {
       if (driver instanceof AndroidDriver) await driver.back();
       else if (driver instanceof WebDriver) await driver.goBack();
-      else if (driver instanceof VegaDriver) await driver.back();
+      else if (driver instanceof VegaDriver || driver instanceof RokuDriver) await driver.back();
       // iOS has no hardware back button — noop
       break;
     }
@@ -1301,6 +1305,10 @@ async function executeCommandBody(
         const button = VEGA_FLOW_BUTTONS[keyName];
         if (!button) throw new Error(`pressKey: key "${val}" is not supported on vega`);
         await driver.pressButton(button);
+      } else if (driver instanceof RokuDriver) {
+        if (!rokuEcpKey(keyName))
+          throw new Error(`pressKey: key "${val}" is not supported on roku`);
+        await driver.pressKeyNamed(keyName);
       } else {
         const keycode = ANDROID_KEYCODES[keyName];
         if (keycode === undefined) throw new Error(`pressKey: unknown key "${val}"`);
@@ -1318,6 +1326,9 @@ async function executeCommandBody(
         // No virtual keyboard on web — noop
       } else if (driver instanceof VegaDriver) {
         // No reliable keyboard-hide primitive on vega — noop
+      } else if (driver instanceof RokuDriver) {
+        // Roku dismisses its on-screen keyboard with Back.
+        await driver.back();
       } else {
         await driver.pressKeyEvent(111); // KEYCODE_ESCAPE
       }
