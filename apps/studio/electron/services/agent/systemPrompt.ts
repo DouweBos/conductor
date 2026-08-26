@@ -1,7 +1,7 @@
 import type { DeviceInfo, SceneGraph } from "../../../app/lib/types";
 import { getProjectInfo } from "../file/fileService";
 import { listCases } from "../cases/casesService";
-import { selectedProjects } from "../cases/projects";
+import { projects as qaseProjects } from "../cases/casesService";
 import { listPoms } from "../pom/pomService";
 import { appFingerprint } from "../conductor/conductorService";
 import { loadSceneGraph } from "../scenegraph/sceneGraphService";
@@ -62,28 +62,22 @@ export async function buildAgentSystemPrompt(device: DeviceInfo | null): Promise
 
   const cases = await listCases().catch(() => []);
   if (cases.length) {
-    const uncovered = cases.filter(
-      (c) => !c.conductor?.flow && !Object.keys(c.conductor?.flows ?? {}).length,
-    );
-    const qaseProjects = selectedProjects().filter((p) => p.datasource.mode === "qase");
+    const uncovered = cases.filter((c) => !c.flows?.length);
+    const codes = qaseProjects().map((p) => p.code);
     lines.push(
       "",
       "## Test cases",
-      "Studio tracks test cases as YAML under `~/.conductor/studio/<project>/cases/` —",
-      "outside this repo, so testing a project never adds files to it. A case",
-      "follows Qase's model (id, title, steps with action/data/expected_result,",
-      "suite, custom fields, tags); the flow it names, which does live in the",
-      "repo, is the implementation and is held in the case's `conductor` block.",
-      "Use `list_test_cases` / `describe_test_case` to read them, `link_case_flow`",
-      "to attach a flow you wrote, and `record_case_result` when you verify one",
-      "by driving the device.",
-      ...(qaseProjects.length
-        ? [
-            `Cases come from Qase (${qaseProjects.map((p) => p.datasource.projectCode).join(", ")}) and are read-only here:`,
-            "link flows and assign page objects, never rewrite a title, step or tag.",
-            "`sync_test_cases` pulls the latest before you start.",
-          ]
-        : []),
+      `Cases live in Qase (${codes.join(", ") || "not configured yet"}) and are read-only here.`,
+      "A flow says which case it verifies in its own header, and that is the",
+      "only place the link is recorded:",
+      "",
+      "    properties:",
+      "      testCaseId: \"MC-12\"",
+      "",
+      "Maestro carries it into the JUnit report, so the case is named wherever",
+      "the flow runs. Use `list_test_cases` / `describe_test_case` to read them,",
+      "`link_case_flow` to write that property into a flow you wrote, and",
+      "`record_case_result` when you verify one by driving the device.",
       `${cases.length} cases, ${uncovered.length} with no flow yet.`,
     );
   }

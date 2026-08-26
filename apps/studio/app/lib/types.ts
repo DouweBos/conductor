@@ -185,9 +185,8 @@ export interface CommandResult {
 export type {
   Behavior,
   Case,
-  CaseInput,
   CaseMatrix,
-  CaseProject,
+  QaseProject,
   CaseResult,
   CaseResultSource,
   CaseStats,
@@ -195,20 +194,17 @@ export type {
   CaseStep,
   CaseStepResult,
   CaseType,
-  CasesDatasource,
-  ConductorBlock,
   Priority,
-  PullSummary,
+  RefreshSummary,
   ResultStatus,
   Severity,
   StepsType,
 } from "../../electron/services/cases/model";
+export type { FlowLink } from "../../electron/services/cases/coverage";
 export {
-  ALL_PROJECTS,
   BEHAVIORS,
   CASE_STATUSES,
   CASE_TYPES,
-  DEFAULT_DATASOURCE,
   PRIORITIES,
   RESULT_STATUSES,
   SEVERITIES,

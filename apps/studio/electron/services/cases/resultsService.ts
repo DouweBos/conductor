@@ -5,7 +5,7 @@ import path from "node:path";
 import type { RunRecord } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { getProjectInfo } from "../file/fileService";
-import { caseProjectDir, caseProjects, selectedProjects } from "./projects";
+import { studioDir } from "../util/studioPaths";
 import type { Case, CaseResult, CaseStats, ResultStatus } from "./model";
 
 /**
@@ -28,24 +28,13 @@ export function claimRunForPlan(runId: string, planRunId: string): void {
   planClaims.set(runId, planRunId);
 }
 
-function logPath(projectId: string): string | null {
+function logPath(): string | null {
   if (!getProjectInfo()) return null;
-  return path.join(caseProjectDir("cases", projectId), LOG);
+  return path.join(studioDir("results"), LOG);
 }
 
-/**
- * The sub-project a result belongs to, from its ref — `MC-12` is the mobile
- * project's, `TV-4` the tv one's. Falls back to the only project there is.
- */
-function projectForRef(ref: string): string | null {
-  const projects = caseProjects();
-  const code = ref.split("-")[0];
-  const match = projects.find((p) => p.datasource.projectCode === code);
-  return (match ?? (projects.length === 1 ? projects[0] : undefined))?.id ?? null;
-}
-
-async function readLog(projectId: string): Promise<CaseResult[]> {
-  const file = logPath(projectId);
+export async function listResults(): Promise<CaseResult[]> {
+  const file = logPath();
   if (!file || !existsSync(file)) return [];
   const lines = (await readFile(file, "utf8")).split("\n").filter((l) => l.trim());
   const results: CaseResult[] = [];
@@ -56,22 +45,13 @@ async function readLog(projectId: string): Promise<CaseResult[]> {
       // A half-written line (or a bad merge) must not hide the rest of the log.
     }
   }
-  return results;
-}
-
-/** Executions across whatever the current selection covers. */
-export async function listResults(): Promise<CaseResult[]> {
-  const logs = await Promise.all(selectedProjects().map((p) => readLog(p.id)));
-  return logs.flat().sort((a, b) => b.at - a.at);
+  return results.sort((a, b) => b.at - a.at);
 }
 
 export async function recordResult(
   input: Omit<CaseResult, "id" | "at"> & { at?: number },
 ): Promise<CaseResult> {
-  // A result files against the sub-project that owns the case, not the one on
-  // screen — a run can finish long after the user switched projects.
-  const projectId = projectForRef(input.ref);
-  const file = projectId ? logPath(projectId) : null;
+  const file = logPath();
   if (!file) throw new Error("No project is open.");
   counter += 1;
   const result: CaseResult = {
@@ -90,13 +70,9 @@ export async function recordResult(
  * history and stays; only the pointer to missing evidence goes.
  */
 export async function detachReport(reportId: string): Promise<void> {
-  for (const project of caseProjects()) await detachReportFrom(project.id, reportId);
-}
-
-async function detachReportFrom(projectId: string, reportId: string): Promise<void> {
-  const file = logPath(projectId);
+  const file = logPath();
   if (!file || !existsSync(file)) return;
-  const results = await readLog(projectId);
+  const results = await listResults();
   if (!results.some((r) => r.report_id === reportId)) return;
   const kept = results
     .slice()
@@ -168,11 +144,17 @@ export async function recordRunResult(record: RunRecord, cases: Case[]): Promise
   const status = RUN_STATUS[record.status];
   if (!status) return;
   for (const c of cases) {
-    const columns = Object.entries(c.conductor?.flows ?? {})
-      .filter(([, flow]) => flow === record.flowPath)
-      .map(([column]) => column);
-    if (c.conductor?.flow === record.flowPath) columns.push("");
-    for (const column of columns) {
+    // The flow names its cases, so a finished run is an execution of each of
+    // them — under the columns that flow's tags cover.
+    const flow = (c.flows ?? []).find((f) => f.path === record.flowPath);
+    if (!flow) continue;
+    // Only tags that are also one of the case's own field values are columns;
+    // `smoke` and `regression` say nothing about which cell was verified.
+    const values = new Set(Object.values(c.custom_fields ?? {}).flat());
+    const columns = flow.tags
+      .map((t) => t.replace(/-draft$/, ""))
+      .filter((t) => values.has(t));
+    for (const column of columns.length ? columns : [""]) {
       await recordResult({
         case_id: c.id,
         ref: c.ref,

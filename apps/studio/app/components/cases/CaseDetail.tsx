@@ -1,32 +1,25 @@
-import { Button, IconButton, StatusPill, Tag, TextField, type StatusTone } from "@conductor/studio-ui";
+import { Button, IconButton, Select, StatusPill, Tag, TextField, type StatusTone } from "@conductor/studio-ui";
 import { useEffect, useMemo, useState } from "react";
 
 import {
   caseStepCoverage,
-  casesDatasource,
-  deleteCase,
-  recordCaseResult,
+  linkCaseFlow,
   listStepPoms,
-  saveCase,
+  qaseProjects,
+  recordCaseResult,
   scaffoldFlowFromCase,
+  setCaseStepPom,
+  loadFlowCatalog,
 } from "../../lib/ipc";
 import { askAgentToVerifyCase } from "../../lib/agentHandoff";
 import { askAgentToAutomateCase } from "../../lib/agentHandoff";
 import { selectFlow } from "../../lib/router";
 import {
-  CASE_STATUSES,
-  PRIORITIES,
   RESULT_STATUSES,
-  SEVERITIES,
   type Case,
-  type CaseInput,
   type CaseResult,
-  type CasesDatasource,
-  type CaseStatus,
   type FlowCatalogEntry,
-  type Priority,
   type ResultStatus,
-  type Severity,
   type StepCoverage,
 } from "../../lib/types";
 import styles from "./CasesView.module.css";
@@ -47,12 +40,9 @@ const SOURCE_LABEL: Record<CaseResult["source"], string> = {
 
 export const ids = (c: Case) => c.ref;
 
+/** The flows that declare this case, labelled by the tag each carries. */
 export function allFlows(c: Case): { column?: string; flow: string }[] {
-  const entries: { column?: string; flow: string }[] = Object.entries(c.conductor?.flows ?? {}).map(
-    ([column, flow]) => ({ column, flow }),
-  );
-  if (c.conductor?.flow) entries.push({ flow: c.conductor.flow });
-  return entries;
+  return (c.flows ?? []).map((f) => ({ column: f.tags[0], flow: f.path }));
 }
 
 interface CaseDetailProps {
@@ -63,33 +53,41 @@ interface CaseDetailProps {
 }
 
 export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetailProps) {
-  const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [coverage, setCoverage] = useState<StepCoverage | null>(null);
-  const [source, setSource] = useState<CasesDatasource | null>(null);
+  const [matrixField, setMatrixField] = useState<string | undefined>();
+  const [poms, setPoms] = useState<FlowCatalogEntry[]>([]);
+  const [flowChoices, setFlowChoices] = useState<string[]>([]);
 
   useEffect(() => {
-    setEditing(false);
     setComment("");
     setError(null);
-    setConfirmDelete(false);
     setCoverage(null);
     // Which steps the flow behind this case actually performs, via their POMs.
     caseStepCoverage(c.ref).then(setCoverage).catch(() => setCoverage(null));
   }, [c.ref]);
 
   useEffect(() => {
-    casesDatasource().then(setSource).catch(() => setSource(null));
+    listStepPoms().then(setPoms).catch(() => setPoms([]));
+    loadFlowCatalog()
+      .then(({ entries }) =>
+        setFlowChoices(
+          entries.filter((e) => e.kind === "flow" && !/^(pages|commands)\//.test(e.path)).map((e) => e.path),
+        ),
+      )
+      .catch(() => setFlowChoices([]));
+    qaseProjects()
+      .then(({ projects }) => setMatrixField(projects.find((p) => p.matrixField)?.matrixField))
+      .catch(() => setMatrixField(undefined));
   }, []);
 
   const flows = allFlows(c);
-  // Columns the case claims but nothing implements yet — what the agent is for.
-  const matrixField = source?.qase?.matrixField;
+  // Columns the case claims but no flow declares yet — what the agent is for.
+  const covered = new Set(flows.flatMap((f) => (f.column ? [f.column] : [])));
   const missingColumns = (matrixField ? (c.custom_fields[matrixField] ?? []) : []).filter(
-    (p) => !c.conductor?.flows?.[p] && !c.conductor?.flow,
+    (column) => !covered.has(column) && !flows.length,
   );
   const results = c.results ?? [];
   const stats = useMemo(() => {
@@ -137,28 +135,45 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
     }
   };
 
-  const remove = async () => {
+  /** Which page object performs a step. Studio's, not Qase's — kept beside it. */
+  const assignPom = async (stepKey: string, pom: string) => {
+    setBusy(true);
     try {
-      await deleteCase(c.id);
-      onClose();
+      await setCaseStepPom(c.ref, stepKey, pom || undefined);
       onChanged();
     } catch (e) {
       setError(String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
-  if (editing) {
-    return (
-      <CaseEditor
-        testCase={c}
-        onCancel={() => setEditing(false)}
-        onSaved={() => {
-          setEditing(false);
-          onChanged();
-        }}
-      />
-    );
-  }
+  /** Point an existing flow at this case, by writing its header property. */
+  const link = async (flow: string) => {
+    if (!flow) return;
+    setBusy(true);
+    try {
+      await linkCaseFlow(flow, [c.ref]);
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Unlink: the flow stops declaring this case, and nothing else changes. */
+  const unlink = async (flow: string) => {
+    setBusy(true);
+    try {
+      await linkCaseFlow(flow, []);
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const facets: [string, string[]][] = [
     ...(c.suite ? ([["suite", [c.suite]]] as [string, string[]][]) : []),
@@ -174,13 +189,6 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
           <h2 className={styles.detailTitle}>{c.title}</h2>
         </div>
         <div className={styles.detailActions}>
-          <IconButton icon="code" label="Edit case" onClick={() => setEditing(true)} />
-          <IconButton
-            icon="trash"
-            label={confirmDelete ? "Confirm delete" : "Delete case"}
-            active={confirmDelete}
-            onClick={() => (confirmDelete ? void remove() : setConfirmDelete(true))}
-          />
           <IconButton icon="close" label="Close case" onClick={onClose} />
         </div>
       </header>
@@ -232,20 +240,45 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
                 <span className={styles.flowPath}>{flow}</span>
               </div>
               <div className={styles.flowActions}>
-                <Button size="sm" variant="secondary" icon="play" onClick={() => onRun(flow, column, c.project)}>
+                <Button size="sm" variant="secondary" icon="play" onClick={() => onRun(flow, column)}>
                   Run
                 </Button>
                 <Button size="sm" variant="ghost" icon="file" onClick={() => selectFlow(flow)}>
                   Open
                 </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  title="Remove this flow's testCaseId — the flow itself stays"
+                  onClick={() => void unlink(flow)}
+                >
+                  Unlink
+                </Button>
               </div>
             </div>
           ))}
 
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Link a flow that already exists</span>
+            <Select
+              value=""
+              disabled={busy}
+              onChange={(e) => void link(e.target.value)}
+              options={[
+                { value: "", label: "Choose a flow…" },
+                ...flowChoices
+                  .filter((path) => !flows.some((f) => f.flow === path))
+                  .map((path) => ({ value: path, label: path })),
+              ]}
+            />
+          </label>
+
           {flows.length === 0 ? (
             <p className={styles.muted}>
-              No flow yet — this case is verified by hand, or by the agent executing its steps
-              (“Verify with the agent” above files a report and a result).
+              No flow declares this case yet — it is verified by hand, or by the agent executing
+              its steps. A flow claims a case with <code>properties.testCaseId: {c.ref}</code> in
+              its header.
             </p>
           ) : null}
 
@@ -324,14 +357,23 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
                     {step.expected_result ? (
                       <span className={styles.wizardExpected}>→ {step.expected_result}</span>
                     ) : null}
-                    {step.pom ? (
+                    {step.env && step.pom ? (
                       <span className={styles.flowPath}>
-                        {step.pom}
-                        {step.env
-                          ? ` (${Object.entries(step.env).map(([k, v]) => `${k}=${v}`).join(", ")})`
-                          : ""}
+                        {Object.entries(step.env).map(([k, v]) => `${k}=${v}`).join(", ")}
                       </span>
                     ) : null}
+                    <Select
+                      value={step.pom ?? ""}
+                      disabled={busy}
+                      onChange={(e) => void assignPom(step.hash ?? String(i), e.target.value)}
+                      options={[
+                        { value: "", label: "no page object" },
+                        ...poms.map((p) => ({ value: p.path, label: p.path })),
+                        ...(step.pom && !poms.some((p) => p.path === step.pom)
+                          ? [{ value: step.pom, label: `${step.pom} (missing)` }]
+                          : []),
+                      ]}
+                    />
                   </div>
                   <StatusPill tone={backed ? "success" : step.pom ? "warning" : "neutral"}>
                     {backed ? "automated" : step.pom ? "not in flow" : "manual"}
@@ -411,319 +453,7 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
           )}
         </section>
 
-        <p className={styles.muted}>{c.filePath}</p>
       </div>
     </aside>
-  );
-}
-
-// ── Editor ──────────────────────────────────────────────────────────────────
-
-interface CaseEditorProps {
-  testCase: Case | null;
-  onCancel: () => void;
-  onSaved: (saved: Case) => void;
-}
-
-/**
- * Create or edit a case. Writes the YAML file; comments in it survive.
- *
- * When cases come from Qase, everything Qase owns is read-only here — it is
- * authored there, and the next sync would revert an edit made in Studio. What
- * stays editable is Conductor's own wiring: which flow implements the case, and
- * which page object performs each step.
- */
-export function CaseEditor({ testCase, onCancel, onSaved }: CaseEditorProps) {
-  const [source, setSource] = useState<CasesDatasource | null>(null);
-  const locked = source?.mode === "qase";
-
-  const [draft, setDraft] = useState<CaseInput>(() => ({
-    id: testCase?.id ?? 0,
-    title: testCase?.title ?? "",
-    description: testCase?.description ?? "",
-    preconditions: testCase?.preconditions ?? "",
-    postconditions: testCase?.postconditions ?? "",
-    severity: testCase?.severity,
-    priority: testCase?.priority,
-    status: testCase?.status,
-    custom_fields: testCase?.custom_fields ?? {},
-    tags: testCase?.tags ?? [],
-    conductor: testCase?.conductor,
-    previousId: testCase?.id,
-  }));
-  // `1. action -> expected @ pages/foo.yaml?key=value` per line: readable to a
-  // tester, and still carries the page object that automates it.
-  const [stepText, setStepText] = useState(() =>
-    (testCase?.steps ?? [])
-      .map((step) => {
-        const env = step.env ? `?${new URLSearchParams(step.env).toString()}` : "";
-        return [
-          step.action,
-          step.expected_result ? ` -> ${step.expected_result}` : "",
-          step.pom ? ` @ ${step.pom}${env}` : "",
-        ].join("");
-      })
-      .join("\n"),
-  );
-  const [fieldText, setFieldText] = useState(() =>
-    Object.entries(testCase?.custom_fields ?? {})
-      .map(([field, values]) => `${field}: ${values.join(", ")}`)
-      .join("\n"),
-  );
-  const [flowText, setFlowText] = useState(() =>
-    testCase?.conductor?.flows
-      ? Object.entries(testCase.conductor.flows).map(([col, flow]) => `${col}: ${flow}`).join("\n")
-      : (testCase?.conductor?.flow ?? ""),
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [poms, setPoms] = useState<FlowCatalogEntry[]>([]);
-
-  useEffect(() => {
-    listStepPoms().then(setPoms).catch(() => {});
-    casesDatasource().then(setSource).catch(() => setSource(null));
-  }, []);
-
-  const set = <K extends keyof CaseInput>(key: K, value: CaseInput[K]) =>
-    setDraft((d) => ({ ...d, [key]: value }));
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      // `field: a, b` per line for custom fields; `column: flow` (or a bare
-      // path) for flows.
-      const custom_fields: Record<string, string[]> = {};
-      for (const line of fieldText.split("\n")) {
-        const [field, rest] = line.split(":");
-        if (!field?.trim() || !rest?.trim()) continue;
-        custom_fields[field.trim()] = rest.split(",").map((v) => v.trim()).filter(Boolean);
-      }
-      const flows: Record<string, string> = {};
-      let flow: string | undefined;
-      for (const line of flowText.split("\n")) {
-        if (!line.trim()) continue;
-        const [column, ...rest] = line.split(":");
-        if (rest.length && rest.join(":").trim()) flows[column.trim()] = rest.join(":").trim();
-        else flow = line.trim();
-      }
-      const steps = stepText
-        .split("\n")
-        .map((line) => line.replace(/^\s*\d+[.)]\s*/, "").trim())
-        .filter(Boolean)
-        .map((line) => {
-          const [before, pomPart] = line.split(" @ ");
-          const [action, expected] = before.split(" -> ");
-          if (!pomPart) return { action: action.trim(), expected_result: expected?.trim() };
-          const [pom, queryString] = pomPart.trim().split("?");
-          const env = Object.fromEntries(new URLSearchParams(queryString ?? ""));
-          return {
-            action: action.trim(),
-            expected_result: expected?.trim(),
-            pom: pom.trim(),
-            env: Object.keys(env).length ? env : undefined,
-          };
-        });
-
-      // In qase mode only the wiring is ours to write; sending the rest back
-      // unchanged is what saveCase refuses, so don't send it at all.
-      const saved = await saveCase(
-        locked
-          ? {
-              id: draft.id,
-              previousId: draft.previousId,
-              title: draft.title,
-              steps,
-              conductor: {
-                flow: Object.keys(flows).length ? undefined : flow,
-                flows: Object.keys(flows).length ? flows : undefined,
-              },
-            }
-          : {
-              ...draft,
-              steps,
-              custom_fields,
-              conductor: {
-                flow: Object.keys(flows).length ? undefined : flow,
-                flows: Object.keys(flows).length ? flows : undefined,
-              },
-            },
-      );
-      onSaved(saved);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <aside className={styles.detail}>
-      <header className={styles.detailHeader}>
-        <h2 className={styles.detailTitle}>{testCase ? "Edit case" : "New case"}</h2>
-        <IconButton icon="close" label="Cancel" onClick={onCancel} />
-      </header>
-      <div className={styles.detailBody}>
-        {error ? <StatusPill tone="error">{error}</StatusPill> : null}
-        {locked ? (
-          <p className={styles.muted}>
-            Cases come from Qase project {source?.projectCode}. Title, steps, tags and fields are
-            edited there — here you link the flow that implements the case and the page object
-            behind each step.
-          </p>
-        ) : null}
-        <Field label="Id">
-          <TextField
-            value={String(draft.id || "")}
-            disabled={locked}
-            onChange={(e) => set("id", Number(e.target.value.replace(/[^0-9]/g, "")) || 0)}
-            placeholder="12"
-          />
-        </Field>
-        <Field label="Title">
-          <TextField
-            value={draft.title}
-            disabled={locked}
-            onChange={(e) => set("title", e.target.value)}
-          />
-        </Field>
-        <Field label="Description">
-          <textarea
-            className={styles.textarea}
-            rows={3}
-            disabled={locked}
-            value={draft.description ?? ""}
-            onChange={(e) => set("description", e.target.value)}
-          />
-        </Field>
-        <Field label="Steps — `action -> expected @ pages/x.yaml?key=value` per line">
-          <textarea
-            className={styles.textarea}
-            rows={7}
-            value={stepText}
-            onChange={(e) => setStepText(e.target.value)}
-            placeholder={
-              "Open the details page -> The title is shown @ pages/details/open.yaml?path=movie/sintel"
-            }
-          />
-          {poms.length ? (
-            <span className={styles.fieldLabel}>
-              {poms.length} page objects available — e.g. {poms[0].path}
-              {poms[0].params.length ? `?${poms[0].params.map((p) => `${p}=`).join("&")}` : ""}
-            </span>
-          ) : null}
-          {locked ? (
-            <span className={styles.fieldLabel}>
-              Only the `@ page-object` part of a step is saved — the wording comes from Qase.
-            </span>
-          ) : null}
-        </Field>
-        <Field label="Preconditions">
-          <textarea
-            className={styles.textarea}
-            rows={2}
-            disabled={locked}
-            value={draft.preconditions ?? ""}
-            onChange={(e) => set("preconditions", e.target.value)}
-          />
-        </Field>
-        <Field label="Postconditions">
-          <textarea
-            className={styles.textarea}
-            rows={2}
-            disabled={locked}
-            value={draft.postconditions ?? ""}
-            onChange={(e) => set("postconditions", e.target.value)}
-          />
-        </Field>
-        <Field label="Custom fields — one `field: a, b` per line">
-          <textarea
-            className={styles.textarea}
-            rows={4}
-            disabled={locked}
-            value={fieldText}
-            onChange={(e) => setFieldText(e.target.value)}
-            placeholder={"Platform: ios, android"}
-          />
-        </Field>
-        <Field label="Tags — comma separated">
-          <TextField
-            value={(draft.tags ?? []).join(", ")}
-            disabled={locked}
-            onChange={(e) =>
-              set("tags", e.target.value.split(",").map((v) => v.trim()).filter(Boolean))
-            }
-          />
-        </Field>
-        <Field label="Flows — `column: path`, or one bare path">
-          <textarea
-            className={styles.textarea}
-            rows={3}
-            value={flowText}
-            onChange={(e) => setFlowText(e.target.value)}
-          />
-        </Field>
-        <Field label="Severity">
-          <select
-            className={styles.textarea}
-            disabled={locked}
-            value={draft.severity ?? ""}
-            onChange={(e) => set("severity", (e.target.value || undefined) as Severity | undefined)}
-          >
-            <option value="">—</option>
-            {SEVERITIES.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Priority">
-          <select
-            className={styles.textarea}
-            disabled={locked}
-            value={draft.priority ?? ""}
-            onChange={(e) => set("priority", (e.target.value || undefined) as Priority | undefined)}
-          >
-            <option value="">—</option>
-            {PRIORITIES.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Status">
-          <select
-            className={styles.textarea}
-            disabled={locked}
-            value={draft.status ?? "actual"}
-            onChange={(e) => set("status", e.target.value as CaseStatus)}
-          >
-            {CASE_STATUSES.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <div className={styles.verdictRow}>
-          <Button size="sm" disabled={saving} onClick={() => void save()}>
-            {saving ? "Saving…" : "Save case"}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className={styles.field}>
-      <span className={styles.fieldLabel}>{label}</span>
-      {children}
-    </label>
   );
 }

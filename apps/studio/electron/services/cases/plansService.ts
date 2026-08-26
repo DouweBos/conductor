@@ -6,7 +6,8 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import type { PlanRun, PlanRunEntry, TestPlan, TestPlanInput } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
-import { caseProjectDir, selectedProjects, targetProject } from "./projects";
+import { studioDir } from "../util/studioPaths";
+import { flowFor } from "./casesService";
 import { awaitRun, cancelRun, runFlow } from "../flow/flowRunner";
 import { listCases } from "./casesService";
 import type { Case } from "./model";
@@ -22,14 +23,12 @@ import { claimRunForPlan, recordResult } from "./resultsService";
  * to be skipped, rather than quietly dropped.
  */
 
-/** Plans are per sub-project: a plan's case refs only mean something in one. */
-function plansRoot(projectId?: string): string {
-  return caseProjectDir("plans", projectId ?? targetProject().id);
+function plansRoot(): string {
+  return studioDir("plans");
 }
 
 export async function listPlans(): Promise<TestPlan[]> {
-  const perProject = await Promise.all(selectedProjects().map((p) => readPlans(plansRoot(p.id))));
-  return perProject.flat().sort((a, b) => a.name.localeCompare(b.name));
+  return (await readPlans(plansRoot())).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 async function readPlans(root: string): Promise<TestPlan[]> {
@@ -111,10 +110,16 @@ export function resolvePlan(plan: TestPlan, cases: Case[]): Case[] {
 export function planEntries(plan: TestPlan, cases: Case[]): PlanRunEntry[] {
   const entries: PlanRunEntry[] = [];
   for (const c of resolvePlan(plan, cases)) {
-    const columns = Object.entries(c.conductor?.flows ?? {})
-      .filter(([column]) => !plan.columns?.length || plan.columns.includes(column))
-      .map(([column, flow]) => ({ column, flow }));
-    if (c.conductor?.flow && !columns.length) columns.push({ column: "", flow: c.conductor.flow });
+    // A plan runs the flows that declare the case, restricted to the columns
+    // it asks for.
+    const wanted = plan.columns?.length
+      ? plan.columns
+      : [...new Set(Object.values(c.custom_fields ?? {}).flat())];
+    const columns = wanted
+      .map((column) => ({ column, flow: flowFor(c, column) }))
+      .filter((entry): entry is { column: string; flow: string } => Boolean(entry.flow));
+    const single = flowFor(c);
+    if (!columns.length && single) columns.push({ column: "", flow: single });
     if (!columns.length) {
       entries.push({ ref: c.ref, title: c.title, status: "skipped" });
       continue;

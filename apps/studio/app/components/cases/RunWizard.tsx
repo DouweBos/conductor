@@ -105,10 +105,9 @@ export function RunWizard({ cases, onClose, onRecorded, onRunStarted }: RunWizar
   const anyFailed = caseSteps.some((_, i) => steps[i]?.status === "failed");
 
   // Run the flow for the platform we're walking, not just the first one.
-  const [column, flow] = (Object.entries(current.conductor?.flows ?? {})[0] ?? [
-    undefined,
-    current.conductor?.flow,
-  ]) as [string | undefined, string | undefined];
+  const declaring = current.flows?.[0];
+  const column = declaring?.tags[0];
+  const flow = declaring?.path;
 
   return (
     <aside className={styles.detail}>

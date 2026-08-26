@@ -280,125 +280,74 @@ Reports live in `~/.conductor/studio/reports/<project>/<test>-<timestamp>/`
 alongside `run-log.json` and the screenshots — a run artefact, not something to
 commit.
 
-## 3. Test case management
+## 3. Test cases
 
-A **case** follows **Qase's model** — id, title, description, steps as
-action/data/expected_result, suite, severity/priority/type, custom fields, tags —
-kept as a YAML file under `~/.conductor/studio/<project>/cases/`, scoped by the
-project's path. Studio does not write cases, results or plans into the repo under
-test: the flows a case names are the tests, and those are what belong in git. The
-Cases screen is the matrix over them: a switchable custom field for the columns,
-filters, search, and per-column automation coverage.
+Studio writes and runs flows; **Qase owns the cases**. A case is never authored,
+edited or stored here — it is fetched into a cache so the Cases screen can show
+what each flow is supposed to prove, and which cases nothing proves yet.
 
-Cases are either **local** to this machine or **mirrored from Qase** — see
-[Datasource](#datasource) below.
+**A flow says which case it verifies, in its own header.** That is the only
+place the link is recorded:
 
 ```yaml
-id: 12
-title: User can log in with valid credentials
-description: As a returning user, I can sign in…
-preconditions: A registered account exists.
-severity: normal
-priority: medium
-type: functional
-status: actual
-suite: Authentication
-custom_fields:
-  Platform: [ios, android]
-tags: [auth, p0]
-external_issues: [https://linear.app/acme/issue/ABC-12]
-steps:
-  - action: Open the login screen
-    expected_result: The email field is focused
-
-conductor:
-  flow: flows/cases/login.yaml
+appId: ${APP_ID}
+name: User can log in with valid credentials
+tags: [mobile]
+properties:
+  testCaseId: "MC-12"
+---
+- launchApp
 ```
 
-Everything above `conductor:` is Qase's, written with Qase's own field names and
-its enums spelled out rather than left as the integers the API sends. The
-`conductor:` block is the one thing Qase has no concept of — which flow file
-implements the case, and which page object performs each step — so it is
-Conductor's, and it survives every sync.
+`properties` is Maestro's own [custom properties][props] field, so the link
+travels with the repo: CI's JUnit report carries
+`<property name="testCaseId" value="MC-12"/>` on the `<testcase>` element,
+whether or not Studio was involved. Nothing has to be kept in step — coverage is
+answered by reading the flows.
 
-One user story is one case even when each platform implements it separately: use
-`conductor.flows` instead of `conductor.flow` to name a flow per column. Each
-column then reports its own result, and the case's own status is the worst of
-them.
+[props]: https://docs.maestro.dev/maestro-flows/workspace-management/test-reports-and-artifacts#custom-properties
 
-```yaml
-id: 34
-custom_fields:
-  Platform: [tv, mobile]
-conductor:
-  flows:
-    tv: flows/features/player/vod-playback.tv.yaml
-    mobile: flows/features/player/vod-playback.responsive.yaml
-```
+One case may be covered by several flows — a tv one and a mobile one — each
+declaring the same id and carrying its own tag. The matrix reads the tags: a
+column is covered when a declaring flow is tagged for it. A flow may also name
+more than one case: `testCaseId: "MC-12, MC-13"`.
 
-### Datasource
+The Cases screen is the matrix over the fetched cases: a switchable custom field
+for the columns, filters, search, and per-column coverage. From a case you can
+run the flow that covers it, link an existing flow, scaffold a new one from the
+case's steps (the scaffold writes the `testCaseId` for you), record a manual
+verdict, or hand it to the agent.
 
-A project's cases are either **local** — Studio owns them, you author them on the
-Cases screen — or pulled from **Qase**, set per project under the datasource
-button in the toolbar. In Qase mode:
+### Qase projects
 
-- **Sync** pulls every case (optionally only certain suites) into the local
-  store. Qase owns case content and wins on every sync; the `conductor:` block
-  is read off the existing file and re-attached, and any page object that could
-  not be re-attached because its step changed is reported rather than dropped.
-- A case Qase no longer returns is marked `status: deprecated`, never deleted —
-  deleting it would take its flow link with it. Only cases of the project being
-  pulled are considered: a case written under another project code is another
-  project's, not a missing one, so repointing a datasource no longer deprecates
-  everything that was there before.
-- Qase-owned fields are **read-only** in the editor. What stays yours is the
-  automation wiring: the flow that implements the case, and each step's page
-  object.
-- The API token is stored per sub-project, encrypted with Electron's
+Which Qase project a case belongs to is read off its id — `MC-12` is MC's — so
+all that is configured is a token per project code, under the Qase button in the
+toolbar. A monorepo holding a mobile app and a tv app just references two codes
+from its flows; Studio offers the ones it finds there.
+
+- **Fetch from Qase** refreshes the cache. It writes nothing back, so it can
+  never lose a local edit — there are none to lose.
+- The API token is stored per project code, encrypted with Electron's
   `safeStorage`. `QASE_API_TOKEN` in the environment overrides all of them.
 - Once a token is entered the project code becomes a picker of the projects that
   token can see, so there is nothing to look up in Qase and retype.
+- The cache lives in `~/.conductor/studio/<repo>/qase-cache/` and is disposable:
+  delete it and the next fetch restores it in full.
 
-**Sub-projects.** One repo can hold more than one app — a mobile app and a tv
-app in the same monorepo — and each mirrors its own Qase project. The toolbar's
-project picker switches between them, and **all projects** merges them for
-reading. Each sub-project keeps its own:
+What Studio does own, because neither Qase nor the flow has a place for it:
+which page object performs each step of a case (`automation/step-poms.json`),
+the execution log, and test plans — all under `~/.conductor/studio/<repo>/`,
+never in the repo under test.
 
-- cases, plans and results, under
-  `~/.conductor/studio/<repo>/<store>/<sub-project>/<local|qase>/`;
-- Qase project code and API token;
-- Maestro tag, which scaffolded flows are given so they land in that app's suite;
-- default device, so a tv case doesn't open on whichever phone was last selected.
-
-Mirrored and hand-written cases never share a store: a sub-project keeps
-`local` and `qase` apart, so switching a sub-project to Qase doesn't bury the
-cases it was authoring, and switching back returns them untouched. Which Qase
-project a sub-project mirrors is the sub-project's business — repoint it and the
-cases the old code pulled stay on disk, out of the matrix and out of every sync,
-rather than being relabelled or deprecated.
-
-Authoring is scoped to one sub-project: adding, importing and syncing are
-disabled under **all projects**, because a new case has to land somewhere. An
-install from before sub-projects existed keeps working — its datasource becomes
-a sub-project called `default` and its cases move under it on first read.
-
-The mirror is deliberate: the matrix re-reads cases constantly and lint runs on
+The cache is deliberate: the matrix re-reads cases constantly and lint runs on
 every flow change, so neither should wait on a network round trip, and a flaky
 connection should not stop a validation session.
-
-**Authoring.** Cases are created, edited, renamed and deleted from the screen.
-Edits go through yaml's Document API, so comments and key order in a
-hand-written case survive a round trip. **Import** reads a CSV out of whatever
-tool you're leaving — columns it recognises map to case fields, and the ones it
-doesn't become custom fields, which is how a "Platform" column turns into the
-matrix's columns. **Export** writes the whole matrix back out, automation status
-and last verdict included.
 
 **Executions.** A case is only as good as its evidence, so every verification
 is appended to `results.jsonl` beside the cases. Four things write to it:
 
 - **Flow runs** — finishing any run, anywhere in Studio, files a result for
-  every case that names that flow.
+  every case that flow declares.
 - **People** — a case with no automation gets pass / fail / blocked / skipped
   with a note, straight from the case panel.
 - **The agent** — its MCP tools (`list_test_cases`, `describe_test_case`,
@@ -409,34 +358,24 @@ is appended to `results.jsonl` beside the cases. Four things write to it:
 The panel shows the history, pass rate and a flaky flag (recent runs
 disagreeing) per case.
 
-**Steps are the bridge to automation.** A case's steps carry the page object
-that performs them, which is what makes the human-readable case and the Maestro
-flow behind it two views of one thing:
+**Steps are the bridge to automation.** Each step of a case can name the page
+object that performs it — assigned in the case panel, kept in Studio's
+`automation/step-poms.json` since Qase has no field for it and the flow has no
+place for it. That is what makes the human-readable case and the Maestro flow
+behind it two views of one thing.
 
-```yaml
-preconditions: [Signed in with a fresh account]
-steps:
-  - action: Open the show's details page
-    expected: The details screen loads
-    pom: pages/details/open.yaml
-    env: { path: show/3rd-rock, expectScreen: screen-show }
-  - action: Play the first episode
-    expected: Playback starts
-    pom: pages/actionBar/markWatched.yaml
-postconditions: [Delete the account]
-```
-
-From that, Studio can **scaffold the flow**: each step with a page object becomes
-a `runFlow` call (in the project's `@alias` form) carrying its env, each step
-without one becomes a TODO in the file, and the new flow is linked back onto the
-case. Where the project keeps drafts out of CI with a `*-draft` tag, the scaffold
-follows that convention rather than enrolling an unverified flow into the suite.
+From those assignments Studio can **scaffold the flow**: each step with a page
+object becomes a `runFlow` call (in the project's `@alias` form) carrying its
+env, each step without one becomes a TODO in the file, and the scaffold declares
+the case in its own header. Where the project keeps drafts out of CI with a
+`*-draft` tag, it follows that convention rather than enrolling an unverified
+flow into the suite.
 
 It reads the other way too: the case panel marks each step **automated**, **not
 in flow** or **manual** by checking whether the linked flow reaches that page
 object transitively, and says so when the flow calls page objects no step
-accounts for. A step naming a page object that doesn't exist is a lint error,
-like a case pointing at a missing flow.
+accounts for. A flow naming a case that doesn't exist is a lint warning, as is a
+leaf flow that names no case at all.
 
 **Writing the missing flow.** A case with no flow on a platform has a button
 that hands it to the agent with a brief assembled from the repo rather than a
@@ -445,8 +384,8 @@ same case's flow on the other platform** in full — same assertions and test
 data, only the interaction model differs — or a neighbouring flow for the house
 style, every page object with its `env` parameters, and what the scene graph
 knows about the app's screens. It's told to `scaffold_case_flow` first (skeleton
-from the steps, page objects become `runFlow` calls, gaps become TODOs, linked
-to the case), fill the gaps, run it until it's green twice, keep the draft tag
+from the steps, page objects become `runFlow` calls, gaps become TODOs, and the
+case declared in the header), fill the gaps, run it until it's green twice, keep the draft tag
 until then, and file a result. Two MCP tools back it: `scaffold_case_flow` and
 `link_case_flow`.
 
@@ -489,18 +428,19 @@ can hand off to it mid-session.
 **From the agent.** Studio's MCP server is how an agent reads and updates cases:
 `list_test_cases`, `describe_test_case`, `get_cases_datasource`,
 `sync_test_cases`, `scaffold_case_flow`, `link_case_flow` and
-`record_case_result`. In Qase mode the tools tell the agent that case content is
-authored in Qase — it links flows and assigns page objects, and never rewrites a
-title or a step.
+`record_case_result`. The tools tell the agent that case content is authored in
+Qase — it writes `testCaseId` into a flow it wrote and assigns page objects, and
+never rewrites a title or a step. `link_case_flow` takes the flow, not the case:
+it edits the flow's header.
 
 **Test plans** are the named selections a team actually runs — "release smoke",
 "everything high-priority on tv". They're YAML in the same store, built from whatever the matrix is currently filtered to, and a plan run walks
 its cases in order on one device, recording each outcome against its case. Cases
 with no flow are reported as skipped rather than quietly dropped.
 
-**Coverage** is checked both ways: a case pointing at a missing flow is an
-error, and a flow no case traces back to is a warning — coverage the matrix
-can't see.
+**Coverage** is checked both ways: a flow naming a case that Qase doesn't have
+is a warning (a typo, or a stale cache), and a leaf flow naming no case at all is
+a warning too — coverage the matrix can't see.
 
 Results are local: what ran on your machine, what you recorded by hand, what the
 agent verified. They carry Qase's result shape — `case_id`, `status`, `time_ms`,

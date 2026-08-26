@@ -1,17 +1,14 @@
 // Typed IPC wrappers — the ONLY place the renderer calls window.conductorStudio.
 // Components import these named functions; they never touch the bridge directly.
 import type {
-  CasePreview,
   CaseResult,
   CaseStats,
-  ImportResult,
   PlanRun,
   PlanRunEntry,
   StepCoverage,
-  CaseInput,
-  CaseProject,
-  CasesDatasource,
-  PullSummary,
+  QaseProject,
+  RefreshSummary,
+  FlowLink,
   TestPlan,
   TestPlanInput,
   AgentStartResult,
@@ -151,58 +148,42 @@ export const stopLogs = (deviceId: string) => invoke<void>("logs_stop", { device
 export const listCases = () => invoke<Case[]>("cases_list");
 export const casesMatrix = (field?: string) => invoke<CaseMatrix>("cases_matrix", { field });
 export const casesMatrixFields = () => invoke<string[]>("cases_matrix_fields");
-export const saveCase = (input: CaseInput) => invoke<Case>("case_save", { input });
-export const deleteCase = (id: number) => invoke<void>("case_delete", { id });
 export const listCaseResults = () => invoke<CaseResult[]>("cases_results");
 export const caseStats = (ref: string) => invoke<CaseStats>("case_stats", { ref });
 
-// ── Case sub-projects (a monorepo's mobile app and tv app) ──
-export const caseProjects = () =>
-  invoke<{ projects: CaseProject[]; active: string }>("case_projects_get");
-export const saveCaseProject = (project: CaseProject, token?: string | null) =>
-  invoke<CaseProject[]>("case_project_save", { project, token });
-export const deleteCaseProject = (id: string) =>
-  invoke<CaseProject[]>("case_project_delete", { id });
-export const activateCaseProject = (id: string) =>
-  invoke<void>("case_project_activate", { id });
-
-// ── Case datasource (local, or mirrored from Qase) ──
-export const casesDatasource = () => invoke<CasesDatasource>("cases_datasource_get");
-export const saveCasesDatasource = (datasource: CasesDatasource, token?: string | null) =>
-  invoke<CasesDatasource>("cases_datasource_set", { datasource, token });
-export const pullCases = () => invoke<PullSummary>("cases_pull");
+// ── Qase projects (one token per project code) ──
+export const qaseProjects = () =>
+  invoke<{ projects: QaseProject[]; referenced: string[] }>("qase_projects_get");
+export const saveQaseProject = (project: QaseProject, token?: string | null) =>
+  invoke<QaseProject[]>("qase_project_save", { project, token });
+export const deleteQaseProject = (code: string) =>
+  invoke<QaseProject[]>("qase_project_delete", { code });
 /** Projects the token can see. Pass a just-typed token to preview it before saving. */
-export const listQaseProjects = (token?: string | null, projectId?: string) =>
+export const availableQaseProjects = (token?: string | null, code?: string) =>
   invoke<{ ok: boolean; projects?: { code: string; title: string }[]; error?: string }>(
-    "cases_qase_projects",
-    { token, projectId },
+    "qase_projects_available",
+    { token, code },
   );
+export const testQaseProject = (token?: string | null, code?: string) =>
+  invoke<{ ok: boolean; project?: string; error?: string }>("qase_project_test", { token, code });
 
-/** Pass the on-screen token/code to test them before they're saved. */
-export const testCasesDatasource = (
-  token?: string | null,
-  projectCode?: string,
-  projectId?: string,
-) =>
-  invoke<{ ok: boolean; project?: string; error?: string }>("cases_datasource_test", {
-    token,
-    projectCode,
-    projectId,
-  });
+// ── Cases (Qase's, cached) ──
+export const refreshCases = (code?: string) =>
+  invoke<RefreshSummary[]>("cases_refresh", { code });
+
+// ── Coverage: the flows that declare a case ──
+export const caseLinks = () => invoke<FlowLink[]>("case_links");
+export const linkCaseFlow = (flow: string, refs: string[]) =>
+  invoke<FlowLink>("case_link_flow", { flow, refs });
+export const setCaseStepPom = (
+  ref: string,
+  stepKey: string,
+  pom?: string,
+  env?: Record<string, string>,
+) => invoke<void>("case_step_pom_set", { ref, stepKey, pom, env });
+
 export const recordCaseResult = (result: Omit<CaseResult, "id" | "at">) =>
   invoke<CaseResult>("case_record_result", { result });
-export const pickCaseCsv = () => invoke<string | null>("cases_pick_csv");
-export const pickCaseExportPath = () => invoke<string | null>("cases_pick_export");
-export const previewCaseImport = (file: string) =>
-  invoke<CasePreview>("cases_import_preview", { file });
-export const importCases = (options: {
-  file: string;
-  mapping: Record<string, string>;
-  stamp?: Record<string, string>;
-  overwrite?: boolean;
-}) => invoke<ImportResult>("cases_import", { options });
-export const exportCases = (file: string) => invoke<number>("cases_export", { file });
-
 export const listPlans = () => invoke<TestPlan[]>("plans_list");
 export const savePlan = (plan: TestPlanInput) => invoke<TestPlan[]>("plan_save", { plan });
 export const deletePlan = (id: string) => invoke<TestPlan[]>("plan_delete", { id });

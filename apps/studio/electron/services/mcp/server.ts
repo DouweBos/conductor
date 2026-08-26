@@ -14,8 +14,8 @@ import http from "node:http";
 import { z } from "zod";
 
 import type { AppFingerprint, ResultStatus, SceneNode, TestVerdict } from "../../../app/lib/types";
-import { listCases, pull as pullCasesFromQase, saveCase, toInput } from "../cases/casesService";
-import { activeProjectId, selectedProjects } from "../cases/projects";
+import { listCases, projects as qaseProjects, refreshCases } from "../cases/casesService";
+import { linkFlow } from "../cases/coverage";
 import { scaffoldFlow } from "../cases/pomBridge";
 import { recordResult } from "../cases/resultsService";
 import { createReportDir, writeReport } from "../report/reportService";
@@ -388,7 +388,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "list_test_cases",
-    "List this project's test cases: id, title, suite, custom fields, tags, which flow implements each (if any) and its last recorded result. Use this to find work — a case with no flow is unautomated — or to check what a case expects before testing it.",
+    "List this project's test cases: id, title, suite, custom fields, tags, the flows that declare each (if any) and its last recorded result. Use this to find work — a case no flow declares is unautomated — or to check what a case expects before testing it.",
     {
       query: z
         .string()
@@ -399,8 +399,7 @@ export function createMcpServer(): McpServer {
     async ({ query, unautomatedOnly }) => {
       const q = query?.toLowerCase();
       const cases = (await listCases()).filter((c) => {
-        const wiring = c.conductor;
-        if (unautomatedOnly && (wiring?.flow || Object.keys(wiring?.flows ?? {}).length)) return false;
+        if (unautomatedOnly && c.flows?.length) return false;
         if (!q) return true;
         const hay = [c.ref, c.title, c.suite ?? "", ...c.tags, ...Object.values(c.custom_fields).flat()];
         return hay.some((h) => h.toLowerCase().includes(q));
@@ -415,7 +414,7 @@ export function createMcpServer(): McpServer {
           priority: c.priority,
           custom_fields: c.custom_fields,
           tags: c.tags,
-          flows: c.conductor?.flows ?? (c.conductor?.flow ? { default: c.conductor.flow } : {}),
+          flows: (c.flows ?? []).map((f) => ({ path: f.path, tags: f.tags })),
           lastResult: c.lastResult ? { status: c.lastResult.status, at: c.lastResult.at } : null,
         })),
       });
@@ -424,7 +423,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "describe_test_case",
-    "Everything one test case specifies: description, steps (action/data/expected_result), suite, custom fields, tags, the flow that implements it and its execution history. Read this before automating or verifying the case — the steps are the script.",
+    "Everything one test case specifies: description, steps (action/data/expected_result), suite, custom fields, tags, the flows that declare it and its execution history. Read this before automating or verifying the case — the steps are the script.",
     { id: z.string().describe("Case id, e.g. DEMO-12.") },
     async ({ id }) => {
       const cases = await listCases();
@@ -438,37 +437,32 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "get_cases_datasource",
-    "Where this project's test cases come from, and whether their content is yours to edit. A repo can hold several sub-projects (a mobile app and a tv app), each mirroring its own Qase project — this says which are in view. Check it before proposing any change to a case.",
+    "Where this project's test cases come from, and how a flow is linked to one. Check it before proposing any change to a case.",
     {},
     async () => {
-      const selected = selectedProjects();
-      const readOnly = selected.some((p) => p.datasource.mode === "qase");
       return text({
-        selection: activeProjectId(),
-        projects: selected.map((p) => ({
-          id: p.id,
-          name: p.name,
-          mode: p.datasource.mode,
-          projectCode: p.datasource.projectCode,
-          flowTag: p.flowTag ?? null,
-          lastPulledAt: p.datasource.qase?.lastPulledAt ?? null,
-          matrixField: p.datasource.qase?.matrixField ?? "suite",
+        source: "qase",
+        projects: qaseProjects().map((p) => ({
+          code: p.code,
+          matrixField: p.matrixField ?? "suite",
+          fetchedAt: p.fetchedAt ?? null,
+          hasToken: Boolean(p.hasToken),
         })),
-        caseContentReadOnly: readOnly,
-        guidance: readOnly
-          ? "Cases in `qase` mode are authored in Qase. Link flows and assign page objects; never rewrite a title, step, tag or custom field — the next sync would revert it."
-          : "Cases are local to this machine and fully editable.",
+        caseContentReadOnly: true,
+        linkedBy: "properties.testCaseId in the flow header",
+        guidance:
+          "Cases are authored in Qase and read-only here. A flow declares the case it verifies in its own header (`properties: { testCaseId: \"MC-12\" }`) — that is the only link, and Maestro carries it into the JUnit report. Use `link_case_flow` to write it.",
       });
     },
   );
 
   server.tool(
     "sync_test_cases",
-    "Pull the latest test cases from Qase into this project. Run it before starting work so you are not automating a stale case. Flow links and page-object assignments are preserved; anything that could not be re-attached comes back in `lostPoms`.",
+    "Fetch the latest test cases from Qase into Studio's cache. Run it before starting work so you are not automating a stale case. Nothing local is overwritten — the cache is all Studio keeps, and flow links live in the flows.",
     {},
     async () => {
       try {
-        return text(await pullCasesFromQase());
+        return text(await refreshCases());
       } catch (e) {
         return text({ error: String(e) });
       }
@@ -500,26 +494,26 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "link_case_flow",
-    "Point a test case at the flow that implements it, so the matrix stops calling it unautomated. Use after writing or renaming a flow by hand. This edits only Conductor's automation wiring, so it is allowed even when cases come from Qase.",
+    "Declare which test case a flow verifies, by writing `properties.testCaseId` into the flow's own header. Use after writing or renaming a flow by hand. This edits the flow, not the case: Qase's content is never touched, and the link travels with the repo into CI's JUnit report.",
     {
-      id: z.string().describe("Case id, e.g. DEMO-12."),
       flow: z.string().describe("Flow path relative to the flows directory."),
-      column: z
-        .string()
-        .optional()
-        .describe("Matrix column this flow covers. Omit for a single-platform case."),
+      ids: z
+        .array(z.string())
+        .describe("Case ids the flow verifies, e.g. [\"MC-12\"]. Pass an empty array to unlink."),
     },
-    async ({ id, flow, column }) => {
-      const cases = await listCases();
-      const hit = cases.find((c) => c.ref === id || String(c.id) === id);
-      if (!hit) return text({ error: `No case "${id}".` });
-      const saved = await saveCase({
-        ...toInput(hit),
-        conductor: column
-          ? { ...hit.conductor, flows: { ...(hit.conductor?.flows ?? {}), [column]: flow } }
-          : { ...hit.conductor, flow },
-      });
-      return text({ id: saved.ref, conductor: saved.conductor });
+    async ({ flow, ids }) => {
+      const known = new Set((await listCases()).map((c) => c.ref));
+      const unknown = ids.filter((id) => !known.has(id));
+      if (unknown.length) {
+        return text({
+          error: `No test case ${unknown.join(", ")}. Refresh from Qase, or check the id.`,
+        });
+      }
+      try {
+        return text(await linkFlow(flow, ids));
+      } catch (e) {
+        return text({ error: String(e) });
+      }
     },
   );
 

@@ -1,4 +1,4 @@
-import { dialog, ipcMain, shell } from "electron";
+import { ipcMain, shell } from "electron";
 
 import { broadcastToRenderers } from "./broadcast";
 import { appState } from "./state";
@@ -6,17 +6,13 @@ import { appState } from "./state";
 import type {
   AgentStartResult,
   CaseMatrix,
-  CaseProject,
-  CasePreview,
+  QaseProject,
+  RefreshSummary,
   CaseResult,
   CaseStats,
-  ImportResult,
   PlanRun,
   PlanRunEntry,
   StepCoverage,
-  CaseInput,
-  CasesDatasource,
-  PullSummary,
   TestPlan,
   TestPlanInput,
   CaptureUiResult,
@@ -59,16 +55,15 @@ import {
 } from "./services/agent/agentService";
 import {
   buildMatrix,
-  datasource,
-  deleteCase,
+  forgetProject,
   listCases,
   matrixFields,
-  pull,
-  saveCase,
-  saveDatasource,
+  referencedCodes,
+  refreshCases,
 } from "./services/cases/casesService";
-import { listProjects, verifyProject, type QaseProject } from "./services/cases/qaseClient";
-import { exportCsv, importCsv, previewCsv, type ImportOptions } from "./services/cases/importService";
+import { listProjects, verifyProject, type QaseProject as QaseProjectSummary } from "./services/cases/qaseClient";
+import { flowLinks, linkFlow, type FlowLink } from "./services/cases/coverage";
+import { setStepPom } from "./services/cases/stepPoms";
 import {
   cancelPlanRun,
   deletePlan,
@@ -149,16 +144,13 @@ import {
   loadSceneGraph,
 } from "./services/scenegraph/sceneGraphService";
 import {
-  deleteCaseProject,
   deleteEnvProfile,
-  getActiveCaseProject,
-  getCaseProjects,
   getEnvProfiles,
+  getQaseProjects,
   getQaseToken,
   getTheme,
-  saveCaseProject,
   saveEnvProfile,
-  setActiveCaseProject,
+  saveQaseProject,
   setQaseToken,
   setTheme,
 } from "./services/settings/settingsService";
@@ -181,11 +173,13 @@ function requireRoot(): string {
   return project.root;
 }
 
-/** Stored token for a named sub-project, or the selected one. */
-function storedToken(projectId?: string): string | undefined {
+/** Stored token for a Qase project code, or for the only one configured. */
+function storedToken(code?: string): string | undefined {
   const root = getProjectInfo()?.root;
   if (!root) return undefined;
-  return getQaseToken(root, projectId ?? getActiveCaseProject(root));
+  const projects = getQaseProjects(root);
+  const target = code?.toUpperCase() ?? (projects.length === 1 ? projects[0].code : undefined);
+  return target ? getQaseToken(root, target) : undefined;
 }
 
 // Wrap ipcMain.handle: unwrap the single args object and re-throw as a plain
@@ -308,108 +302,79 @@ export function registerIpcHandlers(): void {
   handle<{ deviceId: string }, void>("logs_start", (a) => startLogs(a.deviceId));
   handle<{ deviceId: string }, void>("logs_stop", (a) => stopLogs(a.deviceId));
 
-  // ── Test case management ──
+  // ── Test cases (Qase's, cached; flows declare which they cover) ──
   handle<void, Case[]>("cases_list", () => listCases());
   handle<{ field?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.field));
   handle<void, string[]>("cases_matrix_fields", () => matrixFields());
-  handle<{ input: CaseInput }, Case>("case_save", (a) => saveCase(a.input));
-  handle<{ id: number }, void>("case_delete", (a) => deleteCase(a.id));
   handle<void, CaseResult[]>("cases_results", () => listResults());
   handle<{ ref: string }, CaseStats>("case_stats", async (a) =>
     statsFor(a.ref, await listResults()),
   );
+  handle<{ code?: string }, RefreshSummary[]>("cases_refresh", async (a) => {
+    const summaries = await refreshCases(a?.code);
+    broadcastToRenderers("cases:refreshed", summaries);
+    return summaries;
+  });
 
-  // ── Case sub-projects (a monorepo's mobile app and tv app) ──
-  handle<void, { projects: CaseProject[]; active: string }>("case_projects_get", () => ({
-    projects: getCaseProjects(requireRoot()),
-    active: getActiveCaseProject(requireRoot()),
+  // ── Qase projects (a token per project code; the code comes off the ref) ──
+  handle<void, { projects: QaseProject[]; referenced: string[] }>("qase_projects_get", async () => ({
+    projects: getQaseProjects(requireRoot()),
+    referenced: await referencedCodes(),
   }));
-  handle<{ project: CaseProject; token?: string | null }, CaseProject[]>(
-    "case_project_save",
+  handle<{ project: QaseProject; token?: string | null }, QaseProject[]>(
+    "qase_project_save",
     (a) => {
       const root = requireRoot();
-      if (a.token !== undefined) setQaseToken(root, a.project.id, a.token);
-      saveCaseProject(root, a.project);
-      return getCaseProjects(root);
+      const code = a.project.code.trim().toUpperCase();
+      if (a.token !== undefined) setQaseToken(root, code, a.token);
+      return saveQaseProject(root, { ...a.project, code });
     },
   );
-  handle<{ id: string }, CaseProject[]>("case_project_delete", (a) =>
-    deleteCaseProject(requireRoot(), a.id),
-  );
-  handle<{ id: string }, void>("case_project_activate", (a) => {
-    setActiveCaseProject(requireRoot(), a.id);
-    // Everything on the Cases screen is scoped to the selection, so it all reloads.
-    broadcastToRenderers("cases:project-changed", a.id);
-  });
-
-  // ── Case datasource (local, or mirrored from Qase) ──
-  handle<void, CasesDatasource>("cases_datasource_get", () => datasource());
-  handle<{ datasource: CasesDatasource; token?: string | null }, CasesDatasource>(
-    "cases_datasource_set",
-    (a) => {
-      const root = requireRoot();
-      if (a.token !== undefined) setQaseToken(root, getActiveCaseProject(root), a.token);
-      return saveDatasource(a.datasource);
-    },
-  );
-  handle<void, PullSummary>("cases_pull", async () => {
-    const summary = await pull();
-    broadcastToRenderers("cases:pulled", summary);
-    return summary;
-  });
-  // The picker runs before Save, so an unsaved token has to come in by argument.
+  handle<{ code: string }, QaseProject[]>("qase_project_delete", (a) => forgetProject(a.code));
   handle<
-    { token?: string | null; projectId?: string },
-    { ok: boolean; projects?: QaseProject[]; error?: string }
-  >("cases_qase_projects", async (a) => {
-    const token = a.token?.trim() || storedToken(a.projectId);
-    if (!token) return { ok: false, error: "No Qase API token is set for this project." };
+    { token?: string | null; code?: string },
+    { ok: boolean; projects?: QaseProjectSummary[]; error?: string }
+  >("qase_projects_available", async (a) => {
+    const token = a.token?.trim() || storedToken(a.code);
+    if (!token) return { ok: false, error: "No Qase API token is set." };
     try {
       return { ok: true, projects: await listProjects(token) };
     } catch (e) {
       return { ok: false, error: String(e instanceof Error ? e.message : e) };
     }
   });
-  // Like the project list, this runs before Save — so it tests what's on screen,
-  // falling back to what's stored.
-  handle<
-    { token?: string | null; projectCode?: string; projectId?: string },
-    { ok: boolean; project?: string; error?: string }
-  >("cases_datasource_test", async (a) => {
-    const token = a?.token?.trim() || storedToken(a?.projectId);
-    const code = a?.projectCode?.trim();
-    if (!token) return { ok: false, error: "No Qase API token is set for this project." };
-    if (!code) return { ok: false, error: "No Qase project is selected." };
-    try {
-      return { ok: true, project: await verifyProject(code, token) };
-    } catch (e) {
-      return { ok: false, error: String(e instanceof Error ? e.message : e) };
-    }
+  handle<{ token?: string | null; code?: string }, { ok: boolean; project?: string; error?: string }>(
+    "qase_project_test",
+    async (a) => {
+      const token = a?.token?.trim() || storedToken(a?.code);
+      const code = a?.code?.trim();
+      if (!token) return { ok: false, error: "No Qase API token is set." };
+      if (!code) return { ok: false, error: "No Qase project is selected." };
+      try {
+        return { ok: true, project: await verifyProject(code, token) };
+      } catch (e) {
+        return { ok: false, error: String(e instanceof Error ? e.message : e) };
+      }
+    },
+  );
+
+  // ── Coverage (the flows that declare a case) ──
+  handle<void, FlowLink[]>("case_links", () => flowLinks());
+  handle<{ flow: string; refs: string[] }, FlowLink>("case_link_flow", async (a) => {
+    const link = await linkFlow(a.flow, a.refs);
+    broadcastToRenderers("cases:linked", link);
+    return link;
   });
+  handle<{ ref: string; stepKey: string; pom?: string; env?: Record<string, string> }, void>(
+    "case_step_pom_set",
+    async (a) => {
+      await setStepPom(a.ref, a.stepKey, a.pom ? { pom: a.pom, env: a.env } : null);
+    },
+  );
+
   handle<{ result: Omit<CaseResult, "id" | "at"> }, CaseResult>("case_record_result", (a) =>
     recordResult(a.result),
   );
-  handle<void, string | null>("cases_pick_csv", async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      title: "Import test cases",
-      message: "Choose a CSV exported from your test management tool",
-      filters: [{ name: "CSV", extensions: ["csv"] }],
-      properties: ["openFile"],
-    });
-    return canceled ? null : (filePaths[0] ?? null);
-  });
-  handle<void, string | null>("cases_pick_export", async () => {
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      title: "Export test cases",
-      defaultPath: "cases.csv",
-      filters: [{ name: "CSV", extensions: ["csv"] }],
-    });
-    return canceled ? null : (filePath ?? null);
-  });
-  handle<{ file: string }, CasePreview>("cases_import_preview", (a) => previewCsv(a.file));
-  handle<{ options: ImportOptions }, ImportResult>("cases_import", (a) => importCsv(a.options));
-  handle<{ file: string }, number>("cases_export", (a) => exportCsv(a.file));
-
   // ── Test plans ──
   handle<void, TestPlan[]>("plans_list", () => listPlans());
   handle<{ plan: TestPlanInput }, TestPlan[]>("plan_save", (a) => savePlan(a.plan));

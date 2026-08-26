@@ -1,12 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { datasource } from "./casesService";
 import type { Case } from "./model";
 import { getProjectInfo } from "../file/fileService";
 import { loadFlowCatalog } from "../flow/catalog";
 import { listSceneGraphs } from "../scenegraph/sceneGraphService";
-import { listCases } from "./casesService";
+import { flowFor, listCases, projects } from "./casesService";
 
 /**
  * Everything an agent would otherwise spend twenty minutes rediscovering before
@@ -28,9 +27,9 @@ export async function automationBrief(ref: string, column?: string): Promise<str
   if (!testCase) throw new Error(`No case ${ref}.`);
 
   // Default to a matrix column this case has no flow for yet.
-  const field = datasource().qase?.matrixField;
+  const field = projects().find((p) => p.matrixField)?.matrixField;
   const columns = field ? (testCase.custom_fields[field] ?? []) : [];
-  const target = column ?? columns.find((p) => !testCase.conductor?.flows?.[p]);
+  const target = column ?? columns.find((c) => !flowFor(testCase, c));
   const lines: string[] = [
     `Write the Maestro flow for test case ${testCase.ref}${target ? ` (${target})` : ""} — "${testCase.title}".`,
     "",
@@ -64,17 +63,18 @@ function caseSection(c: Case, column?: string): string[] {
       if (step.expected_result) bits.push(`   expect: ${step.expected_result}`);
       if (step.pom) {
         const env = step.env ? ` with env ${JSON.stringify(step.env)}` : "";
-        bits.push(`   the case says this is \`${step.pom}\`${env} — use it`);
+        bits.push(`   this step is \`${step.pom}\`${env} — use it`);
       }
       lines.push(...bits);
     });
   }
   if (c.postconditions) lines.push("", "Postconditions:", c.postconditions);
-  if (column && c.conductor?.flows) {
-    const others = Object.entries(c.conductor.flows).filter(([key]) => key !== column);
-    if (others.length) {
-      lines.push("", `Already automated elsewhere: ${others.map(([k, v]) => `${k} → ${v}`).join(", ")}`);
-    }
+  const elsewhere = (c.flows ?? []).filter((f) => f.path !== flowFor(c, column));
+  if (column && elsewhere.length) {
+    lines.push(
+      "",
+      `Already automated elsewhere: ${elsewhere.map((f) => `${f.path}${f.tags.length ? ` (${f.tags.join(", ")})` : ""}`).join(", ")}`,
+    );
   }
   return lines;
 }
@@ -86,8 +86,7 @@ function caseSection(c: Case, column?: string): string[] {
  * style.
  */
 async function referenceSection(c: Case, column: string | undefined, flowsDir: string): Promise<string[]> {
-  const wiring = c.conductor;
-  const sibling = Object.entries(wiring?.flows ?? {}).find(([key]) => key !== column)?.[1] ?? wiring?.flow;
+  const sibling = (c.flows ?? []).find((f) => f.path !== flowFor(c, column))?.path;
   const fallback = sibling ? undefined : await neighbourFlow(column);
   const reference = sibling ?? fallback;
   if (!reference) return [];

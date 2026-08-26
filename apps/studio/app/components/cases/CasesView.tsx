@@ -13,27 +13,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useIpcEvent } from "../../hooks/useIpcEvent";
 import {
-  activateCaseProject,
-  caseProjects as fetchCaseProjects,
   casesMatrix,
-  exportCases,
-  pickCaseExportPath,
-  pullCases,
+  qaseProjects as fetchQaseProjects,
+  refreshCases,
   runFlow,
 } from "../../lib/ipc";
 import { useRoute } from "../../lib/router";
-import type { Case, CaseMatrix, CaseProject, CaseResult } from "../../lib/types";
-import { ALL_PROJECTS } from "../../lib/types";
+import type { Case, CaseMatrix, CaseResult, QaseProject } from "../../lib/types";
 import { devicesFor } from "../../lib/platforms";
 import { refreshDevices, useDevices, useSelectedDeviceId } from "../../stores/deviceStore";
 import { useProject } from "../../stores/projectStore";
 import { getRunOptions } from "../../stores/runOptionsStore";
 import { beginRun, useRunId, useRunStatus } from "../../stores/runStore";
-import { CaseDetail, CaseEditor, ids } from "./CaseDetail";
+import { CaseDetail, ids } from "./CaseDetail";
 import { CaseDeviceStream } from "./CaseDeviceStream";
 import { CaseRunStatus } from "./CaseRunStatus";
 import { DatasourcePanel } from "./DatasourcePanel";
-import { ImportDialog } from "./ImportDialog";
 import { PlansPanel } from "./PlansPanel";
 import { RunWizard } from "./RunWizard";
 import styles from "./CasesView.module.css";
@@ -52,11 +47,15 @@ function valuesOf(c: Case, field: string): string[] {
   return field === SUITE_FIELD ? (c.suite ? [c.suite] : []) : (c.custom_fields[field] ?? []);
 }
 
-/** The flow covering a case on one column — per-column first, then the lone `flow`. */
+/**
+ * The flow covering a case on one column: the declaring flow tagged for it. A
+ * case covered by a single flow needs no tag — one flow, one implementation.
+ */
 function flowFor(c: Case, column?: string): string | undefined {
-  const wiring = c.conductor;
-  if (column && wiring?.flows?.[column]) return wiring.flows[column];
-  return wiring?.flows ? (column ? undefined : Object.values(wiring.flows)[0]) : wiring?.flow;
+  const flows = c.flows ?? [];
+  if (!column) return flows[0]?.path;
+  const tagged = flows.find((f) => f.tags.some((t) => t.replace(/-draft$/, "") === column));
+  return tagged?.path ?? (flows.length === 1 ? flows[0].path : undefined);
 }
 
 /**
@@ -122,7 +121,7 @@ function CaseCell({
           title={`Run ${flow}`}
           onClick={(e) => {
             e.stopPropagation();
-            onRun(flow, column, c.project);
+            onRun(flow, column);
           }}
         >
           <span className={styles.dot} />
@@ -144,11 +143,9 @@ export function CasesView() {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pane, setPane] = useState<"case" | "plans" | "new" | "wizard" | "datasource">("case");
-  const [projects, setProjects] = useState<CaseProject[]>([]);
-  const [activeProject, setActiveProject] = useState<string>(ALL_PROJECTS);
+  const [pane, setPane] = useState<"case" | "plans" | "wizard" | "datasource">("case");
+  const [projects, setProjects] = useState<QaseProject[]>([]);
   const [syncing, setSyncing] = useState(false);
-  const [importing, setImporting] = useState(false);
   // Survives leaving the screen: a run you started is still going, and coming
   // back to a collapsed rail reads as "the run vanished".
   // Which device each platform column runs on; "" means auto-pick.
@@ -204,26 +201,10 @@ export function CasesView() {
   }, [dimension, projectRoot]);
 
   const refreshSource = useCallback(() => {
-    fetchCaseProjects()
-      .then(({ projects: list, active }) => {
-        setProjects(list);
-        setActiveProject(active);
-      })
+    fetchQaseProjects()
+      .then(({ projects: list }) => setProjects(list))
       .catch(() => setProjects([]));
   }, [projectRoot]);
-
-  /** The sub-project being shown; nothing under "all projects", which is read-only. */
-  const selectedProject = projects.find((p) => p.id === activeProject) ?? null;
-  const mergedView = activeProject === ALL_PROJECTS && projects.length > 1;
-
-  /** Switching sub-project re-scopes everything the screen shows. */
-  const switchProject = async (id: string) => {
-    await activateCaseProject(id);
-    setActiveProject(id);
-    setSelectedId(null);
-    refresh();
-    refreshSource();
-  };
 
   useEffect(refresh, [refresh]);
   useEffect(refreshSource, [refreshSource]);
@@ -231,40 +212,24 @@ export function CasesView() {
   // workbench, the agent over MCP — so the matrix listens rather than polls.
   useIpcEvent<unknown>("cases:result-recorded", refresh);
   useIpcEvent<unknown>("plans:run-updated", refresh);
-  // A sync from the agent's `sync_test_cases` lands here too.
-  useIpcEvent<unknown>("cases:pulled", () => {
+  // A fetch from the agent's `sync_test_cases`, or a flow linking itself to a
+  // case, lands here too.
+  useIpcEvent<unknown>("cases:refreshed", () => {
     refresh();
     refreshSource();
   });
-  useIpcEvent<unknown>("cases:project-changed", () => {
-    refresh();
-    refreshSource();
-  });
+  useIpcEvent<unknown>("cases:linked", refresh);
 
-  /** Pull from Qase, then say what it did — including what it could not keep. */
+  /** Fetch the latest cases from Qase into the cache. */
   const sync = async () => {
     setSyncing(true);
     setNotice(null);
     try {
-      const summary = await pullCases();
+      const summaries = await refreshCases();
       refresh();
       refreshSource();
       setNotice(
-        [
-          `Synced ${summary.pulled} cases (${summary.created} new, ${summary.updated} updated, ${summary.unchanged} unchanged)`,
-          summary.deprecated.length ? `${summary.deprecated.length} no longer in Qase` : null,
-          summary.foreign
-            ? `${summary.foreign} left alone (they belong to another Qase project)`
-            : null,
-          summary.lostPoms.length
-            ? `${summary.lostPoms.length} page object(s) could not be re-attached: ${summary.lostPoms
-                .map((l) => `${l.ref} → ${l.pom}`)
-                .join(", ")}`
-            : null,
-          ...summary.errors,
-        ]
-          .filter(Boolean)
-          .join(" · "),
+        summaries.map((s) => `${s.code}: ${s.cases} cases`).join(" · ") || "Nothing to fetch.",
       );
     } catch (e) {
       setNotice(String(e));
@@ -274,16 +239,14 @@ export function CasesView() {
   };
 
   /** Run one case's flow, then follow it into the workbench where the console lives. */
-  const run = async (flow: string, platform?: string, projectId?: string) => {
+  const run = async (flow: string, platform?: string) => {
     try {
       setNotice(null);
       // The column's device wins: it's the explicit answer to "tvOS or Android
-      // TV", which the platform alone can't give. Then the case's sub-project
-      // default, so a tv case doesn't open on whatever phone was last selected.
-      const projectDevice = projects.find((p) => p.id === projectId)?.defaultDeviceId;
+      // TV", which the platform alone can't give.
       const { runId, deviceId: ranOn } = await runFlow(
         flow,
-        (platform ? columnDevice[platform] : "") || projectDevice || deviceId || undefined,
+        (platform ? columnDevice[platform] : "") || deviceId || undefined,
         getRunOptions(),
         platform,
       );
@@ -291,16 +254,6 @@ export function CasesView() {
       // Stay on the matrix: the device rail shows the run, so a case never
       // hands you off to the file behind it.
       setShowDevice(true);
-    } catch (e) {
-      setNotice(String(e));
-    }
-  };
-
-  const exportCsv = async () => {
-    try {
-      const file = await pickCaseExportPath();
-      if (!file) return;
-      setNotice(`Exported ${await exportCases(file)} cases to ${file}`);
     } catch (e) {
       setNotice(String(e));
     }
@@ -355,8 +308,7 @@ export function CasesView() {
         c.description ?? "",
         c.suite ?? "",
         ...c.tags,
-        ...Object.values(c.conductor?.flows ?? {}),
-        c.conductor?.flow ?? "",
+        ...(c.flows ?? []).map((f) => f.path),
       ];
       return haystack.some((s) => s.toLowerCase().includes(q));
     });
@@ -409,9 +361,7 @@ export function CasesView() {
     );
     return names.map((name) => {
       const scoped = buckets.get(name)!;
-      const automated = scoped.filter(
-        (c) => c.conductor?.flow || Object.keys(c.conductor?.flows ?? {}).length,
-      ).length;
+      const automated = scoped.filter((c) => c.flows?.length).length;
       const failing = scoped.filter((c) => c.lastResult?.status === "failed").length;
       return {
         id: name,
@@ -499,30 +449,6 @@ export function CasesView() {
           </p>
         </div>
         <div className={styles.controls}>
-          {/* Authoring needs one target project — "all projects" is a reading view. */}
-          <Button
-            size="sm"
-            variant="secondary"
-            icon="plus"
-            disabled={mergedView}
-            title={mergedView ? "Choose a single project to add a case" : undefined}
-            onClick={() => setPane("new")}
-          >
-            New case
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            icon="folder"
-            disabled={mergedView}
-            title={mergedView ? "Choose a single project to import into" : undefined}
-            onClick={() => setImporting(true)}
-          >
-            Import
-          </Button>
-          <Button size="sm" variant="ghost" icon="file" onClick={() => void exportCsv()}>
-            Export
-          </Button>
           <Button size="sm" variant="ghost" icon="matrix" onClick={() => setPane("plans")}>
             Plans
           </Button>
@@ -552,30 +478,18 @@ export function CasesView() {
             value={dimension}
             onChange={(e) => setDimension(e.target.value)}
           />
-          {projects.length > 1 ? (
-            <>
-              <span className={styles.controlLabel}>Project:</span>
-              <Select
-                options={[
-                  ...projects.map((p) => ({ value: p.id, label: p.name })),
-                  { value: ALL_PROJECTS, label: "all projects" },
-                ]}
-                value={activeProject}
-                onChange={(e) => void switchProject(e.target.value)}
-              />
-            </>
-          ) : null}
-          {selectedProject?.datasource.mode === "qase" ? (
-            <Button size="sm" variant="secondary" icon="refresh" disabled={syncing} onClick={() => void sync()}>
-              {syncing ? "Syncing…" : "Sync"}
-            </Button>
-          ) : null}
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="refresh"
+            disabled={syncing || !projects.length}
+            title={projects.length ? undefined : "Add a Qase project first"}
+            onClick={() => void sync()}
+          >
+            {syncing ? "Fetching…" : "Fetch from Qase"}
+          </Button>
           <Button size="sm" variant="ghost" icon="settings" onClick={() => setPane("datasource")}>
-            {selectedProject
-              ? selectedProject.datasource.mode === "qase"
-                ? `Qase · ${selectedProject.datasource.projectCode}`
-                : "Local cases"
-              : "Projects"}
+            {projects.length ? `Qase · ${projects.map((p) => p.code).join(", ")}` : "Qase projects"}
           </Button>
           <Button size="sm" variant="ghost" icon="refresh" onClick={refresh}>
             Refresh
@@ -693,16 +607,6 @@ export function CasesView() {
               refreshSource();
             }}
           />
-        ) : pane === "new" ? (
-          <CaseEditor
-            testCase={null}
-            onCancel={() => setPane("case")}
-            onSaved={(saved) => {
-              setPane("case");
-              setSelectedId(saved.ref);
-              refresh();
-            }}
-          />
         ) : selected ? (
           <CaseDetail
             testCase={selected}
@@ -719,16 +623,6 @@ export function CasesView() {
         ) : null}
       </div>
 
-      {importing ? (
-        <ImportDialog
-          onClose={() => setImporting(false)}
-          onImported={(created, updated) => {
-            setImporting(false);
-            setNotice(`Imported ${created} new and updated ${updated} cases`);
-            refresh();
-          }}
-        />
-      ) : null}
     </div>
   );
 }

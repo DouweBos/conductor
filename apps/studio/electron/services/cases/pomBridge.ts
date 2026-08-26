@@ -8,8 +8,7 @@ import { getProjectInfo } from "../file/fileService";
 import { loadFlowCatalog } from "../flow/catalog";
 import { indexReferences } from "../flow/references";
 import { listTags } from "../flow/suite";
-import { targetProject } from "./projects";
-import { listCases, saveCase, toInput } from "./casesService";
+import { flowFor, listCases } from "./casesService";
 
 /**
  * The seam between a human-readable case and the Maestro flow behind it.
@@ -77,11 +76,7 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
       ? `${options.column}-draft`
       : options.column
     : undefined;
-  // The sub-project's tag is how its suite selects flows, so a scaffold that
-  // skips it is a flow the tv (or mobile) suite will never run.
-  const projectTag = targetProject().flowTag;
   const tags = [
-    ...(projectTag ? [projectTag] : []),
     ...(columnTag ? [columnTag] : []),
     ...(testCase.suite ? [testCase.suite] : []).map((a) => a.toLowerCase().replace(/[^a-z0-9]+/g, "-")),
     ...(options.tags ?? []),
@@ -94,6 +89,10 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
     "# Scaffolded from the test case. Every step below is one of its steps; a",
     "# TODO marks a step with no page object yet.",
     "appId: ${APP_ID}",
+    // The link: Maestro carries it into the JUnit report, so the case is named
+    // wherever this flow runs, Studio or not.
+    "properties:",
+    `  testCaseId: "${testCase.ref}"`,
   ];
   if (tags.length) lines.push("tags:", ...[...new Set(tags)].map((t) => `  - ${t}`));
   lines.push("---");
@@ -129,16 +128,6 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
   await mkdir(path.dirname(abs), { recursive: true });
   await writeFile(abs, `${lines.join("\n")}\n`, "utf8");
 
-  // Link it back, so the case and its implementation know about each other.
-  await saveCase({
-    ...toInput(testCase),
-    conductor: options.column
-      ? {
-          ...testCase.conductor,
-          flows: { ...(testCase.conductor?.flows ?? {}), [options.column]: target },
-        }
-      : { ...testCase.conductor, flow: target },
-  });
   return { flow: target, todos };
 }
 
@@ -149,8 +138,7 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
 export async function stepCoverage(ref: string, column?: string): Promise<StepCoverage> {
   const testCase = (await listCases()).find((c) => c.ref === ref);
   if (!testCase) throw new Error(`No case ${ref}.`);
-  const wiring = testCase.conductor;
-  const flow = column ? wiring?.flows?.[column] : (wiring?.flow ?? Object.values(wiring?.flows ?? {})[0]);
+  const flow = flowFor(testCase, column);
   const reached = flow ? await reachableFrom(flow) : new Set<string>();
 
   const steps = (testCase.steps ?? []).map((step, index) => ({
@@ -197,20 +185,7 @@ export async function listStepPoms(): Promise<FlowCatalogEntry[]> {
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** The steps' page objects must exist — a typo'd `pom:` is a broken case. */
-export async function lintStepPoms(): Promise<{ ref: string; filePath: string; pom: string }[]> {
-  const catalog = await loadFlowCatalog();
-  const known = new Set(catalog.entries.map((e) => e.path));
-  const problems: { ref: string; filePath: string; pom: string }[] = [];
-  for (const testCase of await listCases()) {
-    for (const step of testCase.steps ?? []) {
-      if (step.pom && !known.has(step.pom)) {
-        problems.push({ ref: testCase.ref, filePath: testCase.filePath, pom: step.pom });
-      }
-    }
-  }
-  return problems;
-}
+
 
 /** Read a scaffolded flow back, for the "what did we just write" preview. */
 export async function readFlowText(flow: string): Promise<string> {

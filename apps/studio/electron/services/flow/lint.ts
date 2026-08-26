@@ -5,6 +5,7 @@ import { referenceOnLine, resolveReference } from "../../../app/lib/flowRefs";
 import { COMMANDS_BY_NAME, HEADER_KEYS, paramsFor } from "../../../app/lib/maestroSchema";
 import type { FileEntry, FlowCatalog, LintProblem } from "../../../app/lib/types";
 import { listCases } from "../cases/casesService";
+import { flowLinks } from "../cases/coverage";
 import { getProjectInfo, listFlows } from "../file/fileService";
 import { loadFlowCatalog } from "./catalog";
 import { indexReferences } from "./references";
@@ -188,7 +189,7 @@ function missingParams(
   ];
 }
 
-/** Cases pointing nowhere, and flows no case covers. */
+/** Flows naming a case that doesn't exist, and flows no case covers. */
 async function lintCases(known: Set<string>, called: Set<string>): Promise<LintProblem[]> {
   const problems: LintProblem[] = [];
   let cases;
@@ -197,37 +198,17 @@ async function lintCases(known: Set<string>, called: Set<string>): Promise<LintP
   } catch {
     return problems;
   }
-  const refs = new Set<string>();
+  const refs = new Set(cases.map((c) => c.ref));
   const covered = new Set<string>();
-  for (const testCase of cases) {
-    if (refs.has(testCase.ref)) {
-      problems.push(problem(testCase.filePath, 1, "error", `Duplicate case id "${testCase.ref}".`, ""));
-    }
-    refs.add(testCase.ref);
-    // A step's page object is as load-bearing as the flow link: it is what a
-    // scaffold writes and what coverage is measured against.
-    for (const step of testCase.steps ?? []) {
-      if (step.pom && !known.has(step.pom)) {
-        problems.push(
-          problem(testCase.filePath, 1, "error", `Step names a missing page object: ${step.pom}.`, ""),
-        );
-      }
-    }
-    // A draft case names the flow someone is going to write, so a missing file
-    // is the plan, not a break. Reporting those as errors buried the cases that
-    // claim to be automated and aren't.
-    const draft = testCase.status === "draft";
-    const flows = [
-      testCase.conductor?.flow,
-      ...Object.values(testCase.conductor?.flows ?? {}),
-    ].filter(Boolean);
-    for (const flow of flows as string[]) {
-      covered.add(flow);
-      if (known.has(flow)) continue;
+  for (const link of await flowLinks()) {
+    covered.add(link.path);
+    // Only complain once Studio has cases to check against — an empty cache
+    // means nobody has fetched them, not that every flow is mislinked.
+    if (!refs.size) continue;
+    for (const ref of link.refs) {
+      if (refs.has(ref)) continue;
       problems.push(
-        draft
-          ? problem(testCase.filePath, 1, "info", `Draft case — flow not written yet: ${flow}.`, "")
-          : problem(testCase.filePath, 1, "error", `Case points at a missing flow: ${flow}.`, ""),
+        problem(link.path, 1, "warning", `No test case ${ref} — check the id, or refresh from Qase.`, ""),
       );
     }
   }
@@ -239,7 +220,7 @@ async function lintCases(known: Set<string>, called: Set<string>): Promise<LintP
   for (const flow of known) {
     if (covered.has(flow) || called.has(flow)) continue;
     problems.push(
-      problem(flow, 1, "warning", "No test case covers this flow — link it from a case.", ""),
+      problem(flow, 1, "warning", "This flow names no test case — add `properties.testCaseId`.", ""),
     );
   }
   return problems;
