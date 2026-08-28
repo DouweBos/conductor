@@ -101,6 +101,8 @@ export interface Case {
   suite_id?: number;
   /** Suite title, resolved on pull so the matrix can band by it. */
   suite?: string;
+  /** Its suites root-first — Qase nests them, and the sidebar is that tree. */
+  suite_path?: string[];
   milestone_id?: number;
   steps_type?: StepsType;
   steps?: CaseStep[];

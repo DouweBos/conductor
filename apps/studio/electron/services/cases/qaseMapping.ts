@@ -14,7 +14,7 @@ import {
   decodeEnum,
   type Case,
 } from "./model";
-import type { QaseCase, QaseCustomField } from "./qaseClient";
+import type { QaseCase, QaseCustomField, QaseSuite } from "./qaseClient";
 
 const ENTITIES: Record<string, string> = {
   quot: '"',
@@ -83,10 +83,36 @@ function parseJson(value: string): unknown {
   }
 }
 
+/** A suite and where it sits in Qase's tree. */
+export interface SuiteDef {
+  title: string;
+  /** Root-first titles, ending with this suite's own. */
+  path: string[];
+}
+
+/** Resolve each suite's ancestry once, so a case only has to look itself up. */
+export function suiteTree(suites: QaseSuite[]): Map<number, SuiteDef> {
+  const byId = new Map(suites.map((s) => [s.id, s]));
+  const defs = new Map<number, SuiteDef>();
+  const pathOf = (id: number, seen: Set<number>): string[] => {
+    const suite = byId.get(id);
+    // A cycle can only come from bad data, but it must not hang the fetch.
+    if (!suite || seen.has(id)) return [];
+    seen.add(id);
+    const title = decodeEntities(suite.title);
+    return suite.parent_id ? [...pathOf(suite.parent_id, seen), title] : [title];
+  };
+  for (const suite of suites) {
+    const path = pathOf(suite.id, new Set());
+    defs.set(suite.id, { title: path[path.length - 1] ?? decodeEntities(suite.title), path });
+  }
+  return defs;
+}
+
 export function toCase(
   entity: QaseCase,
   projectCode: string,
-  suites: Map<number, string>,
+  suites: Map<number, SuiteDef>,
   fields: Map<number, FieldDef>,
 ): Case {
   const custom_fields: Record<string, string[]> = {};
@@ -122,7 +148,8 @@ export function toCase(
     status: decodeEnum(CASE_STATUSES, entity.status) ?? "actual",
     is_manual: entity.is_manual ?? entity.isManual ?? true,
     suite_id: entity.suite_id ?? undefined,
-    suite: entity.suite_id ? suites.get(entity.suite_id) : undefined,
+    suite: entity.suite_id ? suites.get(entity.suite_id)?.title : undefined,
+    suite_path: entity.suite_id ? suites.get(entity.suite_id)?.path : undefined,
     milestone_id: entity.milestone_id ?? undefined,
     steps_type: entity.steps_type === "gherkin" ? "gherkin" : "classic",
     steps: (entity.steps ?? [])

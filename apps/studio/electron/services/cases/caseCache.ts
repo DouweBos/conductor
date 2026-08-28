@@ -7,7 +7,7 @@ import { codeOf, type Case } from "./model";
 
 export { codeOf };
 import { listCases as fetchCases, listCustomFields, listSuites } from "./qaseClient";
-import { decodeEntities, fieldDef, toCase } from "./qaseMapping";
+import { fieldDef, suiteTree, toCase } from "./qaseMapping";
 
 /**
  * Cases as Qase has them, cached on disk.
@@ -59,7 +59,7 @@ export async function refresh(code: string, token: string): Promise<CachedProjec
     listSuites(code, token).catch(() => []),
     listCustomFields(code, token).catch(() => []),
   ]);
-  const suites = new Map(suiteList.map((s) => [s.id, decodeEntities(s.title)]));
+  const suites = suiteTree(suiteList);
   const fields = new Map(fieldList.map((f) => [f.id, fieldDef(f)]));
 
   const project: CachedProject = {

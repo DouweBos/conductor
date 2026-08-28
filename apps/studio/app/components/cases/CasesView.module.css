@@ -55,6 +55,37 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/* The search carries the row; a filter is the exception, not the furniture. */
+.search {
+  flex: 0 1 320px;
+}
+
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+}
+
+.addFilter {
+  color: var(--text-secondary);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* Qase's own folders, as the way into 250 cases. */
+.suites {
+  width: 260px;
+  flex-shrink: 0;
+  overflow: auto;
+  padding: var(--space-3) var(--space-2);
+  border-right: 1px solid var(--border-subtle);
+}
+
 .count {
   font-size: var(--text-sm);
   color: var(--text-muted);
@@ -141,19 +172,6 @@ tr:hover .playIcon {
 .indicator:hover .playIcon {
   color: var(--accent-hover, var(--accent));
   transform: scale(1.2);
-}
-
-.legendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.dot[data-legend="verdict"] { background: var(--success); }
-
-.dot[data-legend="pending"] {
-  background: transparent;
-  border: 1px solid var(--text-muted);
 }
 
 .detail {
@@ -460,15 +478,6 @@ tr:hover .playIcon {
 }
 
 /* Teaches the cell vocabulary once, using the cells' own chrome. */
-.legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-}
-
 /* The device, beside the matrix: starting a case never means leaving it. */
 .deviceRail {
   display: flex;

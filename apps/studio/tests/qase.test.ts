@@ -1,14 +1,14 @@
 import { commented } from "../electron/services/cases/caseComments";
 import { codeOf } from "../electron/services/cases/model";
 import { normalizeStepPoms } from "../electron/services/cases/stepPoms";
-import { decodeEntities, fieldDef, toCase } from "../electron/services/cases/qaseMapping";
+import { decodeEntities, fieldDef, suiteTree, toCase } from "../electron/services/cases/qaseMapping";
 import type { QaseCase } from "../electron/services/cases/qaseClient";
 import { assertEqual, TestSuite } from "./runner";
 
 export const qase = new TestSuite("Qase cases");
 
 const PROJECT = "DEMO";
-const SUITES = new Map([[4, "Authentication"]]);
+const SUITES = suiteTree([{ id: 4, title: "Authentication" }]);
 const FIELDS = new Map([[7, { title: "Platform", options: new Map() }]]);
 
 /** A selectbox as `/custom_field` returns it: values are ids into `value`. */
@@ -152,4 +152,23 @@ qase.test("a step's page objects read back from either stored shape", () => {
     "several, in order",
   );
   assertEqual(normalizeStepPoms({}), [], "an assignment with no page object is nothing");
+});
+
+qase.test("a case carries its suite's whole path, the way Qase nests them", () => {
+  const suites = suiteTree([
+    { id: 1, title: "RN (Mobile)" },
+    { id: 2, title: "Community", parent_id: 1 },
+    { id: 3, title: "Activity Feed", parent_id: 2 },
+  ]);
+  const c = toCase(entity({ suite_id: 3 }), PROJECT, suites, FIELDS);
+  assertEqual(c.suite, "Activity Feed", "the leaf is still the suite");
+  assertEqual(c.suite_path, ["RN (Mobile)", "Community", "Activity Feed"], "root first");
+});
+
+qase.test("a suite tree that loops on itself still resolves", () => {
+  const suites = suiteTree([
+    { id: 1, title: "A", parent_id: 2 },
+    { id: 2, title: "B", parent_id: 1 },
+  ]);
+  assertEqual(suites.get(1)?.title, "A", "no hang, and a usable title");
 });

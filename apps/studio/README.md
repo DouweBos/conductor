@@ -314,8 +314,9 @@ declaring the same id and carrying its own tag. The matrix reads the tags: a
 column is covered when a declaring flow is tagged for it. A flow may also name
 more than one case: `testCaseId: "MC-12, MC-13"`.
 
-The Cases screen is the matrix over the fetched cases: a switchable custom field
-for the columns, filters, search, and per-column coverage. From a case you can
+The Cases screen is the matrix over the fetched cases: Qase's suite tree down
+the left, a switchable custom field for the columns, search, filters you add as
+you need them, and per-column coverage. From a case you can
 run the flow that covers it, link an existing flow, scaffold a new one from the
 case's steps (the scaffold writes the `testCaseId` and `priority` for you), or
 hand it to the agent.
@@ -383,13 +384,12 @@ case declared in the header), fill the gaps, run it until it's green twice, and
 keep the draft tag until then. Two MCP tools back it: `scaffold_case_flow` and
 `link_case_flow`.
 
-**Grouping.** 150 rows is a list, not a table you can read, so the matrix bands
-by a tag dimension — **area** by default, which is how a matrix is usually
-written — with each band collapsible and carrying its own coverage
-(`Community · 32 · 6/32 automated`). Inside a band, rows cluster by
-sub-area, so a big group still has shape. Group by any dimension you tag with
-(priority, owner, status), or turn it off for a flat list; collapsed bands are
-remembered.
+**Suites are the way in.** 250 rows is a list, not a table you can read, so the
+screen keeps Qase's own suite tree down the left — the same folders, nested the
+same way, each carrying the number of cases in it and everything under it.
+Picking one scopes the matrix to that subtree; the choice is remembered. The
+filter row is a search and nothing else until you add a filter to it, so a
+project with six custom fields doesn't greet you with six dropdowns.
 
 **Running stays here.** The ▶ on a cell runs that platform's flow and opens the
 device rail beside the matrix: the flow's status, its current step, the tail of
