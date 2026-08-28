@@ -40,10 +40,6 @@ export type Behavior = (typeof BEHAVIORS)[number];
 export type CaseStatus = (typeof CASE_STATUSES)[number];
 export type StepsType = "classic" | "gherkin";
 
-/** Qase's result statuses. `invalid` means the case itself was wrong. */
-export const RESULT_STATUSES = ["passed", "failed", "blocked", "skipped", "invalid"] as const;
-export type ResultStatus = (typeof RESULT_STATUSES)[number];
-
 /**
  * Decode a Qase integer to its name. Returns undefined for a value Qase has
  * added since — better an absent field than a confidently wrong one.
@@ -65,21 +61,26 @@ export function encodeEnum<T extends string>(table: readonly T[], name: T | unde
 
 // ── Cases ───────────────────────────────────────────────────────────────────
 
+/** One page object performing part of a step, relative to the flows dir. */
+export interface StepPomCall {
+  pom: string;
+  /** Values for that page object's `env:` parameters. */
+  env?: Record<string, string>;
+}
+
 /**
- * One step, in Qase's action/data/expected_result shape. `pom` and `env` are
- * Conductor's: the page object that performs the step, merged in from the
- * `conductor` block on read and split back out on write.
+ * One step, in Qase's action/data/expected_result shape. `poms` is Conductor's:
+ * the page objects that perform the step, merged in on read rather than stored
+ * on the case. A step regularly bundles several actions ("go to the page and
+ * press play"), so it takes a list, in the order they run.
  */
 export interface CaseStep {
-  /** Qase's stable per-step identity, used to re-attach `pom` across a pull. */
+  /** Qase's stable per-step identity, used to re-attach `poms` across a pull. */
   hash?: string;
   action: string;
   data?: string;
   expected_result?: string;
-  /** Page object implementing the step, relative to the flows dir. */
-  pom?: string;
-  /** Values for that page object's `env:` parameters. */
-  env?: Record<string, string>;
+  poms?: StepPomCall[];
 }
 
 export interface Case {
@@ -112,64 +113,8 @@ export interface Case {
   updated_at?: string;
 
   // Local decorations, not part of Qase's entity.
-  /** Most recent execution of any kind, filled in from the results log. */
-  lastResult?: CaseResult;
-  /** Executions recorded for this case, newest first. */
-  results?: CaseResult[];
   /** Flows whose `properties.testCaseId` names this case, with their tags. */
   flows?: { path: string; tags: string[] }[];
-}
-
-// ── Results ─────────────────────────────────────────────────────────────────
-
-/** Per-step outcome inside one execution. */
-export interface CaseStepResult {
-  index: number;
-  status: ResultStatus;
-  comment?: string;
-}
-
-/** Where a verdict came from — automation, a person, or the agent. */
-export type CaseResultSource = "run" | "manual" | "report";
-
-/** One execution of one case, appended to the project's results log. */
-export interface CaseResult {
-  id: string;
-  case_id: number;
-  ref: string;
-  status: ResultStatus;
-  source: CaseResultSource;
-  at: number;
-  time_ms?: number;
-  comment?: string;
-  stacktrace?: string;
-  steps?: CaseStepResult[];
-  /** Column (platform) the execution covered, when the case has several. */
-  column?: string;
-  /** Local flow run that produced this, for the run history / artifacts. */
-  run_id?: string;
-  flow?: string;
-  device_id?: string;
-  /** Agentic report that produced this. */
-  report_id?: string;
-  /** Plan execution this belonged to. */
-  plan_run_id?: string;
-  author?: string;
-  /** App build under test, read off the device, so a failure pins to one. */
-  app_version?: string;
-}
-
-/** Rolled-up execution health for one case. */
-export interface CaseStats {
-  ref: string;
-  total: number;
-  passed: number;
-  failed: number;
-  /** Pass rate over the recorded executions, 0–1. */
-  passRate: number;
-  /** True when the recent runs disagree — passed and failed within the window. */
-  flaky: boolean;
-  lastAt?: number;
 }
 
 export interface CaseMatrix {

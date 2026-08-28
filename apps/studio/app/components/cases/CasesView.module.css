@@ -83,13 +83,7 @@
   background: var(--text-muted);
 }
 
-.cell[data-tone="passed"] .dot { background: var(--success); }
-.cell[data-tone="failed"] .dot { background: var(--error); }
-.cell[data-tone="blocked"] .dot { background: var(--warning); }
-.cell[data-tone="running"] .dot { background: var(--accent); }
-.cell[data-tone="skipped"] .dot { background: var(--text-muted); }
-
-/* Automated but never executed: a ring, not a fill — there is no result here. */
+/* Automated: a ring, not a fill. */
 .cell[data-state="pending"] .dot {
   background: transparent;
   border: 1px solid var(--text-muted);
@@ -105,8 +99,6 @@
   color: var(--text-primary);
 }
 
-/* Everything without a verdict steps back one level — still readable, just not
-   competing with the rows that have a result. */
 .cell[data-state="pending"] .cellLabel,
 .cell[data-state="manual"] .cellLabel {
   color: var(--text-secondary);
@@ -425,8 +417,33 @@ tr:hover .playIcon {
   border-bottom: 1px solid var(--border-subtle);
 }
 
+/* Each page object assigned to a step, with its env under it. */
+.stepPom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stepPomRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stepPomRow > *:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Indented under the page object it parameterizes; env values are short. */
+.stepEnvField {
+  margin-left: var(--space-3);
+  max-width: 260px;
+}
+
 .wizardStepText {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 2px;
   min-width: 0;

@@ -1,44 +1,28 @@
-import { Button, IconButton, Select, StatusPill, Tag, TextField, type StatusTone } from "@conductor/studio-ui";
-import { useEffect, useMemo, useState } from "react";
+import { Button, IconButton, Select, StatusPill, Tag, TextField } from "@conductor/studio-ui";
+import { useEffect, useState } from "react";
 
 import {
   caseStepCoverage,
   linkCaseFlow,
   listStepPoms,
   qaseProjects,
-  recordCaseResult,
   scaffoldFlowFromCase,
-  setCaseStepPom,
+  setCaseStepPoms,
   loadFlowCatalog,
 } from "../../lib/ipc";
 import { askAgentToVerifyCase } from "../../lib/agentHandoff";
 import { askAgentToAutomateCase } from "../../lib/agentHandoff";
 import { selectFlow } from "../../lib/router";
-import {
-  RESULT_STATUSES,
-  type Case,
-  type CaseResult,
-  type FlowCatalogEntry,
-  type ResultStatus,
-  type StepCoverage,
-} from "../../lib/types";
+import type { Case, FlowCatalogEntry, StepPomCall, StepCoverage } from "../../lib/types";
 import styles from "./CasesView.module.css";
 
-const STATUS_TONE: Record<ResultStatus, StatusTone> = {
-  passed: "success",
-  failed: "error",
-  blocked: "warning",
-  skipped: "neutral",
-  invalid: "warning",
-};
-
-const SOURCE_LABEL: Record<CaseResult["source"], string> = {
-  run: "flow run",
-  manual: "manual",
-  report: "agent",
-};
-
 export const ids = (c: Case) => c.ref;
+
+/** Two env blocks, compared by content rather than key order. */
+function sameEnv(a: Record<string, string>, b: Record<string, string> = {}): boolean {
+  const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
+  return keys.every((key) => a[key] === b[key]);
+}
 
 /** The flows that declare this case, labelled by the tag each carries. */
 export function allFlows(c: Case): { column?: string; flow: string }[] {
@@ -53,18 +37,22 @@ interface CaseDetailProps {
 }
 
 export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetailProps) {
-  const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<StepCoverage | null>(null);
   const [matrixField, setMatrixField] = useState<string | undefined>();
   const [poms, setPoms] = useState<FlowCatalogEntry[]>([]);
   const [flowChoices, setFlowChoices] = useState<string[]>([]);
+  // Env typed for a step's page object but not yet written — saved on blur, so
+  // a keystroke doesn't rewrite step-poms.json.
+  const [envDrafts, setEnvDrafts] = useState<Record<string, Record<string, string>>>({});
 
   useEffect(() => {
-    setComment("");
     setError(null);
+    setNotice(null);
     setCoverage(null);
+    setEnvDrafts({});
     // Which steps the flow behind this case actually performs, via their POMs.
     caseStepCoverage(c.ref).then(setCoverage).catch(() => setCoverage(null));
   }, [c.ref]);
@@ -89,45 +77,15 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
   const missingColumns = (matrixField ? (c.custom_fields[matrixField] ?? []) : []).filter(
     (column) => !covered.has(column) && !flows.length,
   );
-  const results = c.results ?? [];
-  const stats = useMemo(() => {
-    const decisive = results.filter((r) => r.status === "passed" || r.status === "failed");
-    const passed = decisive.filter((r) => r.status === "passed").length;
-    const recent = decisive.slice(0, 10);
-    return {
-      total: results.length,
-      passRate: decisive.length ? Math.round((passed / decisive.length) * 100) : null,
-      flaky: recent.some((r) => r.status === "passed") && recent.some((r) => r.status === "failed"),
-    };
-  }, [results]);
-
-  const record = async (status: ResultStatus) => {
-    setBusy(true);
-    try {
-      await recordCaseResult({
-        case_id: c.id,
-        ref: c.ref,
-        status,
-        source: "manual",
-        comment: comment.trim() || undefined,
-      });
-      setComment("");
-      onChanged();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const scaffold = async (column?: string) => {
     setBusy(true);
+    setError(null);
     try {
       const { flow, todos } = await scaffoldFlowFromCase({ ref: c.ref, column });
       onChanged();
       // Stay here: the flow is now linked to the case, so Run and Open are one
       // click away in this panel.
-      setError(`Wrote ${flow}${todos ? ` — ${todos} step(s) still need a page object` : ""}.`);
+      setNotice(`Wrote ${flow}${todos ? ` — ${todos} step(s) still need a page object` : ""}.`);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -135,17 +93,71 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
     }
   };
 
-  /** Which page object performs a step. Studio's, not Qase's — kept beside it. */
-  const assignPom = async (stepKey: string, pom: string) => {
+  /**
+   * Which page objects perform a step. Studio's, not Qase's — kept beside it,
+   * and a list because a step regularly bundles several actions.
+   */
+  const savePoms = async (stepKey: string, calls: StepPomCall[]) => {
     setBusy(true);
     try {
-      await setCaseStepPom(c.ref, stepKey, pom || undefined);
+      await setCaseStepPoms(c.ref, stepKey, calls);
       onChanged();
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  const addPom = (stepKey: string, calls: StepPomCall[], pom: string) => {
+    if (pom) void savePoms(stepKey, [...calls, { pom }]);
+  };
+
+  /** Swap one of a step's page objects, or drop it when `pom` is empty. */
+  const replacePom = (stepKey: string, calls: StepPomCall[], index: number, pom: string) => {
+    dropDraft(stepKey, index);
+    // A different page object takes different parameters, so its env goes too.
+    void savePoms(
+      stepKey,
+      pom ? calls.map((call, i) => (i === index ? { pom } : call)) : calls.filter((_, i) => i !== index),
+    );
+  };
+
+  const draftKey = (stepKey: string, index: number) => `${stepKey}#${index}`;
+
+  const dropDraft = (stepKey: string, index: number) =>
+    setEnvDrafts(({ [draftKey(stepKey, index)]: _dropped, ...rest }) => rest);
+
+  const envFor = (stepKey: string, index: number, saved?: Record<string, string>) =>
+    envDrafts[draftKey(stepKey, index)] ?? saved ?? {};
+
+  const editEnv = (
+    stepKey: string,
+    index: number,
+    saved: Record<string, string> | undefined,
+    param: string,
+    value: string,
+  ) =>
+    setEnvDrafts((drafts) => ({
+      ...drafts,
+      [draftKey(stepKey, index)]: { ...(drafts[draftKey(stepKey, index)] ?? saved ?? {}), [param]: value },
+    }));
+
+  /** Write one page object's env, if it actually changed. */
+  const saveEnv = async (stepKey: string, calls: StepPomCall[], index: number) => {
+    const call = calls[index];
+    const draft = envDrafts[draftKey(stepKey, index)];
+    if (!call || !draft) return;
+    const env = Object.fromEntries(
+      Object.entries(draft).filter(([, value]) => value.trim()),
+    ) as Record<string, string>;
+    if (sameEnv(env, call.env)) return;
+    await savePoms(
+      stepKey,
+      calls.map((current, i) =>
+        i === index ? { pom: current.pom, ...(Object.keys(env).length ? { env } : {}) } : current,
+      ),
+    );
   };
 
   /** Point an existing flow at this case, by writing its header property. */
@@ -195,37 +207,14 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
 
       <div className={styles.detailBody}>
         {error ? <StatusPill tone="error">{error}</StatusPill> : null}
-        <div className={styles.statRow}>
-          {c.lastResult ? (
-            <StatusPill tone={STATUS_TONE[c.lastResult.status]}>
-              {c.lastResult.status} · {SOURCE_LABEL[c.lastResult.source]}
-            </StatusPill>
-          ) : (
-            <StatusPill tone="neutral">never executed</StatusPill>
-          )}
-          {stats.passRate !== null ? (
-            <span className={styles.muted}>
-              {stats.passRate}% pass over {stats.total}
-            </span>
-          ) : null}
-          {stats.flaky ? <StatusPill tone="warning">flaky</StatusPill> : null}
-          {c.status !== "actual" ? <StatusPill tone="warning">{c.status}</StatusPill> : null}
-        </div>
+        {notice ? <StatusPill tone="info">{notice}</StatusPill> : null}
+        {c.status !== "actual" ? (
+          <div className={styles.statRow}>
+            <StatusPill tone="warning">{c.status}</StatusPill>
+          </div>
+        ) : null}
 
         <section className={styles.section}>
-          <h3 className={styles.sectionTitle}>Record a result</h3>
-          <TextField
-            placeholder="What happened? (optional)"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-          />
-          <div className={styles.verdictRow}>
-            {RESULT_STATUSES.map((v) => (
-              <Button key={v} size="sm" variant="secondary" disabled={busy} onClick={() => void record(v)}>
-                {v}
-              </Button>
-            ))}
-          </div>
           <Button size="sm" variant="ghost" icon="agent" onClick={() => askAgentToVerifyCase(c)}>
             Verify with the agent
           </Button>
@@ -347,6 +336,8 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
             </h3>
             {c.steps.map((step, i) => {
               const backed = coverage?.steps.find((s) => s.index === i)?.backed;
+              const stepKey = step.hash ?? String(i);
+              const calls = step.poms ?? [];
               return (
                 <div key={i} className={styles.wizardStep}>
                   <div className={styles.wizardStepText}>
@@ -357,26 +348,58 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
                     {step.expected_result ? (
                       <span className={styles.wizardExpected}>→ {step.expected_result}</span>
                     ) : null}
-                    {step.env && step.pom ? (
-                      <span className={styles.flowPath}>
-                        {Object.entries(step.env).map(([k, v]) => `${k}=${v}`).join(", ")}
-                      </span>
-                    ) : null}
+                    {/* One step, several actions: "open the page and press play"
+                        needs a page object each, run in this order. */}
+                    {calls.map((call, j) => (
+                      <div key={`${call.pom}-${j}`} className={styles.stepPom}>
+                        <div className={styles.stepPomRow}>
+                          <Select
+                            value={call.pom}
+                            disabled={busy}
+                            onChange={(e) => replacePom(stepKey, calls, j, e.target.value)}
+                            options={[
+                              { value: "", label: "remove" },
+                              ...poms.map((p) => ({ value: p.path, label: p.path })),
+                              ...(poms.some((p) => p.path === call.pom)
+                                ? []
+                                : [{ value: call.pom, label: `${call.pom} (missing)` }]),
+                            ]}
+                          />
+                          <IconButton
+                            icon="close"
+                            size={13}
+                            label={`Remove ${call.pom}`}
+                            onClick={() => replacePom(stepKey, calls, j, "")}
+                          />
+                        </div>
+                        {/* A page object is a parameterized subflow: without its
+                            env the runFlow a scaffold writes is incomplete. */}
+                        {(poms.find((p) => p.path === call.pom)?.params ?? []).map((param) => (
+                          <TextField
+                            key={`${call.pom}-${param}`}
+                            label={param}
+                            className={styles.stepEnvField}
+                            placeholder="value"
+                            disabled={busy}
+                            value={envFor(stepKey, j, call.env)[param] ?? ""}
+                            onChange={(e) => editEnv(stepKey, j, call.env, param, e.target.value)}
+                            onBlur={() => void saveEnv(stepKey, calls, j)}
+                          />
+                        ))}
+                      </div>
+                    ))}
                     <Select
-                      value={step.pom ?? ""}
+                      value=""
                       disabled={busy}
-                      onChange={(e) => void assignPom(step.hash ?? String(i), e.target.value)}
+                      onChange={(e) => addPom(stepKey, calls, e.target.value)}
                       options={[
-                        { value: "", label: "no page object" },
+                        { value: "", label: calls.length ? "add a page object…" : "no page object" },
                         ...poms.map((p) => ({ value: p.path, label: p.path })),
-                        ...(step.pom && !poms.some((p) => p.path === step.pom)
-                          ? [{ value: step.pom, label: `${step.pom} (missing)` }]
-                          : []),
                       ]}
                     />
                   </div>
-                  <StatusPill tone={backed ? "success" : step.pom ? "warning" : "neutral"}>
-                    {backed ? "automated" : step.pom ? "not in flow" : "manual"}
+                  <StatusPill tone={backed ? "success" : calls.length ? "warning" : "neutral"}>
+                    {backed ? "automated" : calls.length ? "not in flow" : "manual"}
                   </StatusPill>
                 </div>
               );
@@ -433,25 +456,6 @@ export function CaseDetail({ testCase: c, onClose, onRun, onChanged }: CaseDetai
             ))}
           </section>
         ) : null}
-
-        <section className={styles.section}>
-          <h3 className={styles.sectionTitle}>History ({results.length})</h3>
-          {results.length ? (
-            results.slice(0, 25).map((r) => (
-              <div key={r.id} className={styles.historyRow}>
-                <StatusPill tone={STATUS_TONE[r.status]}>{r.status}</StatusPill>
-                <span className={styles.historyMeta}>
-                  {SOURCE_LABEL[r.source]}
-                  {r.column ? ` · ${r.column}` : ""} · {new Date(r.at).toLocaleString()}
-                  {r.app_version ? ` · ${r.app_version}` : ""}
-                  {r.comment ? ` — ${r.comment}` : ""}
-                </span>
-              </div>
-            ))
-          ) : (
-            <p className={styles.muted}>Nothing has run this case yet.</p>
-          )}
-        </section>
 
       </div>
     </aside>

@@ -29,7 +29,7 @@ import {
 import { referenceSpanOnLine, resolveReference } from "../../lib/flowRefs";
 import { flowForSteps, parseSteps, stepAt, stepsInRange, stepsUntil } from "../../lib/flowSteps";
 import { maestroCompletion } from "../../lib/maestroCompletion";
-import { selectFlow, setView } from "../../lib/router";
+import { appNavigate, selectFlow } from "../../lib/router";
 import type { FlowCatalog, LintProblem, MaestroStatus } from "../../lib/types";
 import { useSelectedDeviceId } from "../../stores/deviceStore";
 import {
@@ -270,7 +270,8 @@ export function EditorPane({ activePath }: { activePath?: string }) {
           // Closing a background tab leaves the URL — and the editor — alone.
           if (path !== activePath) return;
           if (next) selectFlow(next);
-          else setView("flows");
+          // Not setView: that would restore the tab just closed.
+          else appNavigate({ view: "flows" });
         }}
       />
       <Toolbar>

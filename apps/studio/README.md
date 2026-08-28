@@ -271,10 +271,9 @@ FAIL, and a PASS with nothing asserted becomes BLOCKED — the correction is
 printed at the top of the report and returned to the agent.
 
 It closes the loop with test cases. Handing a case to the agent (**Verify with
-the agent**, on the case detail) sends it the business rule and steps; the
-report it files records an execution on the matrix, so a case with no flow still
-gets a result. From a report you can send the agent back for a re-run or ask it
-to transcribe the run into a reusable flow.
+the agent**, on the case detail) sends it the business rule and steps, and the
+report it files names that case. From a report you can send the agent back for a
+re-run or ask it to transcribe the run into a reusable flow.
 
 Reports live in `~/.conductor/studio/reports/<project>/<test>-<timestamp>/`
 alongside `run-log.json` and the screenshots — a run artefact, not something to
@@ -295,6 +294,7 @@ name: User can log in with valid credentials
 tags: [mobile]
 properties:
   testCaseId: "MC-12"
+  priority: "High"
 ---
 - launchApp
 ```
@@ -302,7 +302,9 @@ properties:
 `properties` is Maestro's own [custom properties][props] field, so the link
 travels with the repo: CI's JUnit report carries
 `<property name="testCaseId" value="MC-12"/>` on the `<testcase>` element,
-whether or not Studio was involved. Nothing has to be kept in step — coverage is
+whether or not Studio was involved. Linking or scaffolding writes the case's
+Qase `priority` alongside it, so a report can rank a failure the way Qase does;
+unlinking leaves it, since a priority set by hand is not Studio's to delete. Nothing has to be kept in step — coverage is
 answered by reading the flows.
 
 [props]: https://docs.maestro.dev/maestro-flows/workspace-management/test-reports-and-artifacts#custom-properties
@@ -315,8 +317,8 @@ more than one case: `testCaseId: "MC-12, MC-13"`.
 The Cases screen is the matrix over the fetched cases: a switchable custom field
 for the columns, filters, search, and per-column coverage. From a case you can
 run the flow that covers it, link an existing flow, scaffold a new one from the
-case's steps (the scaffold writes the `testCaseId` for you), record a manual
-verdict, or hand it to the agent.
+case's steps (the scaffold writes the `testCaseId` and `priority` for you), or
+hand it to the agent.
 
 ### Qase projects
 
@@ -335,45 +337,37 @@ from its flows; Studio offers the ones it finds there.
   delete it and the next fetch restores it in full.
 
 What Studio does own, because neither Qase nor the flow has a place for it:
-which page object performs each step of a case (`automation/step-poms.json`),
-the execution log, and test plans — all under `~/.conductor/studio/<repo>/`,
-never in the repo under test.
+which page object performs each step of a case (`automation/step-poms.json`) and
+test plans — both under `~/.conductor/studio/<repo>/`, never in the repo under
+test.
 
 The cache is deliberate: the matrix re-reads cases constantly and lint runs on
 every flow change, so neither should wait on a network round trip, and a flaky
 connection should not stop a validation session.
 
-**Executions.** A case is only as good as its evidence, so every verification
-is appended to `results.jsonl` beside the cases. Four things write to it:
+**Outcomes stay where they belong.** Studio never records a verdict against a
+case: Qase is the system of record and Studio only reads it. What ran and how it
+went lives with the run — the run history, its artefacts, and the agent's
+reports.
 
-- **Flow runs** — finishing any run, anywhere in Studio, files a result for
-  every case that flow declares.
-- **People** — a case with no automation gets pass / fail / blocked / skipped
-  with a note, straight from the case panel.
-- **The agent** — its MCP tools (`list_test_cases`, `describe_test_case`,
-  `record_case_result`) let it find unautomated cases, read the steps as a
-  script, and file what it found; `write_test_report` takes a `caseId` so a
-  report doubles as that case's result.
+**Steps are the bridge to automation.** Each step of a case names the page
+objects that perform it, with their `env` — assigned in the case panel, kept in
+Studio's `automation/step-poms.json` since Qase has no field for it and the flow
+has no place for it. A step regularly bundles several actions ("open the details
+page and press play"), so it takes a list, in the order they run. That is what
+makes the human-readable case and the Maestro flow behind it two views of one
+thing.
 
-The panel shows the history, pass rate and a flaky flag (recent runs
-disagreeing) per case.
-
-**Steps are the bridge to automation.** Each step of a case can name the page
-object that performs it — assigned in the case panel, kept in Studio's
-`automation/step-poms.json` since Qase has no field for it and the flow has no
-place for it. That is what makes the human-readable case and the Maestro flow
-behind it two views of one thing.
-
-From those assignments Studio can **scaffold the flow**: each step with a page
-object becomes a `runFlow` call (in the project's `@alias` form) carrying its
-env, each step without one becomes a TODO in the file, and the scaffold declares
-the case in its own header. Where the project keeps drafts out of CI with a
+From those assignments Studio can **scaffold the flow**: every page object a
+step names becomes a `runFlow` call (in the project's `@alias` form) carrying
+its env, a step that names none becomes a TODO in the file, and the scaffold
+declares the case in its own header. Where the project keeps drafts out of CI with a
 `*-draft` tag, it follows that convention rather than enrolling an unverified
 flow into the suite.
 
 It reads the other way too: the case panel marks each step **automated**, **not
-in flow** or **manual** by checking whether the linked flow reaches that page
-object transitively, and says so when the flow calls page objects no step
+in flow** or **manual** by checking whether the linked flow reaches every page
+object it names, transitively, and says so when the flow calls page objects no step
 accounts for. A flow naming a case that doesn't exist is a lint warning, as is a
 leaf flow that names no case at all.
 
@@ -385,14 +379,14 @@ data, only the interaction model differs — or a neighbouring flow for the hous
 style, every page object with its `env` parameters, and what the scene graph
 knows about the app's screens. It's told to `scaffold_case_flow` first (skeleton
 from the steps, page objects become `runFlow` calls, gaps become TODOs, and the
-case declared in the header), fill the gaps, run it until it's green twice, keep the draft tag
-until then, and file a result. Two MCP tools back it: `scaffold_case_flow` and
+case declared in the header), fill the gaps, run it until it's green twice, and
+keep the draft tag until then. Two MCP tools back it: `scaffold_case_flow` and
 `link_case_flow`.
 
 **Grouping.** 150 rows is a list, not a table you can read, so the matrix bands
 by a tag dimension — **area** by default, which is how a matrix is usually
 written — with each band collapsible and carrying its own coverage
-(`Community · 32 · 6/32 automated · 1 failing`). Inside a band, rows cluster by
+(`Community · 32 · 6/32 automated`). Inside a band, rows cluster by
 sub-area, so a big group still has shape. Group by any dimension you tag with
 (priority, owner, status), or turn it off for a flat list; collapsed bands are
 remembered.
@@ -419,35 +413,26 @@ rather than letting the runner pick silently, reserves it under that id, and
 returns it — so Studio attaches to the same screen the test is driving instead
 of showing "no device" while maestro works away on a simulator.
 
-**Running by hand.** The run wizard walks a filtered selection case by case:
-preconditions, each step with its expected result, pass/fail/skip per step,
-a note and the app version under test, then a result — passed, failed, blocked,
-skipped or invalid, Qase's own set — and on to the next case. A case with a flow
-can hand off to it mid-session.
-
 **From the agent.** Studio's MCP server is how an agent reads and updates cases:
 `list_test_cases`, `describe_test_case`, `get_cases_datasource`,
-`sync_test_cases`, `scaffold_case_flow`, `link_case_flow` and
-`record_case_result`. The tools tell the agent that case content is authored in
+`sync_test_cases`, `scaffold_case_flow` and `link_case_flow`. The tools tell the
+agent that case content is authored in
 Qase — it writes `testCaseId` into a flow it wrote and assigns page objects, and
 never rewrites a title or a step. `link_case_flow` takes the flow, not the case:
 it edits the flow's header.
 
 **Test plans** are the named selections a team actually runs — "release smoke",
 "everything high-priority on tv". They're YAML in the same store, built from whatever the matrix is currently filtered to, and a plan run walks
-its cases in order on one device, recording each outcome against its case. Cases
-with no flow are reported as skipped rather than quietly dropped.
+its cases in order on one device. Cases with no flow are reported as skipped
+rather than quietly dropped.
 
 **Coverage** is checked both ways: a flow naming a case that Qase doesn't have
 is a warning (a typo, or a stale cache), and a leaf flow naming no case at all is
 a warning too — coverage the matrix can't see.
 
-Results are local: what ran on your machine, what you recorded by hand, what the
-agent verified. They carry Qase's result shape — `case_id`, `status`, `time_ms`,
-`comment`, per-step statuses — so pushing them back to a Qase test run is a small
-addition rather than a remap. Studio is a local test-engineering tool; nothing
-here runs in CI, and a run's outcome comes from the execution log and nowhere
-else.
+Studio is a local test-engineering tool: nothing here runs in CI, and nothing it
+does reaches Qase — the API token is read-only in practice, used for fetching
+cases and nothing else.
 
 ---
 

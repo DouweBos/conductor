@@ -187,16 +187,12 @@ export type {
   Case,
   CaseMatrix,
   QaseProject,
-  CaseResult,
-  CaseResultSource,
-  CaseStats,
   CaseStatus,
   CaseStep,
-  CaseStepResult,
+  StepPomCall,
   CaseType,
   Priority,
   RefreshSummary,
-  ResultStatus,
   Severity,
   StepsType,
 } from "../../electron/services/cases/model";
@@ -206,7 +202,6 @@ export {
   CASE_STATUSES,
   CASE_TYPES,
   PRIORITIES,
-  RESULT_STATUSES,
   SEVERITIES,
 } from "../../electron/services/cases/model";
 
@@ -215,7 +210,7 @@ export interface StepCoverage {
   ref: string;
   column?: string;
   flow?: string;
-  steps: { index: number; action: string; pom?: string; backed: boolean }[];
+  steps: { index: number; action: string; poms: string[]; backed: boolean }[];
   /** Page objects the flow calls that no step accounts for. */
   extra: string[];
 }

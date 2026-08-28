@@ -1,4 +1,5 @@
-import { autocompletion, type CompletionSource } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, type CompletionSource } from "@codemirror/autocomplete";
+import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
 import { linter, type Diagnostic } from "@codemirror/lint";
 import { yaml } from "@codemirror/lang-yaml";
@@ -275,6 +276,10 @@ export function Editor({
           return true;
         },
       },
+      // CodeMirror leaves Tab unbound so it tabs out of the editor; bind it to
+      // indent (after completions) since this is a full-page code editor.
+      { key: "Tab", run: acceptCompletion },
+      indentWithTab,
     ]);
     const state = EditorState.create({
       doc: value,

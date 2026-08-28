@@ -52,9 +52,22 @@ export async function linksByCase(): Promise<Map<string, FlowLink[]>> {
  * Point a flow at the cases it verifies, or at none. Editing the flow is the
  * whole operation — there is nowhere else the link is recorded.
  */
-export async function linkFlow(flowPath: string, refs: string[]): Promise<FlowLink> {
-  const content = await readFlow(flowPath);
-  const next = withTestCaseIds(content, refs);
+export async function linkFlow(
+  flowPath: string,
+  refs: string[],
+  priority?: string,
+): Promise<FlowLink> {
+  let content: string;
+  try {
+    content = await readFlow(flowPath);
+  } catch (error) {
+    // A flow that isn't there declares nothing, so unlinking it is already done.
+    const missing = (error as NodeJS.ErrnoException)?.code === "ENOENT";
+    if (missing && !refs.length) return { path: flowPath, refs: [], tags: [] };
+    if (missing) throw new Error(`No flow at ${flowPath} to link — it may have been deleted.`);
+    throw error;
+  }
+  const next = withTestCaseIds(content, refs, priority);
   if (next !== content) await writeFlow(flowPath, next);
   return { path: flowPath, refs: testCaseIdsOf(next), tags: tagsOf(next) };
 }

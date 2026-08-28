@@ -60,3 +60,24 @@ flowProperties.test("a flow with no header at all gets one", () => {
   assertEqual(testCaseIdsOf(linked), ["MC-12"], "the link landed");
   assert(linked.includes("- launchApp"), "the body survived");
 });
+
+flowProperties.test("linking writes the case's priority beside the ref", () => {
+  const source = `appId: com.example\n---\n- launchApp\n`;
+  const linked = withTestCaseIds(source, ["MC-12"], "High");
+  assertEqual(
+    propertiesOf(linked),
+    { testCaseId: "MC-12", priority: "High" },
+    "both properties land",
+  );
+});
+
+flowProperties.test("a re-link updates the priority a case has since changed", () => {
+  assertEqual(propertiesOf(withTestCaseIds(FLOW, ["MC-12"], "Low")).priority, "Low", "rewritten");
+  assertEqual(propertiesOf(withTestCaseIds(FLOW, ["MC-12"])).priority, "High", "left alone when unknown");
+});
+
+flowProperties.test("a headerless flow gets a priority too", () => {
+  const linked = withTestCaseIds("- launchApp\n", ["MC-12"], "Medium");
+  assertEqual(propertiesOf(linked), { testCaseId: "MC-12", priority: "Medium" }, "both");
+  assert(linked.endsWith("---\n- launchApp\n"), "the body is untouched");
+});

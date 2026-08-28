@@ -1,5 +1,7 @@
+import { commented } from "../electron/services/cases/caseComments";
 import { codeOf } from "../electron/services/cases/model";
-import { toCase } from "../electron/services/cases/qaseMapping";
+import { normalizeStepPoms } from "../electron/services/cases/stepPoms";
+import { decodeEntities, fieldDef, toCase } from "../electron/services/cases/qaseMapping";
 import type { QaseCase } from "../electron/services/cases/qaseClient";
 import { assertEqual, TestSuite } from "./runner";
 
@@ -7,7 +9,15 @@ export const qase = new TestSuite("Qase cases");
 
 const PROJECT = "DEMO";
 const SUITES = new Map([[4, "Authentication"]]);
-const FIELDS = new Map([[7, "Platform"]]);
+const FIELDS = new Map([[7, { title: "Platform", options: new Map() }]]);
+
+/** A selectbox as `/custom_field` returns it: values are ids into `value`. */
+const SELECT = new Map([
+  [7, fieldDef({ id: 7, title: "Media Source", type: "selectbox", value: [
+    { id: 2, title: "Plex TV" },
+    { id: 4, title: "Live TV" },
+  ] })],
+]);
 
 /** One recorded Qase case entity, with the integer enums the API really sends. */
 function entity(overrides: Partial<QaseCase> = {}): QaseCase {
@@ -56,6 +66,24 @@ qase.test("decodes a Qase entity, integer enums and all", () => {
   assertEqual(c.steps?.[1].data, "user@example.com", "step data");
 });
 
+qase.test("a select field's option ids are resolved to their titles", () => {
+  const c = toCase(entity({ custom_fields: [{ id: 7, value: "2,4" }] }), PROJECT, SUITES, SELECT);
+  assertEqual(c.custom_fields, { "Media Source": ["Plex TV", "Live TV"] }, "titles, not ids");
+});
+
+qase.test("options Qase sent JSON-encoded read the same", () => {
+  const fields = new Map([
+    [7, fieldDef({ id: 7, title: "Media Source", value: '[{"id":2,"title":"Plex TV"}]' })],
+  ]);
+  const c = toCase(entity({ custom_fields: [{ id: 7, value: "[\"2\"]" }] }), PROJECT, SUITES, fields);
+  assertEqual(c.custom_fields, { "Media Source": ["Plex TV"] }, "decoded either way");
+});
+
+qase.test("a value with no matching option is kept as-is", () => {
+  const c = toCase(entity({ custom_fields: [{ id: 7, value: "99" }] }), PROJECT, SUITES, SELECT);
+  assertEqual(c.custom_fields, { "Media Source": ["99"] }, "better a raw value than none");
+});
+
 qase.test("an unknown enum value is left off rather than guessed", () => {
   const c = toCase(entity({ severity: 99, priority: 99 }), PROJECT, SUITES, FIELDS);
   assertEqual(c.severity, undefined, "no severity");
@@ -78,4 +106,50 @@ qase.test("a ref says which Qase project it belongs to", () => {
   assertEqual(codeOf("MC-12"), "MC", "mobile");
   assertEqual(codeOf("tv-4"), "TV", "case-insensitive");
   assertEqual(codeOf("not a ref"), null, "nothing to read");
+});
+
+qase.test("multi-line case prose stays commented on every line", () => {
+  const lines = commented("Expected: ", "One activity is displayed.\nNote: the backend may lag.");
+  assertEqual(lines, [
+    "# Expected: One activity is displayed.",
+    "#           Note: the backend may lag.",
+  ], "the continuation is commented and aligned");
+});
+
+qase.test("a blank line inside case prose is a bare comment marker", () => {
+  assertEqual(commented("", "first\n\nsecond"), ["# first", "#", "# second"], "no stray blank");
+});
+
+qase.test("HTML-escaped case prose is decoded", () => {
+  const c = toCase(
+    entity({
+      title: "Go to a show&#039;s details page",
+      steps: [{ hash: "s1", action: "Tap &quot;Play&quot;", expected_result: "1 &lt; 2 &amp; done" }],
+    }),
+    PROJECT,
+    SUITES,
+    FIELDS,
+  );
+  assertEqual(c.title, "Go to a show's details page", "numeric entity");
+  assertEqual(c.steps?.[0].action, 'Tap "Play"', "named entity");
+  assertEqual(c.steps?.[0].expected_result, "1 < 2 & done", "several in one string");
+});
+
+qase.test("a decoded ampersand is not decoded twice", () => {
+  assertEqual(decodeEntities("&amp;#039;"), "&#039;", "one pass only");
+  assertEqual(decodeEntities("Tom &amp; Jerry &unknown; 100%"), "Tom & Jerry &unknown; 100%", "unknown left alone");
+});
+
+qase.test("a step's page objects read back from either stored shape", () => {
+  assertEqual(
+    normalizeStepPoms({ pom: "pages/details/open.yaml", env: { title: "Andor" } }),
+    [{ pom: "pages/details/open.yaml", env: { title: "Andor" } }],
+    "the single assignment that predates the list",
+  );
+  assertEqual(
+    normalizeStepPoms([{ pom: "pages/a.yaml" }, { pom: "pages/b.yaml" }]),
+    [{ pom: "pages/a.yaml" }, { pom: "pages/b.yaml" }],
+    "several, in order",
+  );
+  assertEqual(normalizeStepPoms({}), [], "an assignment with no page object is nothing");
 });

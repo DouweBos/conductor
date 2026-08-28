@@ -1,11 +1,10 @@
 // Typed IPC wrappers — the ONLY place the renderer calls window.conductorStudio.
 // Components import these named functions; they never touch the bridge directly.
 import type {
-  CaseResult,
-  CaseStats,
   PlanRun,
   PlanRunEntry,
   StepCoverage,
+  StepPomCall,
   QaseProject,
   RefreshSummary,
   FlowLink,
@@ -148,8 +147,6 @@ export const stopLogs = (deviceId: string) => invoke<void>("logs_stop", { device
 export const listCases = () => invoke<Case[]>("cases_list");
 export const casesMatrix = (field?: string) => invoke<CaseMatrix>("cases_matrix", { field });
 export const casesMatrixFields = () => invoke<string[]>("cases_matrix_fields");
-export const listCaseResults = () => invoke<CaseResult[]>("cases_results");
-export const caseStats = (ref: string) => invoke<CaseStats>("case_stats", { ref });
 
 // ── Qase projects (one token per project code) ──
 export const qaseProjects = () =>
@@ -175,15 +172,9 @@ export const refreshCases = (code?: string) =>
 export const caseLinks = () => invoke<FlowLink[]>("case_links");
 export const linkCaseFlow = (flow: string, refs: string[]) =>
   invoke<FlowLink>("case_link_flow", { flow, refs });
-export const setCaseStepPom = (
-  ref: string,
-  stepKey: string,
-  pom?: string,
-  env?: Record<string, string>,
-) => invoke<void>("case_step_pom_set", { ref, stepKey, pom, env });
+export const setCaseStepPoms = (ref: string, stepKey: string, poms: StepPomCall[]) =>
+  invoke<void>("case_step_poms_set", { ref, stepKey, poms });
 
-export const recordCaseResult = (result: Omit<CaseResult, "id" | "at">) =>
-  invoke<CaseResult>("case_record_result", { result });
 export const listPlans = () => invoke<TestPlan[]>("plans_list");
 export const savePlan = (plan: TestPlanInput) => invoke<TestPlan[]>("plan_save", { plan });
 export const deletePlan = (id: string) => invoke<TestPlan[]>("plan_delete", { id });

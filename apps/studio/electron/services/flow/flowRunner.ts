@@ -24,8 +24,6 @@ import { detectConductor, detectMaestro, resolveConductor } from "../maestro/mae
 import { deviceMatches, wantedPlatforms } from "../../../app/lib/platforms";
 import { tagsOf } from "./suite";
 import { endReservation, reserveDevice } from "../device/reservations";
-import { listCases } from "../cases/casesService";
-import { recordRunResult } from "../cases/resultsService";
 import { artifactDirFor, recordRun } from "./history";
 
 const processes = new Map<string, ChildProcess>();
@@ -518,11 +516,6 @@ function finish(runId: string, status: FlowRun["status"], spec: LaunchArgs): voi
       repeatGroup: spec.repeatGroup,
     };
     recordRun(finished);
-    // Any flow run counts as an execution of the cases that claim that flow,
-    // wherever in Studio it was started from.
-    void listCases()
-      .then((cases) => recordRunResult(finished, cases))
-      .catch(() => {});
     broadcastToRenderers("runs:updated", runId);
   }
   settle(runId, status);

@@ -11,6 +11,7 @@ import { parseDocument, isMap, type Document } from "yaml";
 
 const SEPARATOR = /^---[ \t]*$/m;
 const TEST_CASE_ID = "testCaseId";
+const PRIORITY = "priority";
 
 /**
  * Header and body of a flow, split on the `---` that ends the header. A flow
@@ -51,19 +52,24 @@ export function parseIds(value: string | undefined): string[] {
 }
 
 /**
- * Set (or clear) a flow's `testCaseId`, leaving everything else — comments,
- * key order, the body — exactly as it was.
+ * Set (or clear) a flow's `testCaseId`, and the case's `priority` alongside it,
+ * leaving everything else — comments, key order, the body — exactly as it was.
+ *
+ * Unlinking clears only `testCaseId`: a priority someone set by hand is theirs,
+ * not ours to delete.
  */
-export function withTestCaseIds(content: string, refs: string[]): string {
+export function withTestCaseIds(content: string, refs: string[], priority?: string): string {
   const { header, body } = split(content);
   const doc = parseDocument(header);
   const value = [...new Set(refs.map((r) => r.trim()).filter(Boolean))].join(", ");
 
   if (!isMap(doc.contents)) {
     // A flow with no header at all: give it one rather than refusing the link.
-    return value ? `properties:\n  ${TEST_CASE_ID}: "${value}"\n---${body}` : content;
+    if (!value) return content;
+    const lines = [`  ${TEST_CASE_ID}: "${value}"`];
+    if (priority) lines.push(`  ${PRIORITY}: "${priority}"`);
+    return `properties:\n${lines.join("\n")}\n---${body}`;
   }
-
 
   const properties = doc.get("properties");
   if (!value) {
@@ -74,8 +80,15 @@ export function withTestCaseIds(content: string, refs: string[]): string {
     return join(doc, body);
   }
 
-  if (isMap(properties)) properties.set(TEST_CASE_ID, value);
-  else doc.set("properties", { [TEST_CASE_ID]: value });
+  if (isMap(properties)) {
+    properties.set(TEST_CASE_ID, value);
+    if (priority) properties.set(PRIORITY, priority);
+  } else {
+    doc.set("properties", {
+      [TEST_CASE_ID]: value,
+      ...(priority ? { [PRIORITY]: priority } : {}),
+    });
+  }
   return join(doc, body);
 }
 

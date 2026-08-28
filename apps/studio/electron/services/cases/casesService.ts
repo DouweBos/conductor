@@ -5,9 +5,8 @@ import {
   saveQaseProject,
 } from "../settings/settingsService";
 import { cached, codeOf, forget, refresh } from "./caseCache";
-import { linksByCase } from "./coverage";
+import { linkFlow, linksByCase, type FlowLink } from "./coverage";
 import type { Case, CaseMatrix, QaseProject, RefreshSummary } from "./model";
-import { decorate, listResults } from "./resultsService";
 import { stepPoms } from "./stepPoms";
 
 /**
@@ -37,8 +36,8 @@ export function saveProject(project: QaseProject): QaseProject[] {
 }
 
 /**
- * Every case Studio knows about, with the flows that cover it and the results
- * recorded against it. Reads the cache — `refreshCases` is what talks to Qase.
+ * Every case Studio knows about, with the flows that cover it. Reads the cache
+ * — `refreshCases` is what talks to Qase.
  */
 export async function listCases(): Promise<Case[]> {
   const byCase = await linksByCase();
@@ -51,18 +50,17 @@ export async function listCases(): Promise<Case[]> {
       const assigned = poms[testCase.ref];
       cases.push({
         ...testCase,
-        // A step's page object is Studio's, not Qase's, so it is merged in
-        // rather than stored on the case.
+        // A step's page objects are Studio's, not Qase's, so they are merged
+        // in rather than stored on the case.
         steps: testCase.steps?.map((step, index) => ({
           ...step,
-          ...(assigned?.[step.hash ?? String(index)] ?? {}),
+          poms: assigned?.[step.hash ?? String(index)] ?? [],
         })),
         flows: (byCase.get(testCase.ref) ?? []).map(({ path, tags }) => ({ path, tags })),
       });
     }
   }
 
-  decorate(cases, await listResults());
   return cases.sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }));
 }
 
@@ -95,6 +93,23 @@ export function flowFor(testCase: Case, column?: string): string | undefined {
   if (!column) return flows[0]?.path;
   const tagged = flows.find((f) => f.tags.some((t) => t.replace(/-draft$/, "") === column));
   return tagged?.path ?? (flows.length === 1 ? flows[0].path : undefined);
+}
+
+/**
+ * Maestro's spelling of a Qase priority, for the `priority:` property that
+ * rides along with `testCaseId`. A case with none says nothing.
+ */
+export function maestroPriority(testCase: Case | undefined): string | undefined {
+  const priority = testCase?.priority;
+  if (!priority || priority === "undefined") return undefined;
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
+/** Point a flow at the cases it verifies, carrying their priority into it. */
+export async function linkCases(flowPath: string, refs: string[]): Promise<FlowLink> {
+  const cases = await listCases();
+  const first = cases.find((c) => refs.includes(c.ref));
+  return linkFlow(flowPath, refs, maestroPriority(first));
 }
 
 // ── Fetching ────────────────────────────────────────────────────────────────

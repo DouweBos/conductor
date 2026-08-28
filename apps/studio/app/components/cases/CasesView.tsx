@@ -18,8 +18,8 @@ import {
   refreshCases,
   runFlow,
 } from "../../lib/ipc";
-import { useRoute } from "../../lib/router";
-import type { Case, CaseMatrix, CaseResult, QaseProject } from "../../lib/types";
+import { closeCase, selectCase, useRoute } from "../../lib/router";
+import type { Case, CaseMatrix, QaseProject } from "../../lib/types";
 import { devicesFor } from "../../lib/platforms";
 import { refreshDevices, useDevices, useSelectedDeviceId } from "../../stores/deviceStore";
 import { useProject } from "../../stores/projectStore";
@@ -30,17 +30,10 @@ import { CaseDeviceStream } from "./CaseDeviceStream";
 import { CaseRunStatus } from "./CaseRunStatus";
 import { DatasourcePanel } from "./DatasourcePanel";
 import { PlansPanel } from "./PlansPanel";
-import { RunWizard } from "./RunWizard";
 import styles from "./CasesView.module.css";
 
 /** Columns come from a Qase custom field; `suite` is the always-present fallback. */
 const SUITE_FIELD = "suite";
-
-const SOURCE_LABEL: Record<CaseResult["source"], string> = {
-  run: "flow",
-  manual: "by hand",
-  report: "agent",
-};
 
 /** A case's values for the field the matrix is keyed on. */
 function valuesOf(c: Case, field: string): string[] {
@@ -63,8 +56,7 @@ function flowFor(c: Case, column?: string): string | undefined {
  * for looking at on its own: left-aligned, one line, fixed width, and the state
  * carried by a dot the eye can follow.
  *
- *   solid dot   — a verdict; the word takes the verdict's colour
- *   hollow ring — automated, nothing has run it yet
+ *   hollow ring — automated by a flow
  *   no dot      — no automation here, so a person has to walk it
  *   empty cell  — the case doesn't apply to this platform
  *
@@ -81,36 +73,23 @@ function CaseCell({
   onRun: (flow: string, platform?: string, projectId?: string) => void;
 }) {
   const flow = flowFor(c, column);
-  // Newest result covering this column: scoped to it, or case-level (a manual
-  // verdict, or a case implemented by a single flow).
-  const result = (c.results ?? []).find((r) => r.column === column || !r.column);
 
-  let state: "verdict" | "pending" | "manual";
+  let state: "pending" | "manual";
   let label: string;
-  let tone: string;
   let title: string;
 
-  if (result) {
-    state = "verdict";
-    label = result.status;
-    tone = result.status;
-    title = `${result.status} — ${SOURCE_LABEL[result.source]}, ${new Date(result.at).toLocaleString()}${
-      result.comment ? `\n${result.comment}` : ""
-    }`;
-  } else if (flow) {
+  if (flow) {
     state = "pending";
-    label = "not run";
-    tone = "none";
-    title = `${flow} — never run here`;
+    label = "automated";
+    title = flow;
   } else {
     state = "manual";
     label = "manual";
-    tone = "none";
     title = "No flow here — verify by hand, or write one from the case's steps";
   }
 
   return (
-    <span className={styles.cell} data-state={state} data-tone={tone} title={title}>
+    <span className={styles.cell} data-state={state} title={title}>
       {flow ? (
         // The status dot is the button: hovering the row turns it into a play
         // triangle rather than growing a second control beside it.
@@ -142,8 +121,7 @@ export function CasesView() {
   const [notice, setNotice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pane, setPane] = useState<"case" | "plans" | "wizard" | "datasource">("case");
+  const [pane, setPane] = useState<"case" | "plans" | "datasource">("case");
   const [projects, setProjects] = useState<QaseProject[]>([]);
   const [syncing, setSyncing] = useState(false);
   // Survives leaving the screen: a run you started is still going, and coming
@@ -208,9 +186,6 @@ export function CasesView() {
 
   useEffect(refresh, [refresh]);
   useEffect(refreshSource, [refreshSource]);
-  // Results land from anywhere — the ▶ button, a plan, a flow run in the
-  // workbench, the agent over MCP — so the matrix listens rather than polls.
-  useIpcEvent<unknown>("cases:result-recorded", refresh);
   useIpcEvent<unknown>("plans:run-updated", refresh);
   // A fetch from the agent's `sync_test_cases`, or a flow linking itself to a
   // case, lands here too.
@@ -314,6 +289,9 @@ export function CasesView() {
     });
   }, [cases, filters, query]);
 
+  // `#/cases/<id>` is what's open: the URL survives leaving the screen, and it
+  // is how a report links back to the case it verified.
+  const selectedId = useRoute().caseId ?? null;
   const selected = useMemo(() => cases.find((c) => c.ref === selectedId) ?? null, [cases, selectedId]);
 
   const toRow = useCallback(
@@ -362,17 +340,11 @@ export function CasesView() {
     return names.map((name) => {
       const scoped = buckets.get(name)!;
       const automated = scoped.filter((c) => c.flows?.length).length;
-      const failing = scoped.filter((c) => c.lastResult?.status === "failed").length;
       return {
         id: name,
         label: name,
         collapsed: collapsed.has(name),
-        meta: [
-          `${automated}/${scoped.length} automated`,
-          failing ? `${failing} failing` : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
+        meta: `${automated}/${scoped.length} automated`,
         rows: [...scoped]
           .sort((a, b) => (a.suite ?? "").localeCompare(b.suite ?? "") || a.id - b.id)
           .map((c) => toRow(c, matrix.columns)),
@@ -425,18 +397,10 @@ export function CasesView() {
     [matrix, cases],
   );
 
-  const executed = cases.filter((c) => c.lastResult).length;
-
   const openCase = (id: string) => {
-    setSelectedId(id);
+    selectCase(id);
     setPane("case");
   };
-
-  // `#/cases/<id>` — how a report links back to the case it verified.
-  const routeCaseId = useRoute().caseId;
-  useEffect(() => {
-    if (routeCaseId) openCase(routeCaseId);
-  }, [routeCaseId]);
 
   return (
     <div className={styles.view}>
@@ -444,16 +408,12 @@ export function CasesView() {
         <div>
           <h1 className={styles.title}>Test cases</h1>
           <p className={styles.subtitle}>
-            The spec, what implements it, and every time it was verified — by a flow, a person
-            or the agent.
+            The spec, and what implements it.
           </p>
         </div>
         <div className={styles.controls}>
           <Button size="sm" variant="ghost" icon="matrix" onClick={() => setPane("plans")}>
             Plans
-          </Button>
-          <Button size="sm" variant="secondary" icon="play" onClick={() => setPane("wizard")}>
-            Run manually
           </Button>
           <Button
             size="sm"
@@ -518,7 +478,6 @@ export function CasesView() {
         <span className={styles.count}>
           {visible.length === cases.length ? `${cases.length} cases` : `${visible.length} of ${cases.length}`}
         </span>
-        <StatusPill tone={executed ? "info" : "neutral"}>{executed}/{cases.length} ever executed</StatusPill>
         {coverage.map(({ col, covered, total }) => (
           <StatusPill key={col} tone={covered ? "info" : "neutral"}>
             {col}: {covered}/{total} automated
@@ -582,14 +541,7 @@ export function CasesView() {
           )}
         </div>
 
-        {pane === "wizard" ? (
-          <RunWizard
-            cases={visible}
-            onClose={() => setPane("case")}
-            onRecorded={refresh}
-            onRunStarted={() => setShowDevice(true)}
-          />
-        ) : pane === "plans" ? (
+        {pane === "plans" ? (
           <PlansPanel
             currentFilter={Object.fromEntries(
               Object.entries(filters)
@@ -610,7 +562,7 @@ export function CasesView() {
         ) : selected ? (
           <CaseDetail
             testCase={selected}
-            onClose={() => setSelectedId(null)}
+            onClose={closeCase}
             onRun={run}
             onChanged={refresh}
           />
