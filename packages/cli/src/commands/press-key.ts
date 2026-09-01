@@ -159,6 +159,10 @@ export const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
   'Remote Info': 165,
   'Remote Instant Replay': 273, // KEYCODE_MEDIA_SKIP_BACKWARD
   'Remote Search': 84,
+  // Paging keys — the fast way through a long list. Whether a given app honours
+  // them varies, the same as on tvOS.
+  'Remote Page Up': 92,
+  'Remote Page Down': 93,
 };
 
 export type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver;

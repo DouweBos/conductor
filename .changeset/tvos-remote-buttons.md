@@ -11,6 +11,10 @@ which is the fastest way through a long list on an Apple TV. The driver
 reports a precondition error when the device's OS predates a button rather
 than pressing the wrong one.
 
+`Remote Page Up` / `Remote Page Down` are also mapped on Android TV
+(`KEYCODE_PAGE_UP` / `KEYCODE_PAGE_DOWN`), so paging through a long list is the
+same command on both TV platforms.
+
 The streaming-input WebSocket accepts the same buttons, and its `hello` frame
 now advertises the tvOS remote buttons instead of just `home`/`lock`, so
 clients can render the right controls up front.
