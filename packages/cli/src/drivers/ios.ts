@@ -47,6 +47,28 @@ export interface IOSDeviceInfo {
   heightPixels: number;
 }
 
+/**
+ * Buttons the XCTest driver's /pressButton accepts. Everything past `playPause`
+ * is tvOS-only and needs a newer OS than the base remote buttons — the driver
+ * reports a precondition error when the device is too old.
+ */
+export type IOSButton =
+  | 'home'
+  | 'lock'
+  | 'up'
+  | 'down'
+  | 'left'
+  | 'right'
+  | 'select'
+  | 'menu'
+  | 'playPause'
+  | 'pageUp'
+  | 'pageDown'
+  | 'guide'
+  | 'tvProvider'
+  | 'oneTwoThree'
+  | 'fourColors';
+
 /** Result of a direct single-element query against the XCTest runner. */
 export interface IOSQueryElementResult {
   found: boolean;
@@ -273,10 +295,7 @@ export class IOSDriver {
     this.invalidateHierarchyCache();
   }
 
-  async pressButton(
-    button: 'home' | 'lock' | 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause',
-    duration?: number
-  ): Promise<void> {
+  async pressButton(button: IOSButton, duration?: number): Promise<void> {
     await this.post('pressButton', {
       button,
       ...(duration !== undefined ? { duration } : {}),

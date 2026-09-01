@@ -7,7 +7,7 @@
  * conductor takes ownership of coord→device and key-name→keycode, per the
  * migration design.
  */
-import type { IOSDriver } from '../drivers/ios.js';
+import type { IOSDriver, IOSButton } from '../drivers/ios.js';
 import type { AndroidDriver } from '../drivers/android.js';
 import type { InputCapabilities, InputPlatform, LiveDragMode } from './input-protocol.js';
 
@@ -50,10 +50,7 @@ const IOS_KEY: Record<string, 'delete' | 'return' | 'enter' | 'tab' | 'space'> =
 };
 
 // button/key-name → XCUITest pressButton value
-const IOS_BUTTON: Record<
-  string,
-  'home' | 'lock' | 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause'
-> = {
+const IOS_BUTTON: Record<string, IOSButton> = {
   home: 'home',
   Home: 'home',
   lock: 'lock',
@@ -72,6 +69,15 @@ const IOS_BUTTON: Record<
   ArrowDown: 'down',
   ArrowLeft: 'left',
   ArrowRight: 'right',
+  // Newer remote buttons; the driver rejects these on older tvOS.
+  pageUp: 'pageUp',
+  PageUp: 'pageUp',
+  pageDown: 'pageDown',
+  PageDown: 'pageDown',
+  guide: 'guide',
+  tvProvider: 'tvProvider',
+  oneTwoThree: 'oneTwoThree',
+  fourColors: 'fourColors',
 };
 
 export function iosBackend(driver: IOSDriver): InputBackend {
@@ -92,7 +98,23 @@ export function iosBackend(driver: IOSDriver): InputBackend {
         touch: true,
         drag: true,
         multitouch: true,
-        buttons: ['home', 'lock'],
+        // Advertise what this platform actually accepts so clients can hide
+        // controls rather than discover failures at press time.
+        buttons: tvos
+          ? [
+              'home',
+              'menu',
+              'select',
+              'up',
+              'down',
+              'left',
+              'right',
+              'playPause',
+              'pageUp',
+              'pageDown',
+              'guide',
+            ]
+          : ['home', 'lock'],
         keyboard: true,
         text: true,
         tvRemote: tvos,

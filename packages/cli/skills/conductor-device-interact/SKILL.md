@@ -41,7 +41,7 @@ conductor assert-visible "Dashboard"
 | `conductor copy-text-from <element>` | Print an element's text (and copy to the iOS clipboard) |
 | `conductor input-text <text>` | Type into the focused field |
 | `conductor erase-text [n]` | Erase n characters (default 50) |
-| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`) for tvOS / Android TV / vega / roku. `--long-press` / `--duration <seconds>` holds it; `--measure` times the response (see `conductor-profiler`) |
+| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`, and on tvOS `Remote Page Up/Down`, `Remote Guide`) for tvOS / Android TV / vega / roku. `--long-press` / `--duration <seconds>` holds it; `--measure` times the response (see `conductor-profiler`) |
 | `conductor hide-keyboard` | Dismiss the on-screen keyboard |
 | `conductor back` | Press back |
 | `conductor scroll [--direction down\|up\|left\|right]` | Scroll |
@@ -127,6 +127,15 @@ relaunch without the flag. (See `conductor-device-setup`.)
 
 - `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web|vega|roku>` scopes by platform.
 - Vega (Amazon Fire TV) is D-pad driven: navigate with `press-key "Remote Dpad …"`; coordinate `tap-on` also works. `open-link`, `set-location`, gestures, and clipboard are unsupported. See `conductor-device-setup`.
+- Apple TV (tvOS) is focus-driven and has **no touch surface automation**: XCTest
+  refuses remote swipe gestures ("Swipe events are only implemented for iOS,
+  visionOS, and watchOS"), so `swipe`/`scroll` are unavailable. Navigate with
+  `press-key "Remote Dpad Up/Down/Left/Right"` and `"Remote Dpad Center"`; for
+  long lists use `press-key "Remote Page Up"` / `"Remote Page Down"` (tvOS 14.3+),
+  which move a screenful at a time. `"Remote Guide"` (14.3+) and
+  `"Remote TV Provider"` / `"Remote One Two Three"` / `"Remote Four Colors"`
+  (18.1+) are also available. `--duration <seconds>` holds a button for
+  accelerated scrolling.
 - Roku is D-pad only — there is no touch. `tap-on <selector>` resolves the element but presses `Select`, which activates whatever currently holds **focus**, so navigate focus onto the target with `press-key "Remote Dpad …"` first and use `tap-on` to confirm. `scroll`/`swipe` become repeated D-pad presses in the direction the content moves. `open-link` needs an app id (it becomes a channel launch parameter). Only sideloaded dev-mode channels are inspectable. See `conductor-device-setup`.
 - Add `--json` for machine-readable output; failed assertions exit non-zero.
 - Run a per-session daemon for many commands (see `conductor-device-setup`).
