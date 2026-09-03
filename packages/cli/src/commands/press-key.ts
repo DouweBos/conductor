@@ -18,6 +18,7 @@ import { VegaDriver } from '../drivers/vega.js';
 import { VegaButton } from '../drivers/vega/input.js';
 import { RokuDriver } from '../drivers/roku.js';
 import { rokuEcpKey } from '../drivers/roku/key-mapping.js';
+import type { IOSButton } from '../drivers/ios.js';
 
 export const VALID_KEYS = [
   'Enter',
@@ -57,6 +58,12 @@ export const VALID_KEYS = [
   'Remote Info',
   'Remote Instant Replay',
   'Remote Search',
+  'Remote Page Up',
+  'Remote Page Down',
+  'Remote Guide',
+  'Remote TV Provider',
+  'Remote One Two Three',
+  'Remote Four Colors',
 ] as const;
 
 export type Key = (typeof VALID_KEYS)[number];
@@ -77,9 +84,9 @@ const IOS_BUTTON_MAP: Partial<Record<Key, 'home' | 'lock'>> = {
 };
 
 // tvOS remote: map key names to pressButton values
-const TVOS_REMOTE_BUTTONS: Partial<
-  Record<Key, 'up' | 'down' | 'left' | 'right' | 'select' | 'menu' | 'playPause'>
-> = {
+// Page Up/Down and Guide need tvOS 14.3; the last three need tvOS 18.1. The
+// driver reports a precondition error when the device's OS is older.
+export const TVOS_REMOTE_BUTTONS: Partial<Record<Key, IOSButton>> = {
   'Remote Dpad Up': 'up',
   'Remote Dpad Down': 'down',
   'Remote Dpad Left': 'left',
@@ -87,6 +94,12 @@ const TVOS_REMOTE_BUTTONS: Partial<
   'Remote Dpad Center': 'select',
   'Remote Menu': 'menu',
   'Remote Media Play Pause': 'playPause',
+  'Remote Page Up': 'pageUp',
+  'Remote Page Down': 'pageDown',
+  'Remote Guide': 'guide',
+  'Remote TV Provider': 'tvProvider',
+  'Remote One Two Three': 'oneTwoThree',
+  'Remote Four Colors': 'fourColors',
 };
 
 // vega (Amazon Fire TV) remote: map key names to VegaDriver button values.
@@ -146,6 +159,10 @@ export const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
   'Remote Info': 165,
   'Remote Instant Replay': 273, // KEYCODE_MEDIA_SKIP_BACKWARD
   'Remote Search': 84,
+  // Paging keys — the fast way through a long list. Whether a given app honours
+  // them varies, the same as on tvOS.
+  'Remote Page Up': 92,
+  'Remote Page Down': 93,
 };
 
 export type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver;

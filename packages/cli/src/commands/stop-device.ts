@@ -7,6 +7,7 @@ import { resolveAndroidTool } from '../android/sdk.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 import { stopDaemon } from '../daemon/client.js';
 import { discoverBootedDevices } from './list-devices.js';
+import { detectDeviceKind } from '../drivers/bootstrap.js';
 
 // ── iOS / tvOS ───────────────────────────────────────────────────────────────
 
@@ -61,7 +62,13 @@ export async function stopDevice(
       if (d.platform === 'roku' && !includeRoku) continue;
 
       try {
-        if (d.platform === 'ios' || d.platform === 'tvos') {
+        if (
+          (d.platform === 'ios' || d.platform === 'tvos') &&
+          (await detectDeviceKind(d.id)) === 'physical'
+        ) {
+          // Real hardware can't be shut down from here — just release our driver.
+          await stopDaemon(d.id);
+        } else if (d.platform === 'ios' || d.platform === 'tvos') {
           await shutdownSimulator(d.id);
         } else if (d.platform === 'android') {
           await killEmulator(d.id);
@@ -110,7 +117,13 @@ export async function stopDevice(
   }
 
   try {
-    if (match.platform === 'ios' || match.platform === 'tvos') {
+    if (
+      (match.platform === 'ios' || match.platform === 'tvos') &&
+      (await detectDeviceKind(match.id)) === 'physical'
+    ) {
+      // Real hardware can't be shut down from here — just release our driver.
+      await stopDaemon(match.id);
+    } else if (match.platform === 'ios' || match.platform === 'tvos') {
       await shutdownSimulator(match.id);
     } else if (match.platform === 'android') {
       await killEmulator(match.id);

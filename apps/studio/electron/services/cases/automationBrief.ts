@@ -61,9 +61,9 @@ function caseSection(c: Case, column?: string): string[] {
       const bits = [`${i + 1}. ${step.action}`];
       if (step.data) bits.push(`   data: ${step.data}`);
       if (step.expected_result) bits.push(`   expect: ${step.expected_result}`);
-      if (step.pom) {
-        const env = step.env ? ` with env ${JSON.stringify(step.env)}` : "";
-        bits.push(`   this step is \`${step.pom}\`${env} — use it`);
+      for (const { pom, env } of step.poms ?? []) {
+        const withEnv = env && Object.keys(env).length ? ` with env ${JSON.stringify(env)}` : "";
+        bits.push(`   this step calls \`${pom}\`${withEnv} — use it`);
       }
       lines.push(...bits);
     });
@@ -127,7 +127,7 @@ async function pomSection(c: Case): Promise<string[]> {
   const poms = catalog.entries.filter((e) => e.kind === "flow" && /^(pages|commands)\//.test(e.path));
   if (!poms.length) return [];
 
-  const named = new Set((c.steps ?? []).map((s) => s.pom).filter(Boolean) as string[]);
+  const named = new Set((c.steps ?? []).flatMap((s) => (s.poms ?? []).map((call) => call.pom)));
   const describe = (p: (typeof poms)[number]) =>
     `- \`${p.alias ?? p.path}\`${p.params.length ? ` (env: ${p.params.join(", ")})` : ""}`;
   const lines = ["", "## Page objects — compose these, don't re-derive selectors", ""];
@@ -164,7 +164,6 @@ function instructions(c: Case, column?: string): string[] {
     "2. Fill in the TODOs. Reuse page objects wherever one covers a step; write a new one under `pages/` if a step is worth reusing and none exists.",
     "3. Run it on the device until it passes twice in a row. Use `conductor run-flow <file> --device <id>` and read the failures rather than guessing.",
     "4. Keep the draft tag until it's green twice; only then promote it to the suite's real tag.",
-    `5. Finish with \`record_case_result\` for ${c.ref}${column ? ` (column "${column}")` : ""} so the matrix reflects reality.`,
     "",
     "Don't weaken an assertion to make a flow pass — if the app is wrong, say so and stop.",
   ];

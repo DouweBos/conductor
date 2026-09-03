@@ -8,7 +8,8 @@ import { getProjectInfo } from "../file/fileService";
 import { loadFlowCatalog } from "../flow/catalog";
 import { indexReferences } from "../flow/references";
 import { listTags } from "../flow/suite";
-import { flowFor, listCases } from "./casesService";
+import { commented } from "./caseComments";
+import { flowFor, listCases, maestroPriority } from "./casesService";
 
 /**
  * The seam between a human-readable case and the Maestro flow behind it.
@@ -84,7 +85,7 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
 
   const lines: string[] = [
     `# ${testCase.ref} — ${testCase.title}`,
-    ...(testCase.description ? [`#`, ...testCase.description.split("\n").map((l) => `# ${l}`)] : []),
+    ...(testCase.description?.trim() ? ["#", ...commented("", testCase.description)] : []),
     "#",
     "# Scaffolded from the test case. Every step below is one of its steps; a",
     "# TODO marks a step with no page object yet.",
@@ -93,36 +94,42 @@ export async function scaffoldFlow(options: ScaffoldOptions): Promise<{ flow: st
     // wherever this flow runs, Studio or not.
     "properties:",
     `  testCaseId: "${testCase.ref}"`,
+    // The case's own priority, so a report ranks the failure the way Qase does.
+    ...(maestroPriority(testCase) ? [`  priority: "${maestroPriority(testCase)}"`] : []),
   ];
   if (tags.length) lines.push("tags:", ...[...new Set(tags)].map((t) => `  - ${t}`));
   lines.push("---");
 
-  for (const pre of (testCase.preconditions ?? "").split("\n").filter(Boolean)) {
-    lines.push(`# Precondition: ${pre}`);
+  if (testCase.preconditions?.trim()) {
+    lines.push(...commented("Precondition: ", testCase.preconditions));
   }
 
   let todos = 0;
   testCase.steps.forEach((step, i) => {
-    lines.push("", `# Step ${i + 1}: ${step.action}`);
-    if (step.data) lines.push(`# Data: ${step.data}`);
-    if (step.expected_result) lines.push(`# Expected: ${step.expected_result}`);
-    if (!step.pom) {
+    lines.push("", ...commented(`Step ${i + 1}: `, step.action));
+    if (step.data) lines.push(...commented("Data: ", step.data));
+    if (step.expected_result) lines.push(...commented("Expected: ", step.expected_result));
+    if (!step.poms?.length) {
       todos += 1;
-      lines.push(`# TODO: no page object for this step — add one under pages/ and set`);
-      lines.push(`#       \`pom:\` on step ${i + 1} of ${testCase.ref}.`);
+      lines.push(`# TODO: no page object for this step — add one under pages/ and`);
+      lines.push(`#       assign it to step ${i + 1} of ${testCase.ref}.`);
       return;
     }
-    const call = callFor(byPath.get(step.pom), step.pom);
-    if (step.env && Object.keys(step.env).length) {
-      lines.push("- runFlow:", `    file: '${call}'`, "    env:");
-      for (const [key, value] of Object.entries(step.env)) lines.push(`      ${key}: ${value}`);
-    } else {
-      lines.push(`- runFlow: '${call}'`);
+    // A step often bundles several actions, so it can name several page
+    // objects; they run in the order they were assigned.
+    for (const { pom, env } of step.poms) {
+      const call = callFor(byPath.get(pom), pom);
+      if (env && Object.keys(env).length) {
+        lines.push("- runFlow:", `    file: '${call}'`, "    env:");
+        for (const [key, value] of Object.entries(env)) lines.push(`      ${key}: ${value}`);
+      } else {
+        lines.push(`- runFlow: '${call}'`);
+      }
     }
   });
 
-  for (const post of (testCase.postconditions ?? "").split("\n").filter(Boolean)) {
-    lines.push("", `# Postcondition: ${post}`);
+  if (testCase.postconditions?.trim()) {
+    lines.push("", ...commented("Postcondition: ", testCase.postconditions));
   }
 
   await mkdir(path.dirname(abs), { recursive: true });
@@ -141,13 +148,17 @@ export async function stepCoverage(ref: string, column?: string): Promise<StepCo
   const flow = flowFor(testCase, column);
   const reached = flow ? await reachableFrom(flow) : new Set<string>();
 
-  const steps = (testCase.steps ?? []).map((step, index) => ({
-    index,
-    action: step.action,
-    pom: step.pom,
-    backed: Boolean(step.pom && reached.has(step.pom)),
-  }));
-  const claimed = new Set(steps.map((s) => s.pom).filter(Boolean) as string[]);
+  const steps = (testCase.steps ?? []).map((step, index) => {
+    const poms = (step.poms ?? []).map((call) => call.pom);
+    return {
+      index,
+      action: step.action,
+      poms,
+      // Half a step in the flow is not a covered step.
+      backed: poms.length > 0 && poms.every((pom) => reached.has(pom)),
+    };
+  });
+  const claimed = new Set(steps.flatMap((s) => s.poms));
   return {
     ref,
     column,

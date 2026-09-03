@@ -7,7 +7,6 @@ import { pathToFileURL } from "node:url";
 import type { TestReport, TestRunLog, TestVerdict } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { appState } from "../../state";
-import { detachReport } from "../cases/resultsService";
 import { studioDir } from "../util/studioPaths";
 import { renderReportHtml } from "./reportHtml";
 import { renderReportMarkdown } from "./reportMarkdown";
@@ -247,8 +246,5 @@ async function readReport(dir: string): Promise<TestReport | null> {
 export async function deleteReport(id: string): Promise<void> {
   const dir = path.join(projectDir(), path.basename(id));
   await rm(dir, { recursive: true, force: true });
-  // The execution still happened, so the case result stays — but it must stop
-  // pointing at evidence that no longer exists.
-  await detachReport(path.basename(id)).catch(() => {});
   broadcastToRenderers("reports:updated", id);
 }

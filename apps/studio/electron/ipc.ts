@@ -8,11 +8,10 @@ import type {
   CaseMatrix,
   QaseProject,
   RefreshSummary,
-  CaseResult,
-  CaseStats,
   PlanRun,
   PlanRunEntry,
   StepCoverage,
+  StepPomCall,
   TestPlan,
   TestPlanInput,
   CaptureUiResult,
@@ -56,14 +55,15 @@ import {
 import {
   buildMatrix,
   forgetProject,
+  linkCases,
   listCases,
   matrixFields,
   referencedCodes,
   refreshCases,
 } from "./services/cases/casesService";
 import { listProjects, verifyProject, type QaseProject as QaseProjectSummary } from "./services/cases/qaseClient";
-import { flowLinks, linkFlow, type FlowLink } from "./services/cases/coverage";
-import { setStepPom } from "./services/cases/stepPoms";
+import { flowLinks, type FlowLink } from "./services/cases/coverage";
+import { setStepPoms } from "./services/cases/stepPoms";
 import {
   cancelPlanRun,
   deletePlan,
@@ -73,7 +73,6 @@ import {
   savePlan,
   startPlanRun,
 } from "./services/cases/plansService";
-import { listResults, recordResult, statsFor } from "./services/cases/resultsService";
 import { automationBrief } from "./services/cases/automationBrief";
 import {
   listStepPoms,
@@ -306,10 +305,6 @@ export function registerIpcHandlers(): void {
   handle<void, Case[]>("cases_list", () => listCases());
   handle<{ field?: string }, CaseMatrix>("cases_matrix", (a) => buildMatrix(a?.field));
   handle<void, string[]>("cases_matrix_fields", () => matrixFields());
-  handle<void, CaseResult[]>("cases_results", () => listResults());
-  handle<{ ref: string }, CaseStats>("case_stats", async (a) =>
-    statsFor(a.ref, await listResults()),
-  );
   handle<{ code?: string }, RefreshSummary[]>("cases_refresh", async (a) => {
     const summaries = await refreshCases(a?.code);
     broadcastToRenderers("cases:refreshed", summaries);
@@ -361,19 +356,15 @@ export function registerIpcHandlers(): void {
   // ── Coverage (the flows that declare a case) ──
   handle<void, FlowLink[]>("case_links", () => flowLinks());
   handle<{ flow: string; refs: string[] }, FlowLink>("case_link_flow", async (a) => {
-    const link = await linkFlow(a.flow, a.refs);
+    const link = await linkCases(a.flow, a.refs);
     broadcastToRenderers("cases:linked", link);
     return link;
   });
-  handle<{ ref: string; stepKey: string; pom?: string; env?: Record<string, string> }, void>(
-    "case_step_pom_set",
+  handle<{ ref: string; stepKey: string; poms: StepPomCall[] }, void>(
+    "case_step_poms_set",
     async (a) => {
-      await setStepPom(a.ref, a.stepKey, a.pom ? { pom: a.pom, env: a.env } : null);
+      await setStepPoms(a.ref, a.stepKey, a.poms ?? []);
     },
-  );
-
-  handle<{ result: Omit<CaseResult, "id" | "at"> }, CaseResult>("case_record_result", (a) =>
-    recordResult(a.result),
   );
   // ── Test plans ──
   handle<void, TestPlan[]>("plans_list", () => listPlans());

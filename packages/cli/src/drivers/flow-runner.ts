@@ -164,7 +164,16 @@ export function parseFlowString(content: string, extraEnv?: Record<string, strin
     } else if (doc && typeof doc === 'object') {
       // Single-document flow: either a header-only or treat as single command
       const keys = Object.keys(doc as object);
-      const headerKeys = new Set(['appId', 'url', 'env', 'tags', 'onFlowStart', 'onFlowComplete']);
+      const headerKeys = new Set([
+        'appId',
+        'url',
+        'name',
+        'env',
+        'tags',
+        'properties',
+        'onFlowStart',
+        'onFlowComplete',
+      ]);
       if (keys.every((k) => headerKeys.has(k))) {
         header = doc as Record<string, unknown>;
         rawCommands = [];

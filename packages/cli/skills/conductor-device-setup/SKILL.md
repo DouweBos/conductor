@@ -1,6 +1,6 @@
 ---
 name: conductor-device-setup
-description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, Vega (Amazon Fire TV) virtual devices, Roku devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD or a Roku device, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
+description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, physical iOS/tvOS devices, Vega (Amazon Fire TV) virtual devices, Roku devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD or a Roku device, driving a physical iPhone/iPad/Apple TV, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
 ---
 
 # Conductor — device & app setup
@@ -101,6 +101,33 @@ empty. A sideloaded channel's app id is `dev`. Screenshots need
 Unsupported on Roku: `install-app`/`uninstall-app` (sideload via the device's dev
 web server at `http://<device-ip>`), `list-apps`, `clear-state`, gestures,
 screen recording, clipboard, `set-location`, memory/CPU profiling, and device logs.
+
+### Physical iOS / tvOS devices
+
+Real iPhones, iPads, and Apple TVs work alongside simulators. They're discovered
+through `devicectl`, show up in `list-devices` with status `connected`, and are
+addressed by their CoreDevice identifier (`--device <uuid>`).
+
+Requirements:
+
+- The device is **paired** with this Mac and on the **same network** — conductor
+  reaches the driver over the LAN, not the host's loopback.
+- **Developer Mode** is enabled on the device.
+- A signing team: conductor builds and signs the XCTest driver locally on first
+  use (a few minutes; cached per team in `~/.conductor/<platform>-driver-device/`).
+  Set `CONDUCTOR_TEAM_ID=<team>` when the Mac has more than one development team
+  — conductor refuses to guess rather than sign with the wrong one.
+
+Everything driven through the XCTest driver behaves the same as on a simulator:
+`inspect`, `capture-ui`, `tap-on`, `press-key`, `swipe`, `launch-app`,
+`terminate-app`, `install-app`, `uninstall-app`, flows.
+
+Simulator-only — these fail with an explicit message on a physical device:
+`set-location`, `open-link`, clipboard read/write, `clear-keychain`, `add-media`,
+screen recording and the live video stream, and OS log collection (`conductor
+logs` still gets **Metro** logs, which is the useful source for React Native).
+`clear-state` uninstalls on device without reinstalling — reinstall with
+`install-app` afterwards.
 
 ## App lifecycle
 

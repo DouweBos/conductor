@@ -36,6 +36,24 @@ struct PressButtonHandler: HTTPHandler {
             remoteButton = .menu
         case .playPause:
             remoteButton = .playPause
+        case .pageUp, .pageDown, .guide:
+            guard #available(tvOS 14.3, *) else {
+                return unavailable(requestBody.button, since: "tvOS 14.3")
+            }
+            switch requestBody.button {
+            case .pageUp: remoteButton = .pageUp
+            case .pageDown: remoteButton = .pageDown
+            default: remoteButton = .guide
+            }
+        case .tvProvider, .oneTwoThree, .fourColors:
+            guard #available(tvOS 18.1, *) else {
+                return unavailable(requestBody.button, since: "tvOS 18.1")
+            }
+            switch requestBody.button {
+            case .tvProvider: remoteButton = .tvProvider
+            case .oneTwoThree: remoteButton = .oneTwoThree
+            default: remoteButton = .fourColors
+            }
         }
         if let duration = requestBody.duration, duration > 0 {
             XCUIRemote.shared.press(remoteButton, forDuration: duration)
@@ -52,4 +70,13 @@ struct PressButtonHandler: HTTPHandler {
         #endif
         return HTTPResponse(statusCode: .ok)
     }
+
+    #if os(tvOS)
+    private func unavailable(_ button: PressButtonRequest.Button, since: String) -> HTTPResponse {
+        AppError(
+            type: .precondition,
+            message: "Button \(button.rawValue) needs \(since) or newer"
+        ).httpResponse
+    }
+    #endif
 }

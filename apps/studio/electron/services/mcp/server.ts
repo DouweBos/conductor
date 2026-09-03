@@ -13,11 +13,9 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { z } from "zod";
 
-import type { AppFingerprint, ResultStatus, SceneNode, TestVerdict } from "../../../app/lib/types";
-import { listCases, projects as qaseProjects, refreshCases } from "../cases/casesService";
-import { linkFlow } from "../cases/coverage";
+import type { AppFingerprint, SceneNode } from "../../../app/lib/types";
+import { linkCases, listCases, projects as qaseProjects, refreshCases } from "../cases/casesService";
 import { scaffoldFlow } from "../cases/pomBridge";
-import { recordResult } from "../cases/resultsService";
 import { createReportDir, writeReport } from "../report/reportService";
 import { recordExpectation, startSession } from "../report/testSession";
 import { findPath, type SceneGraphIndex } from "../scenegraph/graph";
@@ -130,13 +128,6 @@ async function resolveApp(
     }),
   };
 }
-
-/** An agentic verdict, in the vocabulary the results log speaks. */
-const REPORT_VERDICT: Record<TestVerdict, ResultStatus> = {
-  PASS: "passed",
-  FAIL: "failed",
-  BLOCKED: "blocked",
-};
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({ name: "conductor-studio", version: "1.0.0" });
@@ -301,7 +292,7 @@ export function createMcpServer(): McpServer {
       caseId: z
         .string()
         .optional()
-        .describe("Test case this run verified (from list_test_cases), so the result lands on the matrix."),
+        .describe("Test case this run verified (from list_test_cases), so the report links back to it."),
       runLog: z
         .object({
           title: z.string().describe("Short name for the test."),
@@ -358,23 +349,6 @@ export function createMcpServer(): McpServer {
     },
     async ({ dir, runLog, caseId }) => {
       const report = await writeReport(runLog, dir, caseId);
-      // An agentic verification of a case IS an execution of it — file it, so a
-      // case with no flow still gets a result on the matrix. The verdict is the
-      // reconciled one: a PASS over a failed check was already corrected.
-      if (caseId) {
-        const hit = (await listCases()).find((c) => c.ref === caseId || String(c.id) === caseId);
-        if (hit) {
-          await recordResult({
-            case_id: hit.id,
-            ref: hit.ref,
-            status: REPORT_VERDICT[report.verdict] ?? "blocked",
-            source: "report",
-            report_id: report.id,
-            comment: runLog.summary,
-            author: "agent",
-          }).catch(() => null);
-        }
-      }
       return text({
         ...report,
         // Times, platform and device come from Studio, not from the run-log —
@@ -388,7 +362,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "list_test_cases",
-    "List this project's test cases: id, title, suite, custom fields, tags, the flows that declare each (if any) and its last recorded result. Use this to find work — a case no flow declares is unautomated — or to check what a case expects before testing it.",
+    "List this project's test cases: id, title, suite, custom fields, tags and the flows that declare each (if any). Use this to find work — a case no flow declares is unautomated — or to check what a case expects before testing it.",
     {
       query: z
         .string()
@@ -415,7 +389,6 @@ export function createMcpServer(): McpServer {
           custom_fields: c.custom_fields,
           tags: c.tags,
           flows: (c.flows ?? []).map((f) => ({ path: f.path, tags: f.tags })),
-          lastResult: c.lastResult ? { status: c.lastResult.status, at: c.lastResult.at } : null,
         })),
       });
     },
@@ -423,7 +396,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "describe_test_case",
-    "Everything one test case specifies: description, steps (action/data/expected_result), suite, custom fields, tags, the flows that declare it and its execution history. Read this before automating or verifying the case — the steps are the script.",
+    "Everything one test case specifies: description, steps (action/data/expected_result), suite, custom fields, tags and the flows that declare it. Read this before automating or verifying the case — the steps are the script.",
     { id: z.string().describe("Case id, e.g. DEMO-12.") },
     async ({ id }) => {
       const cases = await listCases();
@@ -451,7 +424,7 @@ export function createMcpServer(): McpServer {
         caseContentReadOnly: true,
         linkedBy: "properties.testCaseId in the flow header",
         guidance:
-          "Cases are authored in Qase and read-only here. A flow declares the case it verifies in its own header (`properties: { testCaseId: \"MC-12\" }`) — that is the only link, and Maestro carries it into the JUnit report. Use `link_case_flow` to write it.",
+          "Cases are authored in Qase and read-only here. A flow declares the case it verifies in its own header (`properties: { testCaseId: \"MC-12\", priority: \"High\" }`) — that is the only link, and Maestro carries it into the JUnit report. Use `link_case_flow` to write it; it fills in the case's priority for you.",
       });
     },
   );
@@ -494,7 +467,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "link_case_flow",
-    "Declare which test case a flow verifies, by writing `properties.testCaseId` into the flow's own header. Use after writing or renaming a flow by hand. This edits the flow, not the case: Qase's content is never touched, and the link travels with the repo into CI's JUnit report.",
+    "Declare which test case a flow verifies, by writing `properties.testCaseId` — and the case's `priority` — into the flow's own header. Use after writing or renaming a flow by hand. This edits the flow, not the case: Qase's content is never touched, and the link travels with the repo into CI's JUnit report.",
     {
       flow: z.string().describe("Flow path relative to the flows directory."),
       ids: z
@@ -510,41 +483,10 @@ export function createMcpServer(): McpServer {
         });
       }
       try {
-        return text(await linkFlow(flow, ids));
+        return text(await linkCases(flow, ids));
       } catch (e) {
         return text({ error: String(e) });
       }
-    },
-  );
-
-  server.tool(
-    "record_case_result",
-    "File the outcome of testing a case, so the matrix reflects it. Use after verifying a case by driving the device (write_test_report already records its own result when given a caseId).",
-    {
-      id: z.string().describe("Case id, e.g. DEMO-12."),
-      status: z
-        .enum(["passed", "failed", "blocked", "skipped", "invalid"])
-        .describe("Qase's result statuses. `invalid` means the case itself is wrong."),
-      column: z
-        .string()
-        .optional()
-        .describe("Matrix column this covered, when the case has one flow per column."),
-      comment: z.string().optional().describe("One line on what decided the result."),
-    },
-    async ({ id, status, column, comment }) => {
-      const hit = (await listCases()).find((c) => c.ref === id || String(c.id) === id);
-      if (!hit) return text({ error: `No case "${id}".` });
-      return text(
-        await recordResult({
-          case_id: hit.id,
-          ref: hit.ref,
-          status,
-          column,
-          comment,
-          source: "report",
-          author: "agent",
-        }),
-      );
     },
   );
 

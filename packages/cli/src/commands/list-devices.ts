@@ -10,6 +10,7 @@ import { nameFile } from '../daemon/protocol.js';
 import { VegaCli } from '../drivers/vega/cli.js';
 import { discoverRokuDevices } from '../drivers/roku/discovery.js';
 import { discoverCdpDevices } from '../drivers/cdp-discovery.js';
+import { listPhysicalDevices } from '../drivers/devicectl.js';
 
 export interface Device {
   id: string;
@@ -125,6 +126,18 @@ export async function discoverBootedDevices(): Promise<Device[]> {
     }
   }
 
+  // Physical iOS/tvOS devices: paired and reachable is the closest analogue to
+  // a booted simulator — that's when conductor can actually drive them.
+  for (const d of await listPhysicalDevices()) {
+    if (!d.available) continue;
+    devices.push({
+      id: d.identifier,
+      name: d.name,
+      platform: d.platform,
+      status: d.developerModeEnabled ? 'connected' : 'developer mode off',
+    });
+  }
+
   // Vega (Amazon Fire TV): booted devices reported by the vega CLI. Best-effort —
   // the CLI is absent unless the Vega SDK is installed.
   try {
@@ -188,6 +201,18 @@ export async function discoverAvailableDevices(): Promise<Device[]> {
     } catch {
       // ignore parse errors
     }
+  }
+
+  // Physical devices that aren't currently reachable — listed so users can see
+  // why a device they expect is missing.
+  for (const d of await listPhysicalDevices()) {
+    if (d.available) continue;
+    devices.push({
+      id: d.identifier,
+      name: d.name,
+      platform: d.platform,
+      status: 'unavailable',
+    });
   }
 
   // Android: list available AVDs

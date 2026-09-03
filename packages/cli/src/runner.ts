@@ -14,6 +14,8 @@ import {
   detectPlatform,
   getDriverPort,
   isPortOpen,
+  resolveDriverHost,
+  detectDeviceKind,
   webBrowserName,
   generateWebSessionId,
   isUnqualifiedWebId,
@@ -177,12 +179,16 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
   let driver: AnyDriver;
 
   if (platform === 'ios') {
-    if (!(await isPortOpen(port))) {
+    // Physical devices serve the driver from their own loopback, so the CLI
+    // has to reach them over the network instead of the host's.
+    const host = await resolveDriverHost(deviceId);
+    if (!(await isPortOpen(port, host))) {
       log(`Driver not running — starting daemon for ${deviceId}...`);
       await startDaemon(deviceId);
-      await waitForPort(port);
+      await waitForPort(port, undefined, undefined, host);
     }
-    const iosDriver = new IOSDriver(port, '127.0.0.1', deviceId, 'ios');
+    const isPhysical = (await detectDeviceKind(deviceId)) === 'physical';
+    const iosDriver = new IOSDriver(port, host, deviceId, 'ios', isPhysical);
     if (!(await iosDriver.isAlive())) {
       throw new Error(
         `iOS XCTest driver on port ${port} is not responding.\n` +
@@ -191,12 +197,16 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
     }
     driver = iosDriver;
   } else if (platform === 'tvos') {
-    if (!(await isPortOpen(port))) {
+    // Physical devices serve the driver from their own loopback, so the CLI
+    // has to reach them over the network instead of the host's.
+    const host = await resolveDriverHost(deviceId);
+    if (!(await isPortOpen(port, host))) {
       log(`tvOS driver not running — starting daemon for ${deviceId}...`);
       await startDaemon(deviceId);
-      await waitForPort(port);
+      await waitForPort(port, undefined, undefined, host);
     }
-    const tvosDriver = new IOSDriver(port, '127.0.0.1', deviceId, 'tvos');
+    const isPhysical = (await detectDeviceKind(deviceId)) === 'physical';
+    const tvosDriver = new IOSDriver(port, host, deviceId, 'tvos', isPhysical);
     if (!(await tvosDriver.isAlive())) {
       throw new Error(
         `tvOS XCTest driver on port ${port} is not responding.\n` +
@@ -479,10 +489,15 @@ export async function spawnCommand(
 }
 
 /** Poll until a TCP port is open, or throw after timeout. */
-async function waitForPort(port: number, timeoutMs = 180_000, pollMs = 500): Promise<void> {
+async function waitForPort(
+  port: number,
+  timeoutMs = 180_000,
+  pollMs = 500,
+  host = '127.0.0.1'
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (await isPortOpen(port)) return;
+    if (await isPortOpen(port, host)) return;
     await new Promise((r) => setTimeout(r, pollMs));
   }
   throw new Error(`Driver port ${port} did not open within ${timeoutMs / 1000}s`);

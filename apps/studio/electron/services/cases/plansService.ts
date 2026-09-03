@@ -11,16 +11,14 @@ import { flowFor } from "./casesService";
 import { awaitRun, cancelRun, runFlow } from "../flow/flowRunner";
 import { listCases } from "./casesService";
 import type { Case } from "./model";
-import { claimRunForPlan, recordResult } from "./resultsService";
 
 /**
  * Test plans: a named selection of cases to execute together — "release smoke",
  * "everything high priority on tv". Stored beside the cases under
  * `~/.conductor/studio`, not in the repo under test.
  *
- * A plan run walks its cases in order, runs each one's flow, and files the
- * outcome as an execution of that case. Cases with no flow are skipped and said
- * to be skipped, rather than quietly dropped.
+ * A plan run walks its cases in order and runs each one's flow. Cases with no
+ * flow are said to be skipped, rather than quietly dropped.
  */
 
 function plansRoot(): string {
@@ -133,11 +131,6 @@ export function planEntries(plan: TestPlan, cases: Case[]): PlanRunEntry[] {
 
 // ── Execution ───────────────────────────────────────────────────────────────
 
-/** `DEMO-12` -> 12. Results carry both, so a re-coded project still resolves. */
-function caseIdFor(ref: string): number {
-  return Number(ref.slice(ref.lastIndexOf("-") + 1)) || 0;
-}
-
 const runs = new Map<string, PlanRun>();
 const cancelled = new Set<string>();
 let seed = 0;
@@ -178,43 +171,19 @@ async function execute(run: PlanRun): Promise<void> {
   const publish = () => broadcastToRenderers("plans:run-updated", { ...run, entries: [...run.entries] });
   for (const entry of run.entries) {
     if (cancelled.has(run.id)) break;
-    if (!entry.flow) {
-      // A case with no automation still belongs in the plan — it just needs a
-      // person, so say so instead of pretending it ran.
-      await recordResult({
-        case_id: caseIdFor(entry.ref),
-        ref: entry.ref,
-        column: entry.column,
-        status: "skipped",
-        source: "run",
-        plan_run_id: run.id,
-        comment: "No flow implements this case yet.",
-      });
-      continue;
-    }
+    // A case with no automation still belongs in the plan — it just needs a
+    // person, so it stays listed as skipped.
+    if (!entry.flow) continue;
     entry.status = "running";
     publish();
     try {
       const { runId } = await runFlow(entry.flow, run.deviceId, undefined, entry.column);
-      // The run's own completion hook files the case result; tell it which plan
-      // execution to attribute it to rather than recording it twice here.
-      claimRunForPlan(runId, run.id);
       entry.runId = runId;
       publish();
       const status = await awaitRun(runId);
       entry.status = status === "passed" ? "passed" : status === "cancelled" ? "skipped" : "failed";
-    } catch (e) {
+    } catch {
       entry.status = "failed";
-      await recordResult({
-        case_id: caseIdFor(entry.ref),
-        ref: entry.ref,
-        column: entry.column,
-        status: "failed",
-        source: "run",
-        plan_run_id: run.id,
-        flow: entry.flow,
-        comment: String(e),
-      });
     }
     publish();
   }

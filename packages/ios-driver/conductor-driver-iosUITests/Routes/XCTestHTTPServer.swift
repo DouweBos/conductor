@@ -30,8 +30,12 @@ enum Route: String, CaseIterable {
 
 struct XCTestHTTPServer {
     func start() async throws {
-        let port = ProcessInfo.processInfo.environment["PORT"]?.toUInt16()
-        let server = HTTPServer(address: try .inet(ip4: "127.0.0.1", port: port ?? 1075), timeout: 100)
+        let env = ProcessInfo.processInfo.environment
+        let port = env["PORT"]?.toUInt16()
+        // Physical devices have no shared loopback with the host, so the CLI sets
+        // BIND_ALL and reaches the driver over the network instead.
+        let host = env["BIND_ALL"] == "1" ? "0.0.0.0" : "127.0.0.1"
+        let server = HTTPServer(address: try .inet(ip4: host, port: port ?? 1075), timeout: 100)
         
         for route in Route.allCases {
             let handler = await RouteHandlerFactory.createRouteHandler(route: route)

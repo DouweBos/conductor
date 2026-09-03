@@ -39,8 +39,10 @@ export async function swipe(
   const result = await runDirect(async (driver) => {
     if (driver instanceof IOSDriver && driver.platform === 'tvos') {
       throw new Error(
-        'swipe is not supported on tvOS — Apple TV uses focus-based navigation.\n' +
-          'Use press-key to navigate (e.g. conductor press-key left).'
+        'swipe is not supported on tvOS — XCTest has no Siri Remote touch-surface\n' +
+          'gesture ("Swipe events are only implemented for iOS, visionOS, and watchOS").\n' +
+          'Navigate with press-key "Remote Dpad Left"/"Right"/"Up"/"Down", or cover\n' +
+          'long lists faster with press-key "Remote Page Up"/"Remote Page Down".'
       );
     }
 

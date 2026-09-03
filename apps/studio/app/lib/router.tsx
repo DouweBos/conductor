@@ -47,9 +47,23 @@ export function appNavigate(route: ParsedRoute): void {
   if (window.location.hash !== next) window.location.hash = next;
 }
 
+/**
+ * The last route visited per view, so leaving Cases for the editor and coming
+ * back lands on the case that was open rather than an empty panel.
+ */
+const lastPerView = new Map<View, ParsedRoute>();
+
+function remember(): void {
+  const route = getCurrentRoute();
+  lastPerView.set(route.view, route);
+}
+
+window.addEventListener("hashchange", remember);
+remember();
+
 // ── Semantic wrappers ──
 export function setView(view: View): void {
-  appNavigate({ view });
+  appNavigate(lastPerView.get(view) ?? { view });
 }
 
 export function selectFlow(flowPath: string): void {
@@ -58,6 +72,10 @@ export function selectFlow(flowPath: string): void {
 
 export function selectCase(caseId: string): void {
   appNavigate({ view: "cases", caseId });
+}
+
+export function closeCase(): void {
+  appNavigate({ view: "cases" });
 }
 
 // ── Reactive reads ──

@@ -2,11 +2,11 @@ import {
   Button,
   EmptyState,
   Icon,
+  IconButton,
   Matrix,
   Select,
   StatusPill,
   TextField,
-  type MatrixGroup,
   type MatrixRow,
 } from "@conductor/studio-ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -18,8 +18,8 @@ import {
   refreshCases,
   runFlow,
 } from "../../lib/ipc";
-import { useRoute } from "../../lib/router";
-import type { Case, CaseMatrix, CaseResult, QaseProject } from "../../lib/types";
+import { closeCase, selectCase, useRoute } from "../../lib/router";
+import type { Case, CaseMatrix, QaseProject } from "../../lib/types";
 import { devicesFor } from "../../lib/platforms";
 import { refreshDevices, useDevices, useSelectedDeviceId } from "../../stores/deviceStore";
 import { useProject } from "../../stores/projectStore";
@@ -30,17 +30,11 @@ import { CaseDeviceStream } from "./CaseDeviceStream";
 import { CaseRunStatus } from "./CaseRunStatus";
 import { DatasourcePanel } from "./DatasourcePanel";
 import { PlansPanel } from "./PlansPanel";
-import { RunWizard } from "./RunWizard";
+import { ALL_SUITES, SuiteTree, inSuite, suitePathOf } from "./SuiteTree";
 import styles from "./CasesView.module.css";
 
 /** Columns come from a Qase custom field; `suite` is the always-present fallback. */
 const SUITE_FIELD = "suite";
-
-const SOURCE_LABEL: Record<CaseResult["source"], string> = {
-  run: "flow",
-  manual: "by hand",
-  report: "agent",
-};
 
 /** A case's values for the field the matrix is keyed on. */
 function valuesOf(c: Case, field: string): string[] {
@@ -63,8 +57,7 @@ function flowFor(c: Case, column?: string): string | undefined {
  * for looking at on its own: left-aligned, one line, fixed width, and the state
  * carried by a dot the eye can follow.
  *
- *   solid dot   — a verdict; the word takes the verdict's colour
- *   hollow ring — automated, nothing has run it yet
+ *   hollow ring — automated by a flow
  *   no dot      — no automation here, so a person has to walk it
  *   empty cell  — the case doesn't apply to this platform
  *
@@ -81,36 +74,23 @@ function CaseCell({
   onRun: (flow: string, platform?: string, projectId?: string) => void;
 }) {
   const flow = flowFor(c, column);
-  // Newest result covering this column: scoped to it, or case-level (a manual
-  // verdict, or a case implemented by a single flow).
-  const result = (c.results ?? []).find((r) => r.column === column || !r.column);
 
-  let state: "verdict" | "pending" | "manual";
+  let state: "pending" | "manual";
   let label: string;
-  let tone: string;
   let title: string;
 
-  if (result) {
-    state = "verdict";
-    label = result.status;
-    tone = result.status;
-    title = `${result.status} — ${SOURCE_LABEL[result.source]}, ${new Date(result.at).toLocaleString()}${
-      result.comment ? `\n${result.comment}` : ""
-    }`;
-  } else if (flow) {
+  if (flow) {
     state = "pending";
-    label = "not run";
-    tone = "none";
-    title = `${flow} — never run here`;
+    label = "automated";
+    title = flow;
   } else {
     state = "manual";
     label = "manual";
-    tone = "none";
     title = "No flow here — verify by hand, or write one from the case's steps";
   }
 
   return (
-    <span className={styles.cell} data-state={state} data-tone={tone} title={title}>
+    <span className={styles.cell} data-state={state} title={title}>
       {flow ? (
         // The status dot is the button: hovering the row turns it into a play
         // triangle rather than growing a second control beside it.
@@ -142,8 +122,7 @@ export function CasesView() {
   const [notice, setNotice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pane, setPane] = useState<"case" | "plans" | "wizard" | "datasource">("case");
+  const [pane, setPane] = useState<"case" | "plans" | "datasource">("case");
   const [projects, setProjects] = useState<QaseProject[]>([]);
   const [syncing, setSyncing] = useState(false);
   // Survives leaving the screen: a run you started is still going, and coming
@@ -166,14 +145,14 @@ export function CasesView() {
   useEffect(() => {
     localStorage.setItem("cases.device", showDevice ? "1" : "0");
   }, [showDevice]);
-  const [groupBy, setGroupBy] = useState("area");
-  const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(JSON.parse(localStorage.getItem("cases.collapsed") ?? "[]") as string[]),
-  );
-
+  // Which suite folder the matrix is scoped to, as a path key. Remembered:
+  // coming back to "everything" after picking a suite reads as data loss.
+  const [suite, setSuite] = useState(() => localStorage.getItem("cases.suite") ?? ALL_SUITES);
   useEffect(() => {
-    localStorage.setItem("cases.collapsed", JSON.stringify([...collapsed]));
-  }, [collapsed]);
+    localStorage.setItem("cases.suite", suite);
+  }, [suite]);
+  /** Filters the user has actually asked for, in the order they added them. */
+  const [active, setActive] = useState<string[]>([]);
   const projectRoot = useProject()?.root ?? null;
   const deviceId = useSelectedDeviceId();
   const devices = useDevices();
@@ -208,9 +187,6 @@ export function CasesView() {
 
   useEffect(refresh, [refresh]);
   useEffect(refreshSource, [refreshSource]);
-  // Results land from anywhere — the ▶ button, a plan, a flow run in the
-  // workbench, the agent over MCP — so the matrix listens rather than polls.
-  useIpcEvent<unknown>("cases:result-recorded", refresh);
   useIpcEvent<unknown>("plans:run-updated", refresh);
   // A fetch from the agent's `sync_test_cases`, or a flow linking itself to a
   // case, lands here too.
@@ -268,16 +244,12 @@ export function CasesView() {
     return [...found].sort();
   }, [cases]);
 
-  // Fall back to a flat list when the chosen grouping isn't in this project.
-  useEffect(() => {
-    if (groupBy !== "none" && cases.length && !dimensions.includes(groupBy)) setGroupBy("none");
-  }, [cases.length, dimensions, groupBy]);
-
   const filterable = useMemo(
     () =>
       [
+        // The sidebar is the suite filter, so it is not offered here as well.
         ...dimensions
-          .filter((d) => d !== dimension)
+          .filter((d) => d !== dimension && d !== SUITE_FIELD)
           .map((d) => ({ dimension: d, values: [...new Set(cases.flatMap((c) => valuesOf(c, d)))].sort() })),
         { dimension: "tags", values: [...new Set(cases.flatMap((c) => c.tags))].sort() },
         { dimension: "priority", values: [...new Set(cases.map((c) => c.priority ?? ""))].filter(Boolean).sort() },
@@ -286,9 +258,15 @@ export function CasesView() {
     [dimensions, dimension, cases],
   );
 
+  const unused = useMemo(
+    () => filterable.filter((f) => !active.includes(f.dimension)),
+    [filterable, active],
+  );
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return cases.filter((c) => {
+      if (!inSuite(c, suite)) return false;
       for (const [field, value] of Object.entries(filters)) {
         if (!value) continue;
         const have =
@@ -312,8 +290,11 @@ export function CasesView() {
       ];
       return haystack.some((s) => s.toLowerCase().includes(q));
     });
-  }, [cases, filters, query]);
+  }, [cases, filters, query, suite]);
 
+  // `#/cases/<id>` is what's open: the URL survives leaving the screen, and it
+  // is how a report links back to the case it verified.
+  const selectedId = useRoute().caseId ?? null;
   const selected = useMemo(() => cases.find((c) => c.ref === selectedId) ?? null, [cases, selectedId]);
 
   const toRow = useCallback(
@@ -326,59 +307,20 @@ export function CasesView() {
           <CaseCell testCase={c} column={col} onRun={run} />
         );
       }
-      const breadcrumb = groupBy === SUITE_FIELD ? undefined : c.suite;
       return {
         id: c.ref,
         label: c.title,
-        sublabel: [ids(c), breadcrumb, c.priority].filter(Boolean).join("  ·  "),
+        sublabel: [ids(c), suitePathOf(c).join(" / "), c.priority].filter(Boolean).join("  ·  "),
         cells,
       };
     },
-    [dimension, groupBy, deviceId],
+    [dimension, deviceId],
   );
 
   const rows: MatrixRow[] = useMemo(
     () => (matrix ? visible.map((c) => toRow(c, matrix.columns)) : []),
     [matrix, visible, toRow],
   );
-
-  /**
-   * 150 rows is a list, not a table you can read. Bands by a tag dimension —
-   * area by default, which is how a matrix is written — turn it back into
-   * something with a table of contents, each carrying its own coverage.
-   */
-  const groups: MatrixGroup[] | undefined = useMemo(() => {
-    if (!matrix || groupBy === "none") return undefined;
-    const buckets = new Map<string, Case[]>();
-    for (const c of visible) {
-      // A case with several values for the field belongs to the first —
-      // duplicating it across bands would double every count on the screen.
-      const key = valuesOf(c, groupBy)[0] ?? "Ungrouped";
-      buckets.set(key, [...(buckets.get(key) ?? []), c]);
-    }
-    const names = [...buckets.keys()].sort((a, b) =>
-      a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b),
-    );
-    return names.map((name) => {
-      const scoped = buckets.get(name)!;
-      const automated = scoped.filter((c) => c.flows?.length).length;
-      const failing = scoped.filter((c) => c.lastResult?.status === "failed").length;
-      return {
-        id: name,
-        label: name,
-        collapsed: collapsed.has(name),
-        meta: [
-          `${automated}/${scoped.length} automated`,
-          failing ? `${failing} failing` : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        rows: [...scoped]
-          .sort((a, b) => (a.suite ?? "").localeCompare(b.suite ?? "") || a.id - b.id)
-          .map((c) => toRow(c, matrix.columns)),
-      };
-    });
-  }, [matrix, visible, groupBy, collapsed, toRow]);
 
   /**
    * Each column is a platform, so the column header is where you say which
@@ -425,18 +367,10 @@ export function CasesView() {
     [matrix, cases],
   );
 
-  const executed = cases.filter((c) => c.lastResult).length;
-
   const openCase = (id: string) => {
-    setSelectedId(id);
+    selectCase(id);
     setPane("case");
   };
-
-  // `#/cases/<id>` — how a report links back to the case it verified.
-  const routeCaseId = useRoute().caseId;
-  useEffect(() => {
-    if (routeCaseId) openCase(routeCaseId);
-  }, [routeCaseId]);
 
   return (
     <div className={styles.view}>
@@ -444,16 +378,12 @@ export function CasesView() {
         <div>
           <h1 className={styles.title}>Test cases</h1>
           <p className={styles.subtitle}>
-            The spec, what implements it, and every time it was verified — by a flow, a person
-            or the agent.
+            The spec, and what implements it.
           </p>
         </div>
         <div className={styles.controls}>
           <Button size="sm" variant="ghost" icon="matrix" onClick={() => setPane("plans")}>
             Plans
-          </Button>
-          <Button size="sm" variant="secondary" icon="play" onClick={() => setPane("wizard")}>
-            Run manually
           </Button>
           <Button
             size="sm"
@@ -463,15 +393,6 @@ export function CasesView() {
           >
             Device
           </Button>
-          <span className={styles.controlLabel}>Group:</span>
-          <Select
-            options={[
-              { value: "none", label: "flat list" },
-              ...dimensions.filter((d) => d !== dimension).map((d) => ({ value: d, label: d })),
-            ]}
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value)}
-          />
           <span className={styles.controlLabel}>Columns:</span>
           <Select
             options={dimensions.map((d) => ({ value: d, label: d }))}
@@ -499,58 +420,63 @@ export function CasesView() {
 
       <div className={styles.filters}>
         <TextField
+          className={styles.search}
           icon="search"
           placeholder="Search cases, ids, suites, flows…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        {filterable.map(({ dimension: dim, values }) => (
+        {/* A dropdown per field turns into a wall of them, so a filter only
+            appears once it has been asked for. */}
+        {active.map((dim) => (
+          <span key={dim} className={styles.filterChip}>
+            <Select
+              value={filters[dim] ?? ""}
+              onChange={(e) => setFilters((f) => ({ ...f, [dim]: e.target.value }))}
+              options={[
+                { value: "", label: `All ${dim}` },
+                ...(filterable.find((f) => f.dimension === dim)?.values ?? []).map((v) => ({
+                  value: v,
+                  label: v,
+                })),
+              ]}
+            />
+            <IconButton
+              icon="close"
+              size={12}
+              label={`Remove the ${dim} filter`}
+              onClick={() => {
+                setActive((list) => list.filter((d) => d !== dim));
+                setFilters(({ [dim]: _dropped, ...rest }) => rest);
+              }}
+            />
+          </span>
+        ))}
+        {unused.length ? (
           <Select
-            key={dim}
-            value={filters[dim] ?? ""}
-            onChange={(e) => setFilters((f) => ({ ...f, [dim]: e.target.value }))}
+            className={styles.addFilter}
+            value=""
+            onChange={(e) => e.target.value && setActive((list) => [...list, e.target.value])}
             options={[
-              { value: "", label: `All ${dim}` },
-              ...values.map((v) => ({ value: v, label: v })),
+              { value: "", label: "Add filter" },
+              ...unused.map((f) => ({ value: f.dimension, label: f.dimension })),
             ]}
           />
-        ))}
+        ) : null}
         <span className={styles.count}>
           {visible.length === cases.length ? `${cases.length} cases` : `${visible.length} of ${cases.length}`}
         </span>
-        <StatusPill tone={executed ? "info" : "neutral"}>{executed}/{cases.length} ever executed</StatusPill>
+        <span className={styles.spacer} />
         {coverage.map(({ col, covered, total }) => (
           <StatusPill key={col} tone={covered ? "info" : "neutral"}>
             {col}: {covered}/{total} automated
           </StatusPill>
         ))}
         {notice ? <StatusPill tone="warning">{notice}</StatusPill> : null}
-        {groups && groups.length > 1 ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={collapsed.size ? "chevronDown" : "chevronRight"}
-            onClick={() =>
-              setCollapsed(collapsed.size ? new Set() : new Set(groups.map((g) => g.id)))
-            }
-          >
-            {collapsed.size ? "Expand all" : "Collapse all"}
-          </Button>
-        ) : null}
-        {cases.length ? (
-          <span className={styles.legend}>
-            <span className={styles.legendItem}>
-              <span className={styles.dot} data-legend="verdict" /> ran
-            </span>
-            <span className={styles.legendItem}>
-              <span className={styles.dot} data-legend="pending" /> not run yet
-            </span>
-            <span className={styles.legendItem}>manual — no flow</span>
-          </span>
-        ) : null}
       </div>
 
       <div className={styles.body}>
+        <SuiteTree cases={cases} selected={suite} onSelect={setSuite} />
         <div className={styles.matrix}>
           {error ? (
             <EmptyState icon="alert" title="Couldn't load cases" description={error} />
@@ -560,36 +486,16 @@ export function CasesView() {
               title={cases.length ? "No case matches these filters" : "No test cases yet"}
               description={
                 cases.length
-                  ? "Clear the search or filters to see the rest."
-                  : "Create one, or import a CSV from the tool you're moving off. Cases are YAML files under ~/.conductor/studio/<project>/cases/, kept out of the repo under test."
+                  ? "Pick another suite, or clear the search and filters."
+                  : "Add a Qase project and fetch — Qase owns the cases, Studio reads them."
               }
             />
           ) : (
-            <Matrix
-              columns={columns}
-              rows={groups ? undefined : rows}
-              groups={groups}
-              onRowClick={openCase}
-              onToggleGroup={(id) =>
-                setCollapsed((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(id)) next.delete(id);
-                  else next.add(id);
-                  return next;
-                })
-              }
-            />
+            <Matrix columns={columns} rows={rows} onRowClick={openCase} />
           )}
         </div>
 
-        {pane === "wizard" ? (
-          <RunWizard
-            cases={visible}
-            onClose={() => setPane("case")}
-            onRecorded={refresh}
-            onRunStarted={() => setShowDevice(true)}
-          />
-        ) : pane === "plans" ? (
+        {pane === "plans" ? (
           <PlansPanel
             currentFilter={Object.fromEntries(
               Object.entries(filters)
@@ -610,7 +516,7 @@ export function CasesView() {
         ) : selected ? (
           <CaseDetail
             testCase={selected}
-            onClose={() => setSelectedId(null)}
+            onClose={closeCase}
             onRun={run}
             onChanged={refresh}
           />

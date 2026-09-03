@@ -42,11 +42,20 @@ export interface QaseCase {
 export interface QaseSuite {
   id: number;
   title: string;
+  /** Parent suite, so the sidebar can show Qase's own folder tree. */
+  parent_id?: number | null;
 }
 
 export interface QaseCustomField {
   id: number;
   title: string;
+  /** "selectbox", "multiselect", … — only option-based types carry `value`. */
+  type?: string;
+  /**
+   * The field's options. Qase sends either the array itself or that array
+   * JSON-encoded, depending on the field type.
+   */
+  value?: unknown;
 }
 
 interface Envelope<T> {

@@ -205,6 +205,7 @@ export const HEADER_KEYS: ParamDef[] = [
   { name: "env", detail: "default values for this flow's parameters" },
   { name: "onFlowStart", detail: "steps to run before the flow" },
   { name: "onFlowComplete", detail: "steps to run after the flow" },
+  { name: "properties", detail: "custom key/value pairs attached to the test report" },
 ];
 
 export const COMMANDS_BY_NAME = new Map(COMMANDS.map((c) => [c.name, c]));
