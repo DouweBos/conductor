@@ -1,5 +1,68 @@
 # @houwert/conductor
 
+## 0.31.0
+
+### Minor Changes
+
+- 69c35c2: Support physical iOS and tvOS devices
+
+  Real iPhones, iPads, and Apple TVs can now be driven alongside simulators. They
+  are discovered via `devicectl`, appear in `list-devices` as `connected`, and are
+  addressed by their CoreDevice identifier.
+
+  Because a real device only runs code signed for the user's team, the XCTest
+  driver is built and signed locally on first use and cached per team under
+  `~/.conductor/<platform>-driver-device/`. Set `CONDUCTOR_TEAM_ID` when the Mac
+  has more than one development team. The driver binds all interfaces on device
+  (the host reaches it over the LAN rather than a shared loopback), and app
+  lifecycle goes through `devicectl` instead of `simctl`.
+
+  Simulator-only features fail with an explicit message on device: `set-location`,
+  `open-link`, clipboard, `clear-keychain`, `add-media`, screen recording, the live
+  video stream, and OS log collection (Metro logs still stream).
+
+  Also fixes tvOS view inspection hanging on physical Apple TVs, where querying
+  HeadBoard for screen size, the status bar, and window origin never returns.
+
+- 69c35c2: Add the missing Siri Remote buttons for tvOS
+
+  `press-key` gains `Remote Page Up`, `Remote Page Down` and `Remote Guide`
+  (tvOS 14.3+), plus `Remote TV Provider`, `Remote One Two Three` and
+  `Remote Four Colors` (tvOS 18.1+). Page Up/Down move a screenful at a time,
+  which is the fastest way through a long list on an Apple TV. The driver
+  reports a precondition error when the device's OS predates a button rather
+  than pressing the wrong one.
+
+  `Remote Page Up` / `Remote Page Down` are also mapped on Android TV
+  (`KEYCODE_PAGE_UP` / `KEYCODE_PAGE_DOWN`), so paging through a long list is the
+  same command on both TV platforms.
+
+  The streaming-input WebSocket accepts the same buttons, and its `hello` frame
+  now advertises the tvOS remote buttons instead of just `home`/`lock`, so
+  clients can render the right controls up front.
+
+  Also replaces the tvOS `swipe` error, which pointed at plain D-pad presses and
+  didn't say why: XCTest has no Siri Remote touch-surface gesture at all
+  ("Swipe events are only implemented for iOS, visionOS, and watchOS"), so the
+  message now says that and points at paging.
+
+### Patch Changes
+
+- 69c35c2: Recognise Maestro's `properties` header key: it now shows up in the editor's
+  top-level autocomplete, and a single-document flow that uses it (or `name:`) is
+  parsed as a header instead of being mistaken for a command.
+- 69c35c2: Fix physical device regressions found on real hardware
+  - Bonjour hostnames dropped apostrophes rather than dashing them, so a device
+    named "Douwe's iPhone" was unreachable. Candidates now also reuse devicectl's
+    own sanitized hostnames, re-pointed from `.coredevice.local` to `.local`.
+  - Any tap on a physical iPhone killed the driver: a device lying flat reports
+    `.faceUp`, which simulators never do and the coordinate mapping had no case
+    for, so it hit a `fatalError`. Flat orientations now map to portrait, and an
+    unmapped orientation logs and passes the point through instead of crashing.
+  - Retry the driver build once. The first build for a team creates provisioning
+    profiles as a side effect and Xcode often references one before it lands.
+  - Surface xcodebuild's actual errors instead of just an exit code.
+
 ## 0.30.0
 
 ### Minor Changes

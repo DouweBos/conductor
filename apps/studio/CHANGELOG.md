@@ -1,5 +1,67 @@
 # conductor-studio
 
+## 0.6.0
+
+### Minor Changes
+
+- 69c35c2: Navigate cases the way Qase does. Studio now fetches the suite hierarchy and
+  shows it as a folder tree beside the matrix — same nesting, counts including
+  everything below a folder — and picking a suite scopes the matrix to it. The
+  filter row starts as just a search: every other filter is added from an "Add
+  filter" picker and removed with an ✕, replacing the row of dropdowns per custom
+  field. The old "group by" banding goes with it, since the tree is the table of
+  contents it was standing in for. Fetch from Qase to pick up the suite paths.
+- 69c35c2: Studio no longer records case results. Qase is the system of record and Studio
+  only reads from it, so the local execution log, the manual run wizard, the
+  pass/fail buttons on a case, the `record_case_result` MCP tool and the matrix's
+  verdict cells are gone. Existing `results.jsonl` files are simply left alone.
+- 69c35c2: A case step can name several page objects, not one. Steps regularly bundle
+  actions ("open the details page and press play"), so the step panel now takes a
+  list — each with its own `env` — and a scaffold emits a `runFlow` per entry, in
+  order. A step counts as automated only when the flow reaches all of them.
+  Existing single assignments in `automation/step-poms.json` are read as a
+  one-entry list, so nothing needs migrating by hand.
+
+### Patch Changes
+
+- 69c35c2: Decode the HTML entities Qase stores case prose with, so a title reads
+  `a show's details page` rather than `a show&#039;s details page`. Applies to
+  titles, descriptions, steps, tags, suites and custom field values. Sync to
+  re-decode cases already cached.
+- 69c35c2: Tab now indents in the editor instead of moving focus to the next control. It
+  also accepts the open autocomplete suggestion when one is showing.
+- 69c35c2: Carry a case's priority into the flows that verify it. Linking and scaffolding
+  now write Maestro's `priority` property beside `testCaseId`, in Qase's own
+  ranking (`High`, `Medium`, `Low`), so a report can rank a failure the way Qase
+  does. Unlinking leaves it — a priority set by hand is not Studio's to delete.
+- 69c35c2: Recognise Maestro's `properties` header key: it now shows up in the editor's
+  top-level autocomplete, and a single-document flow that uses it (or `name:`) is
+  parsed as a header instead of being mistaken for a command.
+- 69c35c2: Status pills grow with their text instead of letting a long message spill out of
+  the background, and the dot stays on the first line. Unlinking a case from a
+  flow whose file is already gone is a quiet no-op — a missing flow declares
+  nothing — while linking one reports that the flow is missing rather than
+  surfacing a raw ENOENT.
+- 69c35c2: Show the titles of select-type Qase custom fields instead of their option ids.
+  A case carries `Media Source: 2`, and the option table lives on the field, so
+  Studio now fetches it with the field and resolves each value; anything without a
+  matching option is still shown as-is. Sync to pick it up — cached cases keep the
+  ids until then.
+- 69c35c2: Leaving the Cases screen and coming back reopens the case you had open. The
+  open case now lives in the URL (`#/cases/<id>`) rather than in component state,
+  and the nav rail returns each view to the route you last had there — so the
+  Flows tab you were editing comes back too.
+- 69c35c2: Scaffolding a flow from a case no longer writes broken YAML when a step's
+  action, data or expected result runs to several lines — every line is commented
+  now, not just the first. The "Wrote …" confirmation also stops rendering as an
+  error.
+- 69c35c2: Assigning a page object to a case step now lets you fill in its `env:`
+  parameters, so the `runFlow` a scaffold writes is complete. A status pill also
+  stops being squeezed into a stack of words by a tight row.
+- 15b8d2f: Refresh houwert.dev after a Studio release. The release workflow now fires the
+  same `upstream-release` dispatch the CLI does, so the site's Studio version and
+  changelog stop lagging a release behind.
+
 ## 0.5.0
 
 ### Minor Changes
