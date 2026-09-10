@@ -139,3 +139,48 @@ parity.test("patience of 1 stops on the first round that does not improve", () =
     "an impatient budget gives up at once",
   );
 });
+
+// ── The round-1 barrier ──────────────────────────────────────────────────────
+
+import { universalBlockingFindings } from "../electron/services/parity/convergeDecision";
+import type { ParityFinding } from "../app/lib/types";
+
+const missing = (identifier: string, detail = "gone"): ParityFinding => ({
+  kind: "missing",
+  severity: "blocking",
+  detail,
+  identifier,
+  role: "button",
+});
+
+parity.test("a finding every target reports is universal", () => {
+  const firsts = ["tvOS", "Android TV", "VegaOS"].map((_, i) =>
+    round(1, 1, { passed: false, findings: [missing("browse-button", `worded ${i}`)] }),
+  );
+  const u = universalBlockingFindings(firsts);
+  assertEqual(u.length, 1, "one universal finding, whatever the wording");
+  assertEqual(u[0].identifier, "browse-button", "and it is the shared one");
+});
+
+parity.test("a finding on one target is not universal", () => {
+  const firsts = [
+    round(1, 2, { passed: false, findings: [missing("browse-button"), missing("help-button")] }),
+    round(1, 1, { passed: false, findings: [missing("browse-button")] }),
+  ];
+  const u = universalBlockingFindings(firsts);
+  assertEqual(u.map((f) => f.identifier), ["browse-button"], "only the shared one");
+});
+
+parity.test("advisory findings never trip the barrier", () => {
+  const moved: ParityFinding = { kind: "moved", severity: "advisory", detail: "shifted", identifier: "x" };
+  const firsts = [round(1, 0, { passed: false, findings: [moved] }), round(1, 0, { passed: false, findings: [moved] })];
+  assertEqual(universalBlockingFindings(firsts).length, 0, "layout drift on every target is still not a reference bug");
+});
+
+parity.test("one target cannot be universal", () => {
+  assertEqual(
+    universalBlockingFindings([round(1, 1, { passed: false, findings: [missing("x")] })]).length,
+    0,
+    "nothing to agree with",
+  );
+});

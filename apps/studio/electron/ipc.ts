@@ -140,6 +140,7 @@ import {
   acceptTarget,
   cancelConvergence,
   getConvergence,
+  rejectTarget,
   startConvergence,
 } from "./services/parity/convergeService";
 import {
@@ -228,6 +229,9 @@ export function registerIpcHandlers(): void {
   handle<void, void>("parity_converge_cancel", () => cancelConvergence());
   handle<void, ConvergeProgress | null>("parity_converge_state", () => getConvergence());
   handle<{ label: string }, void>("parity_converge_accept", (a) => acceptTarget(a.label));
+  handle<{ label: string; note: string }, void>("parity_converge_reject", (a) =>
+    rejectTarget(a.label, a.note),
+  );
   handle<void, void>("parity_reset_live", () => resetLiveSession());
 
   // ── Project / files ──

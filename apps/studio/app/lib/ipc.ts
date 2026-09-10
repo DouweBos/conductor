@@ -133,6 +133,8 @@ export const cancelConverge = () => invoke<void>("parity_converge_cancel");
 export const getConvergeState = () => invoke<ConvergeProgress | null>("parity_converge_state");
 export const acceptConvergeTarget = (label: string) =>
   invoke<void>("parity_converge_accept", { label });
+export const rejectConvergeTarget = (label: string, note: string) =>
+  invoke<void>("parity_converge_reject", { label, note });
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");

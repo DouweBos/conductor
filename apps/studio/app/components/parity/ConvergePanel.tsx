@@ -1,7 +1,8 @@
-import { Button, Icon, Panel, Spinner, StatusPill, type StatusTone } from "@conductor/studio-ui";
+import { Button, Icon, Panel, Spinner, StatusPill, TextField, type StatusTone } from "@conductor/studio-ui";
+import { useState } from "react";
 
 import type { ConvergePhase, ConvergeProgress, ConvergeTargetState } from "../../lib/types";
-import { acceptConverged } from "../../stores/parityStore";
+import { acceptConverged, rejectConverged } from "../../stores/parityStore";
 import styles from "./ConvergePanel.module.css";
 
 /**
@@ -48,6 +49,8 @@ function Trend({ target }: { target: ConvergeTargetState }) {
 }
 
 function TargetRow({ target }: { target: ConvergeTargetState }) {
+  const [rejecting, setRejecting] = useState(false);
+  const [note, setNote] = useState("");
   const latest = target.attempts[target.attempts.length - 1];
   const phase = PHASE[target.phase];
   const working = target.phase === "capturing" || target.phase === "diffing" || target.phase === "agent-working";
@@ -62,12 +65,46 @@ function TargetRow({ target }: { target: ConvergeTargetState }) {
         <span className={styles.rounds}>
           {target.attempts.length} round{target.attempts.length === 1 ? "" : "s"}
         </span>
-        {target.phase === "awaiting-review" ? (
-          <Button size="sm" icon="check" onClick={() => void acceptConverged(target.label)}>
-            Accept
-          </Button>
+        {target.phase === "awaiting-review" && !target.accepted ? (
+          <>
+            <Button size="sm" icon="check" onClick={() => void acceptConverged(target.label)}>
+              Accept
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="close"
+              onClick={() => setRejecting((v) => !v)}
+            >
+              Not right
+            </Button>
+          </>
         ) : null}
+        {target.accepted ? <StatusPill tone="success">accepted</StatusPill> : null}
       </div>
+
+      {rejecting ? (
+        <form
+          className={styles.reject}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!note.trim()) return;
+            void rejectConverged(target.label, note);
+            setNote("");
+            setRejecting(false);
+          }}
+        >
+          <TextField
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What's wrong? The agent works from this."
+            aria-label={`Why ${target.label} is not right`}
+          />
+          <Button size="sm" type="submit" disabled={!note.trim()}>
+            Send back
+          </Button>
+        </form>
+      ) : null}
 
       <Trend target={target} />
 
@@ -102,13 +139,14 @@ export function ConvergePanel({ converge }: { converge: ConvergeProgress | null 
   if (!converge) return null;
 
   const reviewing = converge.targets.filter((t) => t.phase === "awaiting-review").length;
+  const accepted = converge.targets.filter((t) => t.accepted).length;
 
   return (
     <Panel
       title={`Converging on "${converge.checkpoint}"`}
       actions={
         <span className={styles.summary}>
-          {reviewing}/{converge.targets.length} at parity
+          {reviewing}/{converge.targets.length} at parity · {accepted} accepted
           {converge.running ? " · running" : ""}
         </span>
       }
@@ -117,7 +155,8 @@ export function ConvergePanel({ converge }: { converge: ConvergeProgress | null 
         Each target is being worked by its own agent against the frozen{" "}
         <strong>{converge.referenceLabel}</strong> screen. The agent does not decide when it is
         finished — every round captures the screen and diffs it, and only that verdict opens the
-        gate. A target that reaches parity waits for you to look at it.
+        gate. A target that reaches parity waits for you to look at it — and if it is not right,
+        say why: the note goes back to the same agent, which still has the codebase in context.
       </p>
       <ul className={styles.targets}>
         {converge.targets.map((t) => (

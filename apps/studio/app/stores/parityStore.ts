@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { listen } from "../lib/events";
 import {
   acceptConvergeTarget,
+  rejectConvergeTarget,
   cancelConverge,
   cancelParity,
   getConvergeState,
@@ -52,6 +53,7 @@ interface ParityState {
   progress: ParityProgress | null;
   /** The Helix loop, when one is running. */
   converge: ConvergeProgress | null;
+  convergeOptions: { strict: boolean; autoApprove: boolean; maxAttempts: number };
   starting: boolean;
   error: string | null;
 }
@@ -67,6 +69,7 @@ const store = create<ParityState>(() => ({
   targets: [],
   progress: null,
   converge: null,
+  convergeOptions: { strict: false, autoApprove: true, maxAttempts: 8 },
   starting: false,
   error: null,
 }));
@@ -166,11 +169,7 @@ export async function snapParityNow(name: string, reset = false): Promise<void> 
  * The reference is frozen at whatever was last snapped: a goal that moves every
  * round is not a goal.
  */
-export async function convergeOnLastSnap(opts?: {
-  maxAttempts?: number;
-  patience?: number;
-  autoApprove?: boolean;
-}): Promise<void> {
+export async function convergeOnLastSnap(): Promise<void> {
   const s = store.getState();
   const matrix = s.progress?.matrix;
   const checkpoint = s.snaps[s.snaps.length - 1];
@@ -190,7 +189,7 @@ export async function convergeOnLastSnap(opts?: {
       referenceDir: matrix.reference.dir,
       referenceLabel: s.referenceLabel,
       targets: s.targets,
-      ...opts,
+      ...s.convergeOptions,
     });
   } catch (err) {
     store.setState({ error: String(err) });
@@ -209,6 +208,19 @@ export async function acceptConverged(label: string): Promise<void> {
   await acceptConvergeTarget(label).catch((err: unknown) => {
     store.setState({ error: String(err) });
   });
+}
+
+/** The diff passed; a person looked and says no. The note goes to the agent. */
+export async function rejectConverged(label: string, note: string): Promise<void> {
+  await rejectConvergeTarget(label, note).catch((err: unknown) => {
+    store.setState({ error: String(err) });
+  });
+}
+
+/** Loop settings, kept here so they survive leaving the view. */
+export const useConvergeOptions = () => store((s) => s.convergeOptions);
+export function setConvergeOptions(patch: Partial<ParityState["convergeOptions"]>): void {
+  store.setState((s) => ({ convergeOptions: { ...s.convergeOptions, ...patch } }));
 }
 
 /** Throw the captured screens away and start the session over. */

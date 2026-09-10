@@ -121,3 +121,16 @@
   .kind { min-width: 0; }
   .rounds { margin-left: 0; }
 }
+
+.reject {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.reject > :first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}

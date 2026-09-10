@@ -10,7 +10,8 @@
  *
  * Each target gets its own agent and its own device, because they are different
  * jobs: the tvOS findings are fixed in Swift, the Android TV ones in Kotlin, the
- * Lightning ones in TypeScript. They converge independently and in parallel.
+ * Lightning ones in TypeScript. They converge independently and in parallel —
+ * after one shared first round, see `startConvergence`.
  *
  * Every round captures into its own directory, so the attempt history *is* the
  * record of what changed — which is also what lets each round tell the agent
@@ -32,18 +33,39 @@ import type {
 } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { appState } from "../../state";
-import { isAgentRunning, sendAgentMessage, startAgent, stopAgent, waitForAgentTurn } from "../agent/agentService";
+import {
+  isAgentRunning,
+  sendAgentMessage,
+  startAgent,
+  stopAgent,
+  waitForAgentTurn,
+} from "../agent/agentService";
 import { resolveConductor } from "../maestro/maestroService";
-import { decideNextRound } from "./convergeDecision";
+import { decideNextRound, universalBlockingFindings } from "./convergeDecision";
 import { slugForLabel } from "./labels";
 
 const DEFAULT_MAX_ATTEMPTS = 8;
 const DEFAULT_PATIENCE = 3;
+/** Rounds a target gets back after a human rejects it with a note. */
+const REJECT_EXTRA_ROUNDS = 3;
+/** The CLI needs a moment to finish its initialize handshake before a message. */
+const AGENT_WARMUP_MS = 400;
+
+interface ReferenceFiles {
+  snapshot: string;
+  screenshot: string;
+}
 
 interface ActiveGoal {
   progress: ConvergeProgress;
+  req: ConvergeRequest;
   cancelled: boolean;
   dir: string;
+  maxAttempts: number;
+  patience: number;
+  reference: ReferenceFiles | null;
+  /** Per-target budget top-ups from rejections. */
+  extraRounds: Map<string, number>;
 }
 
 let goal: ActiveGoal | null = null;
@@ -58,8 +80,12 @@ function publish(): void {
   }
 }
 
+function targetState(label: string): ConvergeTargetState | undefined {
+  return goal?.progress.targets.find((t) => t.label === label);
+}
+
 function update(label: string, mutate: (t: ConvergeTargetState) => void): void {
-  const target = goal?.progress.targets.find((t) => t.label === label);
+  const target = targetState(label);
   if (!target) return;
   mutate(target);
   publish();
@@ -86,6 +112,28 @@ function runCli(
   });
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Where the frozen reference screen lives on disk. The agent is pointed at
+ * these files: findings say *what* differs, but to build a missing control it
+ * needs the reference's structure — label, role, position, what sits around it
+ * — and its screenshot to see what it looks like.
+ */
+async function locateReference(referenceDir: string, checkpoint: string): Promise<ReferenceFiles> {
+  const manifest = JSON.parse(await readFile(path.join(referenceDir, "run.json"), "utf-8")) as {
+    checkpoints: Array<{ name: string; snapshotFile: string; screenshotFile: string }>;
+  };
+  const record = manifest.checkpoints.find((c) => c.name === checkpoint);
+  if (!record) {
+    throw new Error(`the reference run has no checkpoint named "${checkpoint}"`);
+  }
+  return {
+    snapshot: path.join(referenceDir, record.snapshotFile),
+    screenshot: path.join(referenceDir, record.screenshotFile),
+  };
+}
+
 // ── One round ────────────────────────────────────────────────────────────────
 
 /**
@@ -93,13 +141,18 @@ function runCli(
  * against the frozen reference.
  *
  * The reference is deliberately *not* re-captured: it is the goal, and a goal
- * that moves every round is not a goal. Comparing against the recording made
- * when the loop started is what lets a target converge on something stable.
+ * that moves every round is not a goal.
+ *
+ * The verdict is taken from the one checkpoint being converged on, never from
+ * the matrix as a whole. The reference directory is a whole live session and
+ * may hold several snapped screens; an attempt captures only this one, so every
+ * other reference screen would read as `checkpoint-missing` and the matrix
+ * verdict could never pass.
  */
 async function measure(
   target: ParityTarget,
   attemptIndex: number,
-): Promise<{ attempt: ConvergeAttempt; matrix?: ParityMatrix }> {
+): Promise<ConvergeAttempt> {
   const g = goal;
   if (!g) throw new Error("no convergence goal");
   const { bin, prefix, env } = await cli();
@@ -137,13 +190,22 @@ async function measure(
   if (captured.code !== 0) {
     attempt.error = `could not capture the screen: ${captured.output.trim()}`;
     attempt.finishedAt = Date.now();
-    return { attempt };
+    return attempt;
   }
 
   const reportPath = path.join(dir, "parity.json");
   await runCli(
     bin,
-    [...prefix, "parity", "matrix", g.progress.referenceDir, dir, "--json-report", reportPath],
+    [
+      ...prefix,
+      "parity",
+      "matrix",
+      g.progress.referenceDir,
+      dir,
+      "--json-report",
+      reportPath,
+      ...(g.req.strict ? ["--strict"] : []),
+    ],
     env,
   );
 
@@ -153,18 +215,23 @@ async function measure(
   } catch {
     attempt.error = "the diff produced no report";
     attempt.finishedAt = Date.now();
-    return { attempt };
+    return attempt;
   }
 
   const checkpoint = matrix.targets[0]?.report.checkpoints.find(
     (c) => c.name === g.progress.checkpoint,
   );
-  attempt.findings = checkpoint?.findings ?? [];
-  attempt.blocking = attempt.findings.filter((f) => f.severity === "blocking").length;
-  attempt.advisory = attempt.findings.filter((f) => f.severity === "advisory").length;
-  attempt.passed = matrix.passed;
+  if (!checkpoint) {
+    attempt.error = `the diff has no result for "${g.progress.checkpoint}"`;
+    attempt.finishedAt = Date.now();
+    return attempt;
+  }
+  attempt.findings = checkpoint.findings;
+  attempt.blocking = checkpoint.findings.filter((f) => f.severity === "blocking").length;
+  attempt.advisory = checkpoint.findings.filter((f) => f.severity === "advisory").length;
+  attempt.passed = checkpoint.passed;
   attempt.finishedAt = Date.now();
-  return { attempt, matrix };
+  return attempt;
 }
 
 // ── The brief handed to the agent ────────────────────────────────────────────
@@ -181,31 +248,36 @@ function describeFindings(findings: ParityFinding[]): string {
 /**
  * What the agent is told each round.
  *
- * Two things it has to get right, and both are easy to get wrong:
+ * Three things it has to get right, and all are easy to get wrong:
  *
  * 1. The agent does not judge parity. It fixes and re-navigates; the loop
  *    measures. Left to itself a model will declare victory on a screen that
  *    still differs, which is the failure mode this whole loop exists to remove.
  * 2. It must leave the app *on the screen*. The next round captures whatever is
  *    showing, so a build that ends on a splash screen scores a splash screen.
+ * 3. It needs to be able to *see the reference*. Findings alone say a button is
+ *    missing; the reference snapshot says where it goes, what it's called, what
+ *    role it plays and what surrounds it. The brief points at the files.
  */
 function buildBrief(
   target: ConvergeTargetState,
-  checkpoint: string,
-  referenceLabel: string,
   attempt: ConvergeAttempt,
-  maxAttempts: number,
+  humanNote?: string,
 ): string {
+  const g = goal;
+  if (!g) return "";
+  const { checkpoint, referenceLabel } = g.progress;
+  const budget = g.maxAttempts + (g.extraRounds.get(target.label) ?? 0);
   const previous = target.attempts.slice(0, -1);
+  const lastTwo = previous.slice(-2);
+  const stuck = lastTwo.length === 2 && lastTwo[1].blocking >= lastTwo[0].blocking;
+
   const history = previous.length
     ? [
         "",
         "## What earlier rounds already tried",
-        ...previous.map(
-          (a) => `- round ${a.index}: ${a.blocking} blocking, ${a.advisory} advisory`,
-        ),
-        previous.length >= 2 &&
-        previous[previous.length - 1].blocking >= previous[previous.length - 2].blocking
+        ...previous.map((a) => `- round ${a.index}: ${a.blocking} blocking, ${a.advisory} advisory`),
+        stuck
           ? "The last round did not reduce the blocking count. Do something different — re-read the reference's structure rather than retrying the same edit."
           : "",
       ]
@@ -213,21 +285,44 @@ function buildBrief(
         .join("\n")
     : "";
 
+  const reviewer = humanNote
+    ? [
+        "",
+        "## A human looked at your last result and sent it back",
+        `> ${humanNote.trim().split("\n").join("\n> ")}`,
+        "Their note outranks the findings below: the diff passed, and they still say it is wrong.",
+      ].join("\n")
+    : "";
+
   return [
-    `# Parity round ${attempt.index} of ${maxAttempts} — ${target.label}`,
+    `# Parity round ${attempt.index} of ${budget} — ${target.label}`,
     "",
     `You are making the **${target.label}** build match the **${referenceLabel}** build on the`,
     `screen called "${checkpoint}". The two were just compared. Here is what still differs:`,
     "",
-    describeFindings(attempt.findings) || "- (no findings recorded)",
+    describeFindings(attempt.findings) || "- (nothing — see the reviewer's note)",
+    reviewer,
     history,
+    "",
+    "## The reference — read this before changing anything",
+    "",
+    "Findings say *what* differs. To build it you need to see what you are matching:",
+    "",
+    `- Structure: \`${g.reference?.snapshot ?? "(unavailable)"}\` — the reference screen's`,
+    "  accessibility snapshot. Every element with its label, role, frame (x, y, w, h), value,",
+    "  focus state and reading order. Elements carry an `identifier` when the app tagged them;",
+    "  give your element the **same identifier** and it pairs exactly.",
+    `- Screenshot: \`${g.reference?.screenshot ?? "(unavailable)"}\` — what it looks like.`,
+    `- Your build's capture from this round: \`${path.join(attempt.dir)}\` — the same files`,
+    "  for what your app is currently showing, so you can compare structure to structure.",
     "",
     "## What to do",
     "",
     `1. Fix the cause in the ${target.label} app's source. These are real differences in what`,
     "   the app renders — a missing control, wrong copy, the wrong thing focused. Change the",
     "   code, not the test.",
-    "2. Rebuild / reload so the running app picks the change up.",
+    "2. Rebuild / reload so the running app picks the change up. If you worked out how to",
+    "   build and launch this app in an earlier round, do the same again.",
     `3. Navigate the app back to the "${checkpoint}" screen and leave it there.`,
     "4. End your turn.",
     "",
@@ -242,43 +337,49 @@ function buildBrief(
     "- Do not weaken the comparison to pass it (renaming things to match, hiding elements).",
     "  If a finding looks wrong, say so plainly and leave it; a human reads this log.",
     "",
-    `Findings marked MUST FIX are what block. Advisory ones are worth fixing if they are`,
+    "Findings marked MUST FIX are what block. Advisory ones are worth fixing if they are",
     "cheap and clearly right, but they will not hold the gate closed.",
   ].join("\n");
 }
 
 // ── The loop ─────────────────────────────────────────────────────────────────
 
-async function convergeTarget(
+/** Run rounds for one target until the decision says stop. Resumable. */
+async function runRounds(
   target: ParityTarget,
-  req: ConvergeRequest,
-  maxAttempts: number,
-  patience: number,
+  startIndex: number,
+  firstBrief?: { note: string },
 ): Promise<void> {
+  const g = goal;
+  if (!g) return;
   const label = target.label;
-  let agentId: string | undefined;
+  let note = firstBrief?.note;
 
   try {
-    for (let index = 1; index <= maxAttempts; index++) {
-      if (goal?.cancelled) return;
+    for (let index = startIndex; ; index++) {
+      if (g.cancelled) return;
 
       update(label, (t) => {
         t.phase = "capturing";
       });
-      const { attempt } = await measure(target, index);
-      if (goal?.cancelled) return;
+      const attempt = await measure(target, index);
+      if (g.cancelled) return;
 
       update(label, (t) => {
         t.attempts.push(attempt);
         t.phase = "diffing";
       });
 
-      const state0 = goal?.progress.targets.find((t) => t.label === label);
-      const decision = decideNextRound(state0?.attempts ?? [attempt], { maxAttempts, patience });
+      const state = targetState(label);
+      if (!state) return;
+      const maxAttempts = g.maxAttempts + (g.extraRounds.get(label) ?? 0);
+      const decision = decideNextRound(state.attempts, { maxAttempts, patience: g.patience });
 
-      if (decision.next === "review") {
+      if (decision.next === "review" && !note) {
         // Deliberately not "done". Parity is the gate, not the sign-off — a
-        // human still looks at the screen before this counts as finished.
+        // human still looks at the screen before this counts as finished. The
+        // agent stays alive so a rejection can send the note back to the same
+        // context rather than to a fresh one that has forgotten the codebase.
         update(label, (t) => {
           t.phase = "awaiting-review";
           t.outcome = decision.reason;
@@ -292,29 +393,28 @@ async function convergeTarget(
           t.outcome = decision.reason;
           if (attempt.error) t.error = attempt.error;
         });
+        await stopTargetAgent(label);
         return;
       }
 
       // Start this target's agent lazily: a target already at parity on round 1
       // never needs one.
+      let agentId = state.agentId;
       if (!agentId || !isAgentRunning(agentId)) {
-        const started = await startAgent(target.deviceId, req.autoApprove);
+        const started = await startAgent(target.deviceId, g.req.autoApprove ?? true);
         agentId = started.agentId;
         update(label, (t) => {
           t.agentId = agentId;
         });
+        await sleep(AGENT_WARMUP_MS);
       }
-
-      const state = goal?.progress.targets.find((t) => t.label === label);
-      if (!state) return;
 
       update(label, (t) => {
         t.phase = "agent-working";
       });
-      sendAgentMessage(
-        agentId,
-        buildBrief(state, req.checkpoint, req.referenceLabel, attempt, maxAttempts),
-      );
+      sendAgentMessage(agentId, buildBrief(state, attempt, note));
+      // A reviewer's note is delivered once, with the round it prompted.
+      note = undefined;
 
       try {
         await waitForAgentTurn(agentId);
@@ -332,10 +432,26 @@ async function convergeTarget(
       t.phase = "failed";
       t.error = err instanceof Error ? err.message : String(err);
     });
-  } finally {
-    // The device goes back to the pool either way; a target left at parity does
-    // not need an agent holding its simulator.
-    if (agentId && isAgentRunning(agentId)) await stopAgent(agentId).catch(() => {});
+    await stopTargetAgent(label);
+  }
+}
+
+async function stopTargetAgent(label: string): Promise<void> {
+  const state = targetState(label);
+  if (state?.agentId && isAgentRunning(state.agentId)) {
+    await stopAgent(state.agentId).catch(() => {});
+  }
+}
+
+function finishGoalIfIdle(): void {
+  if (!goal) return;
+  const busy = goal.progress.targets.some(
+    (t) => t.phase === "capturing" || t.phase === "diffing" || t.phase === "agent-working",
+  );
+  if (!busy && goal.progress.running) {
+    goal.progress.running = false;
+    goal.progress.finishedAt = Date.now();
+    publish();
   }
 }
 
@@ -343,14 +459,18 @@ export async function startConvergence(req: ConvergeRequest): Promise<{ goalId: 
   if (goal?.progress.running) throw new Error("a convergence run is already in progress");
   if (req.targets.length === 0) throw new Error("convergence needs at least one target");
 
-  const maxAttempts = Math.max(1, req.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
-  const patience = Math.max(1, req.patience ?? DEFAULT_PATIENCE);
   const goalId = randomUUID();
   const root = appState.projectRoot ?? process.cwd();
+  const reference = await locateReference(req.referenceDir, req.checkpoint);
 
   goal = {
+    req,
     cancelled: false,
     dir: path.join(root, ".conductor", "parity", `converge-${goalId}`),
+    maxAttempts: Math.max(1, req.maxAttempts ?? DEFAULT_MAX_ATTEMPTS),
+    patience: Math.max(1, req.patience ?? DEFAULT_PATIENCE),
+    reference,
+    extraRounds: new Map(),
     progress: {
       goalId,
       checkpoint: req.checkpoint,
@@ -369,22 +489,101 @@ export async function startConvergence(req: ConvergeRequest): Promise<{ goalId: 
   };
   publish();
 
-  // Targets converge in parallel: they are separate codebases on separate
-  // devices, and holding tvOS up while Android TV works would triple the wall
-  // clock for no reason.
-  void Promise.all(req.targets.map((t) => convergeTarget(t, req, maxAttempts, patience)))
-    .catch(() => {
-      /* per-target failures are already recorded on the target */
-    })
-    .finally(() => {
-      if (goal) {
-        goal.progress.running = false;
-        goal.progress.finishedAt = Date.now();
-        publish();
+  void (async () => {
+    const g = goal;
+    if (!g) return;
+
+    // ── Round 1 for everyone, before any agent is dispatched ──
+    //
+    // A finding every target reports is a statement about the reference, not
+    // the targets: independent rebuilds rarely drop the same control. Sending
+    // four agents off to each build a control the reference shouldn't have is
+    // the one thing a matrix exists to prevent, so measure all targets first
+    // and halt if they agree.
+    for (const t of g.progress.targets) t.phase = "capturing";
+    publish();
+    const firsts = await Promise.all(req.targets.map((t) => measure(t, 1)));
+    if (g.cancelled) return;
+    for (let i = 0; i < req.targets.length; i++) {
+      update(req.targets[i].label, (t) => {
+        t.attempts.push(firsts[i]);
+        t.phase = "diffing";
+      });
+    }
+
+    const universal = universalBlockingFindings(firsts);
+    if (req.targets.length > 1 && universal.length > 0) {
+      const list = universal.map((f) => `${f.kind}: ${f.detail}`).join("\n  ");
+      for (const t of g.progress.targets) {
+        t.phase = "stalled";
+        t.outcome =
+          `halted before dispatching an agent: every target reports the same ${universal.length} ` +
+          `blocking finding(s), which points at the reference rather than the targets.\n  ${list}`;
       }
-    });
+      g.progress.running = false;
+      g.progress.finishedAt = Date.now();
+      publish();
+      return;
+    }
+
+    // ── Then each target on its own ──
+    await Promise.all(
+      req.targets.map((t, i) => {
+        const decision = decideNextRound([firsts[i]], {
+          maxAttempts: g.maxAttempts,
+          patience: g.patience,
+        });
+        if (decision.next === "review") {
+          update(t.label, (s) => {
+            s.phase = "awaiting-review";
+            s.outcome = decision.reason;
+          });
+          return Promise.resolve();
+        }
+        if (decision.next === "stop") {
+          update(t.label, (s) => {
+            s.phase = firsts[i].error ? "failed" : "stalled";
+            s.outcome = decision.reason;
+            if (firsts[i].error) s.error = firsts[i].error;
+          });
+          return Promise.resolve();
+        }
+        return dispatchAndContinue(t, firsts[i]);
+      }),
+    );
+    finishGoalIfIdle();
+  })().catch(() => {
+    /* per-target failures are already recorded on the target */
+  });
 
   return { goalId };
+}
+
+/** After a measured round 1 that did not pass: brief the agent, then keep going. */
+async function dispatchAndContinue(target: ParityTarget, first: ConvergeAttempt): Promise<void> {
+  const g = goal;
+  if (!g) return;
+  const state = targetState(target.label);
+  if (!state) return;
+
+  const started = await startAgent(target.deviceId, g.req.autoApprove ?? true);
+  update(target.label, (t) => {
+    t.agentId = started.agentId;
+    t.phase = "agent-working";
+  });
+  await sleep(AGENT_WARMUP_MS);
+  sendAgentMessage(started.agentId, buildBrief(state, first));
+  try {
+    await waitForAgentTurn(started.agentId);
+  } catch (err) {
+    update(target.label, (t) => {
+      t.phase = "failed";
+      t.error = err instanceof Error ? err.message : String(err);
+      t.outcome = "the agent stopped";
+    });
+    return;
+  }
+  await runRounds(target, 2);
 }
 
 export async function cancelConvergence(): Promise<void> {
@@ -403,9 +602,37 @@ export async function cancelConvergence(): Promise<void> {
   publish();
 }
 
-/** The human's nod: this target's screen has been looked at and accepted. */
-export function acceptTarget(label: string): void {
+/** The human's nod: looked at, accepted. The agent is released. */
+export async function acceptTarget(label: string): Promise<void> {
+  const state = targetState(label);
+  if (!state || state.phase !== "awaiting-review") return;
   update(label, (t) => {
-    if (t.phase === "awaiting-review") t.outcome = `${t.outcome ?? "matched"} · accepted`;
+    t.accepted = true;
+    t.outcome = `${t.outcome ?? "matched"} · accepted`;
   });
+  await stopTargetAgent(label);
+  finishGoalIfIdle();
+}
+
+/**
+ * The human's shake: the diff passed, a person looked and still says no.
+ *
+ * Their note goes back to the *same* agent, which still has the codebase in
+ * context, and the target gets a few more rounds. This is the other half of
+ * "get a human's nod": a review that can only say yes is not a review.
+ */
+export async function rejectTarget(label: string, note: string): Promise<void> {
+  const g = goal;
+  const state = targetState(label);
+  const target = g?.req.targets.find((t) => t.label === label);
+  if (!g || !state || !target || state.phase !== "awaiting-review") return;
+  if (!note.trim()) throw new Error("say what is wrong — the note is what the agent works from");
+
+  g.extraRounds.set(label, (g.extraRounds.get(label) ?? 0) + REJECT_EXTRA_ROUNDS);
+  g.progress.running = true;
+  g.progress.finishedAt = undefined;
+  update(label, (t) => {
+    t.outcome = undefined;
+  });
+  void runRounds(target, state.attempts.length + 1, { note }).finally(finishGoalIfIdle);
 }

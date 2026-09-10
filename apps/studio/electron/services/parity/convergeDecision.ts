@@ -6,7 +6,7 @@
  * will happily rediscover that fact for as many rounds as you give it, and a
  * loop with no patience gives up on a fix that was one round away.
  */
-import type { ConvergeAttempt } from "../../../app/lib/types";
+import type { ConvergeAttempt, ParityFinding } from "../../../app/lib/types";
 
 export type ConvergeDecision =
   | { next: "review"; reason: string }
@@ -73,4 +73,26 @@ export function decideNextRound(
   }
 
   return { next: "continue" };
+}
+
+/**
+ * Blocking findings that every target's first round reports.
+ *
+ * A finding on one target is that target's bug. A finding on all of them is a
+ * statement about the reference — independent rebuilds rarely drop the same
+ * control — and the loop halts on it rather than dispatching N agents to each
+ * build something the reference probably shouldn't have. Grouped by what the
+ * finding is about (kind + identity + role), not its wording, so the same
+ * dropped button reads as one finding across platforms.
+ */
+export function universalBlockingFindings(firsts: ConvergeAttempt[]): ParityFinding[] {
+  const key = (f: ParityFinding): string =>
+    [f.kind, (f.identifier || f.label || "").toLowerCase(), (f.role ?? "").toLowerCase()].join("|");
+  const [head, ...rest] = firsts;
+  if (!head || rest.length === 0) return [];
+  return head.findings.filter(
+    (f) =>
+      f.severity === "blocking" &&
+      rest.every((a) => a.findings.some((o) => o.severity === "blocking" && key(o) === key(f))),
+  );
 }

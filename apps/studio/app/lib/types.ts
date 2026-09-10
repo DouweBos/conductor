@@ -786,6 +786,8 @@ export interface ConvergeTargetState {
   /** Why the loop stopped, when it has. */
   outcome?: string;
   error?: string;
+  /** A human looked at the matching screen and said yes. */
+  accepted?: boolean;
 }
 
 export interface ConvergeProgress {
@@ -814,6 +816,17 @@ export interface ConvergeRequest {
    * attempt rediscovering that.
    */
   patience?: number;
-  /** Run the agents without pausing for tool permission prompts. */
+  /**
+   * Run the agents without pausing for tool permission prompts. Defaults to
+   * true: the Parity view has nowhere to answer a prompt, so an agent that
+   * stops to ask would wait forever and the loop with it.
+   */
   autoApprove?: boolean;
+  /**
+   * Hold targets to layout as well as structure — every finding kind blocks,
+   * including moved/resized/pixel. Off, a target passes as soon as the same
+   * elements exist with the same text and focus; on, it also has to put them
+   * in the same place.
+   */
+  strict?: boolean;
 }

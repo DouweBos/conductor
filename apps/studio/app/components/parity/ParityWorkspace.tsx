@@ -47,7 +47,9 @@ import {
   useParitySnaps,
   useParityTargets,
   useConverge,
+  useConvergeOptions,
   useConvergeRunning,
+  setConvergeOptions,
 } from "../../stores/parityStore";
 import { ConvergePanel } from "./ConvergePanel";
 import { ParityResults } from "./ParityResults";
@@ -98,6 +100,7 @@ export function ParityWorkspace() {
   const snapping = useParitySnapping();
   const converge = useConverge();
   const converging = useConvergeRunning();
+  const convergeOptions = useConvergeOptions();
   const [flows, setFlows] = useState<FileEntry[]>([]);
   const [snapName, setSnapName] = useState("");
 
@@ -183,6 +186,24 @@ export function ParityWorkspace() {
                 onChange={(e) => setParityMirror(e.target.checked)}
               />
               Mirror input to targets
+            </label>
+            <label className={styles.mirrorToggle} title="Every finding kind blocks, including layout drift and pixels">
+              <input
+                type="checkbox"
+                checked={convergeOptions.strict}
+                disabled={converging}
+                onChange={(e) => setConvergeOptions({ strict: e.target.checked })}
+              />
+              Strict layout
+            </label>
+            <label className={styles.mirrorToggle} title="Agents run tool calls without asking. Off, they stop at the first prompt and the loop waits with them.">
+              <input
+                type="checkbox"
+                checked={convergeOptions.autoApprove}
+                disabled={converging}
+                onChange={(e) => setConvergeOptions({ autoApprove: e.target.checked })}
+              />
+              Unattended
             </label>
             {converging ? (
               <Button
@@ -364,8 +385,8 @@ export function ParityWorkspace() {
             progressFor={(label) => progressFor(progress, label)}
             // Only live mode hands the reference over: while a flow is walking,
             // a stray tap is the divergence, not the measurement.
-            interactive={mode === "live" && !running}
-            mirrorTo={mirrorTargets()}
+            interactive={mode === "live" && !running && !converging}
+            mirrorTo={converging ? [] : mirrorTargets()}
           />
         </div>
       </Panel>
