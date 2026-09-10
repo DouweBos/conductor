@@ -43,3 +43,17 @@ Lightning/canvas TV app, or a native app against its web build:
   app focus is the interaction model, not a state detail. It reports nothing when
   neither build has focus.
 - The app/window root and untagged layout containers are no longer compared.
+
+Parity compares one reference against **many** targets, not just one:
+
+- `parity compare --target "<label>=<device>"` (repeatable) walks every named
+  build in parallel — one child process each, so the `checkpoint` step's
+  process-wide active run stays isolated — and reports a checkpoint × target
+  grid instead of N separate verdicts.
+- `parity matrix <ref-dir> <dir...>` does the same over runs already on disk,
+  with no devices attached.
+- Findings are rolled up across targets. A finding every target reports is
+  marked **universal** and surfaced separately: four independent rebuilds rarely
+  drop the same control, so that is usually a statement about the reference run
+  (stale, behind a flag, a different experiment bucket) rather than about the
+  targets. A finding on one target is that target's bug.

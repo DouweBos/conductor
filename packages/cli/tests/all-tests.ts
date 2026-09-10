@@ -43,6 +43,7 @@ import { maestroParity } from './maestro-parity.test.js';
 import { pathAliases } from './path-aliases.test.js';
 import { profiling } from './profiling.test.js';
 import { parityDiff } from './parity-diff.test.js';
+import { parityMatrix } from './parity-matrix.test.js';
 import { getDriver } from '../src/runner.js';
 import { IOSDriver } from '../src/drivers/ios.js';
 import { parseFlowFile, executeFlow } from '../src/drivers/flow-runner.js';
@@ -85,7 +86,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, cdpDiscovery, devicectlSuite, pressKeyRemote, snapshotRef, flowRecorder, vega, roku, inputStreaming, videoStreaming, maestroParity, pathAliases, profiling, parityDiff];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, cdpDiscovery, devicectlSuite, pressKeyRemote, snapshotRef, flowRecorder, vega, roku, inputStreaming, videoStreaming, maestroParity, pathAliases, profiling, parityDiff, parityMatrix];
 
   if (device) {
     console.log(`\nDevice: ${device}`);

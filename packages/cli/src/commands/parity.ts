@@ -2,6 +2,9 @@ export const HELP = `  parity record <flow> --out <dir>     Walk a flow and capt
   parity compare <flow> --reference <dir>
                                        Walk the same flow against the candidate build and diff it
   parity diff <ref-dir> <cand-dir>     Diff two recorded runs (no device needed)
+  parity matrix <ref-dir> <dir...>     Diff one reference against many recorded runs
+    --target <label>=<device>          Walk this device as a named target (repeatable;
+                                       turns compare into a parallel N-target run)
     --out <dir>                       Where to write the candidate run (record/compare)
     --label <text>                    Name this run in the report
     --json-report <path>              Write the JSON report here (default: <run>/parity.json)
@@ -18,6 +21,7 @@ export const HELP = `  parity record <flow> --out <dir>     Walk a flow and capt
     --strict                          Every finding kind blocks
     --env KEY=VALUE                   Inject env var into the flow (repeatable)`;
 
+import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getDriver } from '../runner.js';
@@ -25,8 +29,9 @@ import { parseFlowFile, executeFlow } from '../drivers/flow-runner.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 import { compareRuns, CompareOptions, ParityReport } from '../parity/compare.js';
 import { ALL_KINDS, DiffOptions, FindingKind } from '../parity/diff.js';
-import { renderText, writeHtml } from '../parity/report.js';
-import { RunRole, RunWriter, setActiveRun } from '../parity/store.js';
+import { buildMatrix, ParityMatrix, renderMatrixText, TargetSpec } from '../parity/matrix.js';
+import { renderText, writeHtml, writeMatrixHtml } from '../parity/report.js';
+import { loadManifest, RunRole, RunWriter, setActiveRun } from '../parity/store.js';
 
 export interface ParityFlags {
   out?: string;
@@ -42,6 +47,41 @@ export interface ParityFlags {
   ignore?: string;
   blocking?: string;
   strict?: boolean;
+  /** `--target label=deviceId`, repeatable. */
+  target?: string | string[];
+  role?: string;
+}
+
+/**
+ * Parse `--target <label>=<deviceId>` into the fan-out plan.
+ *
+ * The label is what names the column in the matrix — "tvOS", "Android TV",
+ * "VegaOS", "Lightning" — so it is required and must be unique. A device id
+ * containing `=` is fine: only the first separator splits.
+ */
+export function parseTargets(raw: string | string[] | undefined): Array<{
+  label: string;
+  device: string;
+}> {
+  if (raw === undefined) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  const out: Array<{ label: string; device: string }> = [];
+  for (const entry of list) {
+    const at = entry.indexOf('=');
+    if (at <= 0 || at === entry.length - 1) {
+      throw new Error(
+        `--target must be <label>=<device> (got "${entry}"), e.g. --target "Android TV"=emulator-5554`
+      );
+    }
+    const label = entry.slice(0, at).trim();
+    const device = entry.slice(at + 1).trim();
+    if (!label || !device) throw new Error(`--target must be <label>=<device> (got "${entry}")`);
+    if (out.some((t) => t.label === label)) {
+      throw new Error(`--target label "${label}" is used twice; each target needs its own name`);
+    }
+    out.push({ label, device });
+  }
+  return out;
 }
 
 /** Parse a comma-separated list of finding kinds, rejecting unknown ones early. */
@@ -133,11 +173,18 @@ export async function parityRecord(
     printError('parity record requires --out <dir>', opts);
     return 1;
   }
+  if (flags.role && flags.role !== 'reference' && flags.role !== 'candidate') {
+    printError(
+      `parity record --role must be "reference" or "candidate" (got "${flags.role}")`,
+      opts
+    );
+    return 1;
+  }
   try {
     const { dir, checkpoints } = await walk(
       flowFile,
       flags.out,
-      'reference',
+      (flags.role as RunRole | undefined) ?? 'reference',
       sessionName,
       opts,
       flags,
@@ -174,6 +221,22 @@ export async function parityCompare(
     return 1;
   }
 
+  let targets: Array<{ label: string; device: string }>;
+  try {
+    targets = parseTargets(flags.target);
+  } catch (err) {
+    printError(`parity compare — ${message(err)}`, opts);
+    return 1;
+  }
+  if (targets.length > 0) {
+    try {
+      return await fanOut(flowFile, targets, flags.reference, opts, flags, env);
+    } catch (err) {
+      printError(`parity compare — failed\n${message(err)}`, opts);
+      return 1;
+    }
+  }
+
   // Default the candidate run alongside the reference so a bare `compare` still
   // leaves both halves on disk to re-diff later.
   const outDir =
@@ -195,6 +258,169 @@ export async function parityCompare(
     printError(`parity compare — failed\n${message(err)}`, opts);
     return 1;
   }
+}
+
+/**
+ * Walk N targets and diff them all against one reference.
+ *
+ * Each target runs in its own child process: the `checkpoint` flow step writes
+ * into a process-wide active run, so two flows sharing this process would write
+ * into each other's. Separate processes also mean the targets genuinely run in
+ * parallel, which is the point — four devices walking the same journey at once.
+ */
+async function fanOut(
+  flowFile: string,
+  targets: Array<{ label: string; device: string }>,
+  referenceDir: string,
+  opts: OutputOptions,
+  flags: ParityFlags,
+  env: Record<string, string>
+): Promise<number> {
+  const baseDir = flags.out
+    ? path.resolve(flags.out)
+    : path.join(path.dirname(path.resolve(referenceDir)), defaultCandidateName());
+
+  const specs: TargetSpec[] = targets.map((t) => ({
+    label: t.label,
+    dir: path.join(baseDir, slugForLabel(t.label)),
+  }));
+
+  if (!opts.json) {
+    console.log(`parity — walking ${targets.length} target(s) in parallel:`);
+    for (const t of targets) console.log(`  ${t.label} → ${t.device}`);
+  }
+
+  const runs = await Promise.all(
+    targets.map((t, i) =>
+      recordTarget(flowFile, specs[i].dir, t, flags, env).then((r) => ({ ...r, target: t }))
+    )
+  );
+
+  const failed = runs.filter((r) => r.exitCode !== 0);
+  if (failed.length) {
+    for (const f of failed) {
+      printError(
+        `parity — target "${f.target.label}" (${f.target.device}) failed to record:\n${f.output.trim()}`,
+        opts
+      );
+    }
+    // A target that never walked has nothing to compare; refusing to report a
+    // matrix over a partial set keeps a green-looking grid from hiding a
+    // device that never ran at all.
+    return 1;
+  }
+
+  return emitMatrix(buildMatrix(referenceDir, specs, diffOptionsFrom(flags)), opts, flags);
+}
+
+function recordTarget(
+  flowFile: string,
+  outDir: string,
+  target: { label: string; device: string },
+  flags: ParityFlags,
+  env: Record<string, string>
+): Promise<{ exitCode: number; output: string }> {
+  const args = [
+    'parity',
+    'record',
+    flowFile,
+    '--out',
+    outDir,
+    '--device',
+    target.device,
+    '--label',
+    target.label,
+    '--role',
+    'candidate',
+  ];
+  for (const [k, v] of Object.entries(env)) args.push('--env', `${k}=${v}`);
+
+  return new Promise((resolve) => {
+    const proc = spawn(process.execPath, [process.argv[1], ...args], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env,
+    });
+    let output = '';
+    proc.stdout.on('data', (c: Buffer) => {
+      output += c.toString();
+    });
+    proc.stderr.on('data', (c: Buffer) => {
+      output += c.toString();
+    });
+    proc.on('close', (code) => resolve({ exitCode: code ?? 1, output }));
+    proc.on('error', (err) => resolve({ exitCode: 1, output: err.message }));
+  });
+}
+
+/** Filesystem-safe directory name for a target label. */
+function slugForLabel(label: string): string {
+  return (
+    label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'target'
+  );
+}
+
+/** Offline: diff one reference against many already-recorded runs. */
+export async function parityMatrix(
+  referenceDir: string,
+  candidateDirs: string[],
+  opts: OutputOptions = {},
+  flags: ParityFlags = {}
+): Promise<number> {
+  if (!referenceDir || candidateDirs.length === 0) {
+    printError('parity matrix requires <reference-dir> <candidate-dir...>', opts);
+    return 1;
+  }
+  try {
+    // A run's own label names its column; fall back to the directory name so a
+    // run recorded without --label still reads sensibly in the grid.
+    const specs: TargetSpec[] = candidateDirs.map((dir) => {
+      const resolved = path.resolve(dir);
+      let label: string;
+      try {
+        label = loadManifest(resolved).label ?? path.basename(resolved);
+      } catch {
+        label = path.basename(resolved);
+      }
+      return { label, dir: resolved };
+    });
+    return emitMatrix(buildMatrix(referenceDir, specs, diffOptionsFrom(flags)), opts, flags);
+  } catch (err) {
+    printError(`parity matrix — failed\n${message(err)}`, opts);
+    return 1;
+  }
+}
+
+/** Write the matrix artifacts, print the grid, and turn it into an exit code. */
+function emitMatrix(matrix: ParityMatrix, opts: OutputOptions, flags: ParityFlags): number {
+  const written: string[] = [];
+  const jsonPath = path.resolve(
+    flags.report ?? path.join(path.dirname(matrix.targets[0].dir), 'parity-matrix.json')
+  );
+  fs.mkdirSync(path.dirname(jsonPath), { recursive: true });
+  fs.writeFileSync(jsonPath, JSON.stringify(matrix, null, 2) + '\n');
+  written.push(jsonPath);
+
+  if (flags.html) written.push(writeMatrixHtml(matrix, flags.html));
+
+  if (opts.json) {
+    printData({ status: matrix.passed ? 'ok' : 'error', matrix, written }, opts);
+  } else {
+    console.log('');
+    console.log(renderMatrixText(matrix));
+    for (const f of written) console.log(`\nreport: ${f}`);
+    if (matrix.passed) printSuccess('parity — every target matches the reference', opts);
+    else
+      printError(
+        `parity — ${matrix.summary.targets - matrix.summary.targetsPassed} of ` +
+          `${matrix.summary.targets} target(s) differ from the reference`,
+        opts
+      );
+  }
+  return matrix.passed ? 0 : 1;
 }
 
 export async function parityDiff(

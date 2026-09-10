@@ -133,12 +133,20 @@ The pixel ratio is reported alongside as corroborating evidence.
 | `parity record <flow>`   | Walk a flow against the reference build, capturing every `checkpoint` step into `--out <dir>`.                                       |
 | `parity compare <flow>`  | Walk the same flow against the candidate build, diff it against `--reference <dir>`, and exit non-zero on a blocking difference.     |
 | `parity diff <ref> <cand>` | Diff two recorded runs already on disk — no device needed. Use it to re-tune thresholds without re-driving the app.                |
+| `parity matrix <ref> <dir...>` | Diff one reference against many recorded runs, as a checkpoint × target grid.                                                  |
 | `checkpoint <name>`      | Capture one checkpoint ad hoc into `--run <dir>`, for journeys driven command-by-command rather than from a flow.                    |
 
 Findings are **blocking** (`missing`, `text`, `value`, `focus`,
 `checkpoint-missing`, `geometry`) or **advisory** (`added`, `moved`, `resized`,
 `reordered`, `state`, `pixel`); `--blocking`, `--ignore` and `--strict` move the
 line.
+
+`compare` takes a repeatable `--target <label>=<device>`, which walks every named
+build in parallel and reports one grid instead of N separate verdicts. Across
+several targets the reports separate **universal** findings — ones every target
+reports — from per-target ones: four independent rebuilds rarely diverge the same
+way, so a universal finding is usually a statement about the reference run rather
+than about the targets.
 
 Elements pair on test identity first (`accessibilityIdentifier` / `resource-id` /
 `data-testid`), which is what lets the comparison span two *platforms* — tvOS

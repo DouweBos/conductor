@@ -70,6 +70,7 @@ meet, and it stops being reproducible once the old build is gone.
 | `conductor parity record <flow> --out <dir>` | Walk the flow, capture every checkpoint as a **reference** run |
 | `conductor parity compare <flow> --reference <dir>` | Walk it against the candidate build, then diff and gate |
 | `conductor parity diff <ref-dir> <cand-dir>` | Diff two runs already on disk — no device, no app, instant |
+| `conductor parity matrix <ref-dir> <dir...>` | Diff one reference against **many** recorded runs, as a grid |
 | `conductor checkpoint <name> --run <dir>` | Capture one checkpoint ad hoc, for journeys driven command-by-command |
 
 `parity diff` is the one to reach for while tuning thresholds: re-diffing costs
@@ -91,6 +92,7 @@ nothing, so tune against a recorded pair rather than re-driving the app.
 | `--ignore <kinds>` | Drop these finding kinds entirely |
 | `--blocking <kinds>` | Which kinds fail a checkpoint (default `missing,text,value,focus,checkpoint-missing,geometry`) |
 | `--strict` | Every kind blocks — including layout drift |
+| `--target <label>=<device>` | Walk this device as a named target (repeatable) — turns `compare` into a parallel N-target run |
 | `--env K=V` | Inject an env var into the flow (repeatable) |
 
 ## Reading the findings
@@ -159,6 +161,46 @@ On a TV app, drive focus with `press-key 'Remote Dpad Down'` and put a
 checkpoint after each move: the `focus` finding then verifies that the D-pad
 walks the two builds in the same order, which is the thing most likely to
 diverge in a port and the hardest to eyeball.
+
+## One reference, many targets
+
+A port rarely goes to one place: the same screen gets rebuilt for tvOS, Android
+TV, VegaOS and a Lightning web build. Give `compare` a `--target` per build and
+it walks them **in parallel**, then reports one grid:
+
+```bash
+conductor parity compare home.yaml --reference .parity/home/reference \
+  --target "tvOS=<udid>" \
+  --target "Android TV=emulator-5554" \
+  --target "VegaOS=<vvd>" \
+  --target "Lightning=web" \
+  --out .parity/home/targets --html .parity/home/matrix.html
+```
+
+```
+  checkpoint  tvOS    Android TV  VegaOS  Lightning
+  ──────────  ──────  ──────────  ──────  ─────────
+  home        ✓       ✗ 3!        ✗ 2!    ✓
+  detail      ✓       ✓           ✗ 1!    ✓
+```
+
+Each target runs in its own process, so they genuinely run at once rather than
+one after another. `parity matrix <ref-dir> <dir...>` does the same comparison
+over runs already on disk, with no devices attached — the fast way to re-tune
+thresholds across the whole set.
+
+### Read the universal findings first
+
+This is the thing a matrix tells you that four separate two-way runs cannot:
+
+- a finding on **one** target is that target's bug;
+- a finding on **every** target is a statement about the **reference**.
+
+Four independent rebuilds rarely drop the same button. When they all report it,
+the likelier explanation is that the reference run is stale, sat behind a
+feature flag, or landed in a different experiment bucket. Both reports separate
+these out under "Reported by every target" — start there, because one fix to the
+reference can clear a finding from every column at once.
 
 ## Choosing checkpoints
 

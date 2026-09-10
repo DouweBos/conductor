@@ -70,6 +70,7 @@ import {
   parityRecord,
   parityCompare,
   parityDiff,
+  parityMatrix,
   ParityFlags,
   HELP as parityHelp,
 } from './commands/parity.js';
@@ -363,6 +364,8 @@ async function main(): Promise<void> {
       'sequence',
       'reference',
       'label',
+      'target',
+      'role',
       'json-report',
       'html',
       'ignore',
@@ -465,7 +468,7 @@ async function main(): Promise<void> {
     // `daemon-stop --all` stops every daemon — no device needed
     ...(command === 'daemon-stop' && argv['all'] ? ['daemon-stop'] : []),
     // `parity diff` compares two runs already on disk; only record/compare drive a device.
-    ...(command === 'parity' && rest[0] === 'diff' ? ['parity'] : []),
+    ...(command === 'parity' && (rest[0] === 'diff' || rest[0] === 'matrix') ? ['parity'] : []),
   ]);
 
   if (!NO_DEVICE_COMMANDS.has(command) && !COMMAND_HELP[command]) {
@@ -1137,6 +1140,8 @@ async function main(): Promise<void> {
         ignore: argv['ignore'] as string | undefined,
         blocking: argv['blocking'] as string | undefined,
         strict: argv['strict'] as boolean | undefined,
+        target: argv['target'] as string | string[] | undefined,
+        role: argv['role'] as string | undefined,
       };
       const rawParityEnv = argv['env'];
       const parityEnvPairs: string[] = Array.isArray(rawParityEnv)
@@ -1154,9 +1159,11 @@ async function main(): Promise<void> {
         exitCode = await parityCompare(rest[1] ?? '', opts, sessionName, flags, parityEnv);
       } else if (sub === 'diff') {
         exitCode = await parityDiff(rest[1] ?? '', rest[2] ?? '', opts, flags);
+      } else if (sub === 'matrix') {
+        exitCode = await parityMatrix(rest[1] ?? '', rest.slice(2).map(String), opts, flags);
       } else {
         console.error(
-          `parity: unknown subcommand "${sub || '(none)'}". Expected record, compare, or diff.`
+          `parity: unknown subcommand "${sub || '(none)'}". Expected record, compare, diff, or matrix.`
         );
         console.error(parityHelp);
         exitCode = 1;
