@@ -1,8 +1,19 @@
 import { create } from "zustand";
 
 import { listen } from "../lib/events";
-import { cancelParity, getParityState, resetLiveParity, snapParity, startParity } from "../lib/ipc";
+import {
+  acceptConvergeTarget,
+  cancelConverge,
+  cancelParity,
+  getConvergeState,
+  getParityState,
+  resetLiveParity,
+  snapParity,
+  startConverge,
+  startParity,
+} from "../lib/ipc";
 import type {
+  ConvergeProgress,
   DeviceInfo,
   ParityMatrix,
   ParityMode,
@@ -39,6 +50,8 @@ interface ParityState {
   referenceLabel: string;
   targets: ParityTarget[];
   progress: ParityProgress | null;
+  /** The Helix loop, when one is running. */
+  converge: ConvergeProgress | null;
   starting: boolean;
   error: string | null;
 }
@@ -53,6 +66,7 @@ const store = create<ParityState>(() => ({
   referenceLabel: "Reference",
   targets: [],
   progress: null,
+  converge: null,
   starting: false,
   error: null,
 }));
@@ -68,6 +82,8 @@ export const useParityTargets = () => store((s) => s.targets);
 export const useParityProgress = () => store((s) => s.progress);
 export const useParityStarting = () => store((s) => s.starting);
 export const useParityError = () => store((s) => s.error);
+export const useConverge = () => store((s) => s.converge);
+export const useConvergeRunning = () => store((s) => s.converge?.running === true);
 
 export const useParityMatrix = (): ParityMatrix | null =>
   store((s) => s.progress?.matrix ?? null);
@@ -141,6 +157,58 @@ export async function snapParityNow(name: string, reset = false): Promise<void> 
   } finally {
     store.setState({ snapping: false });
   }
+}
+
+/**
+ * Hold every target to the screen just captured, and let an agent work each one
+ * until it matches.
+ *
+ * The reference is frozen at whatever was last snapped: a goal that moves every
+ * round is not a goal.
+ */
+export async function convergeOnLastSnap(opts?: {
+  maxAttempts?: number;
+  patience?: number;
+  autoApprove?: boolean;
+}): Promise<void> {
+  const s = store.getState();
+  const matrix = s.progress?.matrix;
+  const checkpoint = s.snaps[s.snaps.length - 1];
+  if (!matrix || !checkpoint) {
+    store.setState({ error: "capture a reference screen first — there is nothing to match yet" });
+    return;
+  }
+  if (s.targets.length === 0) {
+    store.setState({ error: "add at least one target build to converge" });
+    return;
+  }
+
+  store.setState({ error: null });
+  try {
+    await startConverge({
+      checkpoint,
+      referenceDir: matrix.reference.dir,
+      referenceLabel: s.referenceLabel,
+      targets: s.targets,
+      ...opts,
+    });
+  } catch (err) {
+    store.setState({ error: String(err) });
+  }
+}
+
+export async function stopConvergence(): Promise<void> {
+  try {
+    await cancelConverge();
+  } catch (err) {
+    store.setState({ error: String(err) });
+  }
+}
+
+export async function acceptConverged(label: string): Promise<void> {
+  await acceptConvergeTarget(label).catch((err: unknown) => {
+    store.setState({ error: String(err) });
+  });
 }
 
 /** Throw the captured screens away and start the session over. */
@@ -283,7 +351,17 @@ export function initParityStore(): () => void {
   void getParityState().then((progress) => {
     if (progress) store.setState({ progress });
   });
-  return listen<ParityProgress>("parity_progress", (progress) => {
+  void getConvergeState().then((converge) => {
+    if (converge) store.setState({ converge });
+  });
+  const offProgress = listen<ParityProgress>("parity_progress", (progress) => {
     store.setState({ progress, error: progress.error ?? null });
   });
+  const offConverge = listen<ConvergeProgress>("parity_converge", (converge) => {
+    store.setState({ converge });
+  });
+  return () => {
+    offProgress();
+    offConverge();
+  };
 }

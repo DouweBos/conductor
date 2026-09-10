@@ -1119,6 +1119,8 @@ async function main(): Promise<void> {
     case 'checkpoint': {
       exitCode = await checkpoint(rest[0] ?? '', opts, sessionName, {
         run: argv['run'] as string | undefined,
+        label: argv['label'] as string | undefined,
+        role: argv['role'] as string | undefined,
       });
       break;
     }

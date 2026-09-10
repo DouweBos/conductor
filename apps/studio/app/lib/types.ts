@@ -743,3 +743,77 @@ export interface ParitySnapResult {
   name: string;
   matrix: ParityMatrix;
 }
+
+// ── Convergence ──────────────────────────────────────────────────────────────
+//
+// The Helix loop: freeze a reference screen, then let an agent work each target
+// build until it matches. The agent never decides it is finished — the parity
+// diff does, which is the whole point: an imperfect attempt cannot move forward
+// until it becomes a good one.
+
+export type ConvergePhase =
+  | "idle"
+  | "capturing" // taking this attempt's screenshot of the target
+  | "diffing"
+  | "agent-working" // findings handed over; waiting for the turn to end
+  | "awaiting-review" // at parity, waiting for a human's nod
+  | "stalled" // out of attempts, or no longer improving
+  | "failed";
+
+/** One round: capture, diff, hand the findings over. */
+export interface ConvergeAttempt {
+  index: number;
+  startedAt: number;
+  finishedAt?: number;
+  blocking: number;
+  advisory: number;
+  passed: boolean;
+  /** Findings this round, most severe first. */
+  findings: ParityFinding[];
+  /** Run directory this attempt captured into. */
+  dir: string;
+  error?: string;
+}
+
+export interface ConvergeTargetState {
+  label: string;
+  deviceId: string;
+  platform: Platform;
+  phase: ConvergePhase;
+  /** Agent working this target, when one has been started. */
+  agentId?: string;
+  attempts: ConvergeAttempt[];
+  /** Why the loop stopped, when it has. */
+  outcome?: string;
+  error?: string;
+}
+
+export interface ConvergeProgress {
+  goalId: string;
+  /** The screen every target is being held to. */
+  checkpoint: string;
+  referenceLabel: string;
+  referenceDir: string;
+  running: boolean;
+  targets: ConvergeTargetState[];
+  startedAt: number;
+  finishedAt?: number;
+}
+
+export interface ConvergeRequest {
+  /** Name of the reference screen already captured for this goal. */
+  checkpoint: string;
+  referenceDir: string;
+  referenceLabel: string;
+  targets: ParityTarget[];
+  /** Rounds a target gets before the loop gives up. */
+  maxAttempts?: number;
+  /**
+   * Consecutive rounds without fewer blocking findings before the loop calls it
+   * stalled. Without this an agent that cannot fix something burns every
+   * attempt rediscovering that.
+   */
+  patience?: number;
+  /** Run the agents without pausing for tool permission prompts. */
+  autoApprove?: boolean;
+}

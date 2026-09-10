@@ -49,6 +49,8 @@ import type {
   ParityRunStarted,
   ParitySnapRequest,
   ParitySnapResult,
+  ConvergeProgress,
+  ConvergeRequest,
 } from "../app/lib/types";
 import {
   getAgentStatus,
@@ -135,6 +137,12 @@ import {
   runRepeat,
 } from "./services/flow/flowRunner";
 import {
+  acceptTarget,
+  cancelConvergence,
+  getConvergence,
+  startConvergence,
+} from "./services/parity/convergeService";
+import {
   cancelParityRun,
   getParityRun,
   rediffParityRun,
@@ -216,6 +224,10 @@ export function registerIpcHandlers(): void {
     rediffParityRun(a.referenceDir, a.targetDirs),
   );
   handle<ParitySnapRequest, ParitySnapResult>("parity_snap", (a) => snapParity(a));
+  handle<ConvergeRequest, { goalId: string }>("parity_converge_start", (a) => startConvergence(a));
+  handle<void, void>("parity_converge_cancel", () => cancelConvergence());
+  handle<void, ConvergeProgress | null>("parity_converge_state", () => getConvergence());
+  handle<{ label: string }, void>("parity_converge_accept", (a) => acceptTarget(a.label));
   handle<void, void>("parity_reset_live", () => resetLiveSession());
 
   // ── Project / files ──

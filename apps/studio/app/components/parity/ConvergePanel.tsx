@@ -1,0 +1,129 @@
+import { Button, Icon, Panel, Spinner, StatusPill, type StatusTone } from "@conductor/studio-ui";
+
+import type { ConvergePhase, ConvergeProgress, ConvergeTargetState } from "../../lib/types";
+import { acceptConverged } from "../../stores/parityStore";
+import styles from "./ConvergePanel.module.css";
+
+/**
+ * The Helix loop, made watchable.
+ *
+ * Each target shows its rounds and the blocking count they left behind, because
+ * that trend is the thing worth watching: falling means the agent is closing on
+ * the reference, flat means it is stuck and the loop will stop it, rising means
+ * a fix broke something else.
+ *
+ * A target that reaches parity lands on **awaiting review**, never "done" — the
+ * diff opens the gate, a person still walks through it.
+ */
+
+const PHASE: Record<ConvergePhase, { label: string; tone: StatusTone }> = {
+  idle: { label: "queued", tone: "neutral" },
+  capturing: { label: "capturing", tone: "running" },
+  diffing: { label: "diffing", tone: "running" },
+  "agent-working": { label: "agent working", tone: "running" },
+  "awaiting-review": { label: "awaiting review", tone: "success" },
+  stalled: { label: "stalled", tone: "warning" },
+  failed: { label: "failed", tone: "error" },
+};
+
+function Trend({ target }: { target: ConvergeTargetState }) {
+  if (target.attempts.length === 0) return <span className={styles.muted}>no rounds yet</span>;
+  const worst = Math.max(1, ...target.attempts.map((a) => a.blocking));
+  return (
+    <ol className={styles.trend} aria-label="Blocking findings per round">
+      {target.attempts.map((a) => {
+        const height = a.passed ? 4 : Math.max(4, Math.round((a.blocking / worst) * 28));
+        return (
+          <li key={a.index} className={styles.bar} title={`Round ${a.index}: ${a.blocking} blocking, ${a.advisory} advisory`}>
+            <span
+              className={[styles.barFill, a.passed && styles.barPass].filter(Boolean).join(" ")}
+              style={{ height: `${height}px` }}
+            />
+            <span className={styles.barLabel}>{a.passed ? "✓" : a.blocking}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function TargetRow({ target }: { target: ConvergeTargetState }) {
+  const latest = target.attempts[target.attempts.length - 1];
+  const phase = PHASE[target.phase];
+  const working = target.phase === "capturing" || target.phase === "diffing" || target.phase === "agent-working";
+
+  return (
+    <li className={styles.target}>
+      <div className={styles.head}>
+        <span className={styles.label}>{target.label}</span>
+        <span className={styles.platform}>{target.platform}</span>
+        {working ? <Spinner size={12} /> : null}
+        <StatusPill tone={phase.tone}>{phase.label}</StatusPill>
+        <span className={styles.rounds}>
+          {target.attempts.length} round{target.attempts.length === 1 ? "" : "s"}
+        </span>
+        {target.phase === "awaiting-review" ? (
+          <Button size="sm" icon="check" onClick={() => void acceptConverged(target.label)}>
+            Accept
+          </Button>
+        ) : null}
+      </div>
+
+      <Trend target={target} />
+
+      {target.outcome ? <p className={styles.outcome}>{target.outcome}</p> : null}
+      {target.error ? (
+        <p className={styles.error}>
+          <Icon name="alert" size={12} /> {target.error}
+        </p>
+      ) : null}
+
+      {latest && !latest.passed && latest.findings.length > 0 ? (
+        <ul className={styles.findings}>
+          {latest.findings.slice(0, 6).map((f, i) => (
+            <li
+              key={`${f.kind}-${f.identifier ?? f.label ?? i}`}
+              className={f.severity === "blocking" ? styles.blocking : undefined}
+            >
+              <span className={styles.kind}>{f.kind}</span>
+              <span>{f.detail}</span>
+            </li>
+          ))}
+          {latest.findings.length > 6 ? (
+            <li className={styles.muted}>+{latest.findings.length - 6} more</li>
+          ) : null}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+export function ConvergePanel({ converge }: { converge: ConvergeProgress | null }) {
+  if (!converge) return null;
+
+  const reviewing = converge.targets.filter((t) => t.phase === "awaiting-review").length;
+
+  return (
+    <Panel
+      title={`Converging on "${converge.checkpoint}"`}
+      actions={
+        <span className={styles.summary}>
+          {reviewing}/{converge.targets.length} at parity
+          {converge.running ? " · running" : ""}
+        </span>
+      }
+    >
+      <p className={styles.note}>
+        Each target is being worked by its own agent against the frozen{" "}
+        <strong>{converge.referenceLabel}</strong> screen. The agent does not decide when it is
+        finished — every round captures the screen and diffs it, and only that verdict opens the
+        gate. A target that reaches parity waits for you to look at it.
+      </p>
+      <ul className={styles.targets}>
+        {converge.targets.map((t) => (
+          <TargetRow key={t.label} target={t} />
+        ))}
+      </ul>
+    </Panel>
+  );
+}

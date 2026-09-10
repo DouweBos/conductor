@@ -30,8 +30,10 @@ import {
   setParityMode,
   setParityReference,
   setParityReferenceLabel,
+  convergeOnLastSnap,
   snapParityNow,
   startParityRun,
+  stopConvergence,
   syncParityStreams,
   useParityError,
   useParityFlow,
@@ -44,7 +46,10 @@ import {
   useParitySnapping,
   useParitySnaps,
   useParityTargets,
+  useConverge,
+  useConvergeRunning,
 } from "../../stores/parityStore";
+import { ConvergePanel } from "./ConvergePanel";
 import { ParityResults } from "./ParityResults";
 import { ParityStreamGrid } from "./ParityStreamGrid";
 import styles from "./ParityWorkspace.module.css";
@@ -91,6 +96,8 @@ export function ParityWorkspace() {
   const mirror = useParityMirror();
   const snaps = useParitySnaps();
   const snapping = useParitySnapping();
+  const converge = useConverge();
+  const converging = useConvergeRunning();
   const [flows, setFlows] = useState<FileEntry[]>([]);
   const [snapName, setSnapName] = useState("");
 
@@ -177,6 +184,26 @@ export function ParityWorkspace() {
               />
               Mirror input to targets
             </label>
+            {converging ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="stop"
+                onClick={() => void stopConvergence()}
+              >
+                Stop agents
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                icon="agent"
+                disabled={snaps.length === 0 || targets.length === 0 || snapping}
+                title="Freeze the captured screen and let an agent work each target until it matches"
+                onClick={() => void convergeOnLastSnap()}
+              >
+                Match it
+              </Button>
+            )}
           </>
         )}
         <ToolbarSpacer />
@@ -316,9 +343,13 @@ export function ParityWorkspace() {
         >
           <p className={styles.hint}>
             No flow. Drive the reference to the screen you want — mirroring sends the same taps and
-            remote presses to every target, so they walk with it — then <strong>Capture</strong> to
-            compare what all of them are showing right now. Each capture adds a row to the grid, so
-            moving through the app builds the comparison a screen at a time.
+            remote presses to every target, so they walk with it — then <strong>Capture &amp;
+            compare</strong> to diff what all of them are showing right now.
+            <br />
+            Then press <strong>Match it</strong>: the captured screen is frozen as the goal, and
+            each target gets its own agent that fixes, rebuilds, re-navigates and is measured again,
+            round after round, until the diff says it matches. The agent never decides it is
+            finished — the diff does.
           </p>
         </Panel>
       ) : null}
@@ -338,6 +369,8 @@ export function ParityWorkspace() {
           />
         </div>
       </Panel>
+
+      <ConvergePanel converge={converge} />
 
       <ParityResults matrix={matrix} />
     </div>

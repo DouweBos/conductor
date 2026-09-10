@@ -47,6 +47,8 @@ import type {
   ParityRunStarted,
   ParitySnapRequest,
   ParitySnapResult,
+  ConvergeProgress,
+  ConvergeRequest,
 } from "./types";
 
 function invoke<T>(channel: string, args?: unknown): Promise<T> {
@@ -125,6 +127,12 @@ export const rediffParity = (referenceDir: string, targetDirs: string[]) =>
 export const snapParity = (req: ParitySnapRequest) =>
   invoke<ParitySnapResult>("parity_snap", req);
 export const resetLiveParity = () => invoke<void>("parity_reset_live");
+export const startConverge = (req: ConvergeRequest) =>
+  invoke<{ goalId: string }>("parity_converge_start", req);
+export const cancelConverge = () => invoke<void>("parity_converge_cancel");
+export const getConvergeState = () => invoke<ConvergeProgress | null>("parity_converge_state");
+export const acceptConvergeTarget = (label: string) =>
+  invoke<void>("parity_converge_accept", { label });
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");

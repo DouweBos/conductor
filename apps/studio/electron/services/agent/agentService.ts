@@ -120,6 +120,52 @@ function studioMcpServer(): Record<string, unknown> {
   };
 }
 
+/**
+ * Resolve when the agent finishes the turn it is on.
+ *
+ * The Claude Code stream emits one `{"type":"result"}` per turn, which is the
+ * only reliable "it has stopped working" signal — token counts and tool calls
+ * come and go mid-turn. A convergence loop needs it as its clock: hand the agent
+ * a round of findings, wait for the turn to end, then measure.
+ *
+ * Rejects if the agent exits first, so a crashed agent fails the round instead
+ * of hanging it forever.
+ */
+export function waitForAgentTurn(agentId: string): Promise<void> {
+  const agent = sessions.get(agentId);
+  if (!agent) return Promise.reject(new Error("Agent is not running."));
+
+  return new Promise((resolve, reject) => {
+    const onEvent = (line: string): void => {
+      // Cheap prefilter: parsing every streamed line would mean JSON.parse on
+      // each token delta.
+      if (!line.includes('"result"')) return;
+      try {
+        const parsed = JSON.parse(line) as { type?: string };
+        if (parsed.type === "result") finish(resolve);
+      } catch {
+        // A partial or non-JSON line is not a turn boundary.
+      }
+    };
+    const onExit = (code: number): void =>
+      finish(() => reject(new Error(`the agent exited (code ${code}) before finishing its turn`)));
+
+    const finish = (settle: () => void): void => {
+      agent.off("event", onEvent);
+      agent.off("exit", onExit);
+      settle();
+    };
+
+    agent.on("event", onEvent);
+    agent.on("exit", onExit);
+  });
+}
+
+/** True when this agent session is still alive. */
+export function isAgentRunning(agentId: string): boolean {
+  return sessions.has(agentId);
+}
+
 export function sendAgentMessage(agentId: string, text: string): void {
   const agent = sessions.get(agentId);
   if (!agent) throw new Error("Agent is not running.");

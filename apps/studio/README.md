@@ -677,6 +677,54 @@ walking, every tile is watch-only: the flow drives all of them, and a stray tap
 would put one build on a different screen from the others — exactly the
 divergence being measured.
 
+### Match it — the convergence loop
+
+Capturing a screen tells you what differs. **Match it** does something with
+that: the captured screen is frozen as the goal, and every target gets its own
+agent that works until its build matches.
+
+Each round is the same shape:
+
+1. capture what the target is showing;
+2. diff it against the frozen reference;
+3. if it matches — stop, and wait for a human;
+4. otherwise hand the findings to that target's agent, wait for its turn to end,
+   and go round again.
+
+**The agent never decides it is finished.** It is told, in as many words, that
+it is not the judge: fix the cause, rebuild, navigate back to the screen, end
+the turn. The next round measures. That inversion is the whole point — left to
+itself a model will declare victory on a screen that still differs, and this
+loop exists to take that decision away from it.
+
+Targets converge **in parallel and independently**, because they are different
+jobs: the tvOS findings are fixed in Swift, the Android TV ones in Kotlin, the
+Lightning ones in TypeScript. Each holds its own device for the duration.
+
+Every round captures into its own directory, so the attempt history is the
+record of what changed — and each round's brief tells the agent what earlier
+rounds already tried, so it stops repeating a fix that didn't work.
+
+#### When the loop gives up
+
+Two budgets, both visible in the panel:
+
+- **rounds** — a target gets a fixed number (8 by default);
+- **patience** — if the blocking count hasn't improved on its best for three
+  consecutive rounds, the loop stops rather than spending the rest of the
+  budget rediscovering that. Progress is judged against the *best* round, not
+  the previous one, so one bad round in a downward trend isn't called a stall.
+
+A stalled target says why. A target whose device dies fails immediately rather
+than burning rounds against a black screen.
+
+#### Parity is the gate, not the sign-off
+
+A target that matches lands on **awaiting review**, never "done". The diff opens
+the gate; a person still walks through it and presses **Accept**. That is
+deliberate: a screen can be structurally identical and still wrong, and the
+whole approach depends on a human looking before the work counts as finished.
+
 ### Agentic
 
 The agent drives the same machinery through MCP: `snap_parity` and
