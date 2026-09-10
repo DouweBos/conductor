@@ -14,6 +14,7 @@ import path from "node:path";
 
 import type {
   CampaignProgress,
+  InteractionStep,
   ParityCampaign,
   ParityGoal,
   ParityMatrix,
@@ -31,7 +32,7 @@ import {
   runnableTargets,
 } from "./campaignPlan";
 import { cancelConvergence, startConvergence, waitForConvergenceSettled } from "./convergeService";
-import { replayRoute } from "./recipes";
+import { replayRoute, sendStep } from "./recipes";
 
 interface RunState {
   running: boolean;
@@ -91,6 +92,7 @@ export async function addGoal(input: {
   referenceLabel: string;
   referenceDeviceId: string;
   route?: Route;
+  interaction?: InteractionStep[];
   targets: ParityTarget[];
 }): Promise<ParityGoal> {
   const campaign = await load();
@@ -102,6 +104,7 @@ export async function addGoal(input: {
     referenceDeviceId: input.referenceDeviceId,
     referenceCapturedAt: Date.now(),
     route: input.route,
+    interaction: input.interaction?.length ? input.interaction : undefined,
     targets: input.targets,
     status: Object.fromEntries(input.targets.map((t) => [t.label, "pending" as const])),
     createdAt: Date.now(),
@@ -185,6 +188,7 @@ export async function runCampaign(opts: {
           referenceLabel: goal.referenceLabel,
           targets,
           route: goal.route,
+          interaction: goal.interaction,
           holdAgentForReview: false,
           ...opts,
         });
@@ -270,6 +274,17 @@ export async function refreshGoalReference(id: string): Promise<ParityGoal> {
   );
   if (captured.code !== 0) throw new Error(`could not capture the reference: ${captured.output.trim()}`);
 
+  for (const st of goal.interaction ?? []) {
+    const sent = await sendStep(goal.referenceDeviceId, st.input);
+    if (!sent.ok) throw new Error(`could not replay the interaction on the reference: ${sent.output}`);
+    const c = await runCli(
+      bin,
+      [...prefix, "checkpoint", st.checkpoint, "--run", newDir, "--device", goal.referenceDeviceId, "--label", goal.referenceLabel, "--role", "reference"],
+      env,
+    );
+    if (c.code !== 0) throw new Error(`could not capture "${st.checkpoint}": ${c.output.trim()}`);
+  }
+
   const reportPath = path.join(newDir, "drift.json");
   await runCli(
     bin,
@@ -282,8 +297,10 @@ export async function refreshGoalReference(id: string): Promise<ParityGoal> {
   } catch {
     throw new Error("the drift diff produced no report");
   }
-  const cp = matrix.targets[0]?.report.checkpoints.find((c) => c.name === goal.checkpoint);
-  const blocking = cp?.findings.filter((f) => f.severity === "blocking") ?? [];
+  const held = new Set([goal.checkpoint, ...(goal.interaction ?? []).map((s) => s.checkpoint)]);
+  const blocking = (matrix.targets[0]?.report.checkpoints ?? [])
+    .filter((c) => held.has(c.name))
+    .flatMap((c) => c.findings.filter((f) => f.severity === "blocking").map((f) => ({ ...f, detail: `[${c.name}] ${f.detail}` })));
 
   const next = blocking.length
     ? applyDrift(goal, newDir, {

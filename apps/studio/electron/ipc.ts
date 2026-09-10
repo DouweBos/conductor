@@ -59,6 +59,7 @@ import type {
   ParityTarget,
   Route,
   GoalTargetStatus,
+  InteractionStep,
 } from "../app/lib/types";
 import {
   getAgentStatus,
@@ -268,6 +269,7 @@ export function registerIpcHandlers(): void {
       referenceLabel: string;
       referenceDeviceId: string;
       route?: Route;
+      interaction?: InteractionStep[];
       targets: ParityTarget[];
     },
     ParityGoal

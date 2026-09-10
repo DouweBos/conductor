@@ -72,7 +72,7 @@ meet, and it stops being reproducible once the old build is gone.
 | `conductor parity diff <ref-dir> <cand-dir>` | Diff two runs already on disk — no device, no app, instant |
 | `conductor parity matrix <ref-dir> <dir...>` | Diff one reference against **many** recorded runs, as a grid |
 | `conductor parity snap <name> --out <dir>` | Compare what every device is showing **right now** — no flow |
-| `conductor checkpoint <name> --run <dir>` | Capture one checkpoint ad hoc, for journeys driven command-by-command |
+| `conductor checkpoint <name> --run <dir>` | Capture one checkpoint ad hoc. Creates the run if the dir doesn't exist yet (`--label`, `--role`) — one attempt, one run, for a loop that re-measures each round |
 
 `parity diff` is the one to reach for while tuning thresholds: re-diffing costs
 nothing, so tune against a recorded pair rather than re-driving the app.

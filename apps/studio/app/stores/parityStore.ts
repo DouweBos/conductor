@@ -27,6 +27,7 @@ import type {
   CampaignProgress,
   ConvergeProgress,
   DeviceInfo,
+  InteractionStep,
   ParityProjectConfig,
   RouteStep,
   TargetRecipe,
@@ -83,6 +84,13 @@ interface ParityState {
   route: RouteStep[];
   /** App the reference is running, so a route can start from a fresh launch. */
   referenceAppId: string;
+  /**
+   * Interaction recording: on, every input to the reference after the last
+   * capture becomes an interaction step and captures its own checkpoint on
+   * every device — so "Down, Down, Enter" is held to parity screen by screen.
+   */
+  recordingInteraction: boolean;
+  interaction: InteractionStep[];
   config: ParityProjectConfig;
   starting: boolean;
   error: string | null;
@@ -110,6 +118,8 @@ const store = create<ParityState>(() => ({
   },
   route: [],
   referenceAppId: "",
+  recordingInteraction: false,
+  interaction: [],
   config: { version: 1, recipes: {} },
   starting: false,
   error: null,
@@ -131,10 +141,18 @@ export const useParityRoute = () => store((s) => s.route);
 export const useCampaign = () => store((s) => s.campaign);
 
 /** Queue the screen just captured as a goal, with its frozen reference and route. */
+/**
+ * The route to the goal's base screen excludes the interaction's own inputs:
+ * those are replayed *from* the base as steps, not to reach it.
+ */
+function routeToBase(s: { route: RouteStep[]; interaction: InteractionStep[] }): RouteStep[] {
+  return s.interaction.length ? s.route.slice(0, s.route.length - s.interaction.length) : s.route;
+}
+
 export async function addLastSnapToCampaign(): Promise<void> {
   const s = store.getState();
   const matrix = s.progress?.matrix;
-  const checkpoint = s.snaps[s.snaps.length - 1];
+  const checkpoint = goalCheckpoint(s);
   if (!matrix || !checkpoint || !s.referenceDeviceId) {
     store.setState({ error: "capture a reference screen first — there is nothing to queue yet" });
     return;
@@ -147,8 +165,9 @@ export async function addLastSnapToCampaign(): Promise<void> {
       referenceDeviceId: s.referenceDeviceId,
       route:
         s.route.length || s.referenceAppId
-          ? { appId: s.referenceAppId || undefined, steps: s.route }
+          ? { appId: s.referenceAppId || undefined, steps: routeToBase(s) }
           : undefined,
+      interaction: s.interaction.length ? s.interaction : undefined,
       targets: s.targets,
     });
   } catch (err) {
@@ -180,9 +199,29 @@ export async function refreshGoal(id: string): Promise<void> {
 export const useReferenceAppId = () => store((s) => s.referenceAppId);
 export const useParityConfig = () => store((s) => s.config);
 
+export const useRecordingInteraction = () => store((s) => s.recordingInteraction);
+export const useInteraction = () => store((s) => s.interaction);
+
+/** Captures run one at a time, in the order the inputs were sent. */
+let captureQueue: Promise<void> = Promise.resolve();
+
 /** Called for every input dispatched to the reference in live mode. */
 export function recordRouteStep(step: RouteStep): void {
   store.setState((s) => ({ route: [...s.route, step] }));
+  const s = store.getState();
+  if (!s.recordingInteraction) return;
+  // Each input after a capture is a step of the interaction being recorded,
+  // and the screen it leaves is captured on every device as its own checkpoint.
+  const base = s.snaps[s.snaps.length - 1];
+  if (!base) return;
+  const index = s.interaction.length + 1;
+  const checkpoint = `${base}/${index}`;
+  store.setState((prev) => ({ interaction: [...prev.interaction, { input: step, checkpoint }] }));
+  captureQueue = captureQueue.then(() => snapParityNow(checkpoint, false, { keepInteraction: true }));
+}
+
+export function setRecordingInteraction(on: boolean): void {
+  store.setState({ recordingInteraction: on, ...(on ? {} : {}) });
 }
 
 /** A fresh launch starts a fresh route. */
@@ -258,7 +297,11 @@ export function mirrorTargets(): string[] {
  * Appends to the running session, so the grid grows a row per captured screen
  * as you move through the app.
  */
-export async function snapParityNow(name: string, reset = false): Promise<void> {
+export async function snapParityNow(
+  name: string,
+  reset = false,
+  opts: { keepInteraction?: boolean } = {},
+): Promise<void> {
   const s = store.getState();
   if (!s.referenceDeviceId) {
     store.setState({ error: "pick the device running the reference build" });
@@ -285,6 +328,8 @@ export async function snapParityNow(name: string, reset = false): Promise<void> 
     });
     store.setState((prev) => ({
       snaps: reset ? [result.name] : [...prev.snaps, result.name],
+      // A fresh base screen starts a fresh interaction; a step capture keeps it.
+      ...(opts.keepInteraction ? {} : { interaction: [] }),
     }));
   } catch (err) {
     store.setState({ error: String(err) });
@@ -300,10 +345,16 @@ export async function snapParityNow(name: string, reset = false): Promise<void> 
  * The reference is frozen at whatever was last snapped: a goal that moves every
  * round is not a goal.
  */
+/** The base screen of the current interaction, or the last snap when there is none. */
+function goalCheckpoint(s: { snaps: string[]; interaction: InteractionStep[] }): string | undefined {
+  if (s.interaction.length) return s.interaction[0].checkpoint.replace(/\/\d+$/, "");
+  return s.snaps[s.snaps.length - 1];
+}
+
 export async function convergeOnLastSnap(): Promise<void> {
   const s = store.getState();
   const matrix = s.progress?.matrix;
-  const checkpoint = s.snaps[s.snaps.length - 1];
+  const checkpoint = goalCheckpoint(s);
   if (!matrix || !checkpoint) {
     store.setState({ error: "capture a reference screen first — there is nothing to match yet" });
     return;
@@ -322,8 +373,9 @@ export async function convergeOnLastSnap(): Promise<void> {
       targets: s.targets,
       route:
         s.route.length || s.referenceAppId
-          ? { appId: s.referenceAppId || undefined, steps: s.route }
+          ? { appId: s.referenceAppId || undefined, steps: routeToBase(s) }
           : undefined,
+      interaction: s.interaction.length ? s.interaction : undefined,
       ...s.convergeOptions,
     });
   } catch (err) {

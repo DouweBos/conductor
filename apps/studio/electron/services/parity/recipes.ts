@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 
-import type { RecipeCommand, RecipeStepResult, Route, TargetRecipe } from "../../../app/lib/types";
+import type { RecipeCommand, RecipeStepResult, Route, RouteStep, TargetRecipe } from "../../../app/lib/types";
 import { appState } from "../../state";
 import { inputText, launchApp, pressKey, swipe, tap } from "../conductor/conductorService";
 import { describeStep } from "./routes";
@@ -91,6 +91,36 @@ export async function replayRoute(deviceId: string, route: Route): Promise<Recip
   } catch (err) {
     log.push(`failed: ${err instanceof Error ? err.message : String(err)}`);
     return { step: "route", ok: false, durationMs: Date.now() - started, output: log.join("\n") };
+  }
+}
+
+/** Send one input to a device and report it as a step, for interaction parity. */
+export async function sendStep(deviceId: string, step: RouteStep): Promise<RecipeStepResult> {
+  const started = Date.now();
+  try {
+    switch (step.kind) {
+      case "tap":
+        await tap(deviceId, step.x, step.y);
+        break;
+      case "swipe":
+        await swipe(deviceId, step.x1, step.y1, step.x2, step.y2);
+        break;
+      case "key":
+        await pressKey(deviceId, step.key);
+        break;
+      case "text":
+        await inputText(deviceId, step.text);
+        break;
+    }
+    await sleep(STEP_GAP_MS);
+    return { step: "route", ok: true, durationMs: Date.now() - started, output: describeStep(step) };
+  } catch (err) {
+    return {
+      step: "route",
+      ok: false,
+      durationMs: Date.now() - started,
+      output: `${describeStep(step)} failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 }
 

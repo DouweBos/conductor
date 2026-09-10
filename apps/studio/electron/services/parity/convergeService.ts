@@ -44,11 +44,11 @@ import {
 } from "../agent/agentService";
 import { resolveConductor } from "../maestro/maestroService";
 import { getRecipe } from "./config";
-import { decideNextRound, universalBlockingFindings } from "./convergeDecision";
+import { decideNextRound, mergeCheckpointDiffs, universalBlockingFindings } from "./convergeDecision";
 import { slugForLabel } from "./labels";
 import { commitScope, isGitRepo, scopedDiff } from "./gitScope";
 import { readMemory, remember, renderMemoryForBrief } from "./memory";
-import { prepareTarget, runTargetTests } from "./recipes";
+import { prepareTarget, runTargetTests, sendStep } from "./recipes";
 import { buildReviewBrief, parseVerdict } from "./reviewDecision";
 
 const DEFAULT_MAX_ATTEMPTS = 8;
@@ -180,27 +180,32 @@ async function measure(
     steps,
   };
 
-  const captured = await runCli(
-    bin,
-    [
-      ...prefix,
-      "checkpoint",
-      g.progress.checkpoint,
-      "--run",
-      dir,
-      "--device",
-      target.deviceId,
-      "--label",
-      target.label,
-      "--role",
-      "candidate",
-    ],
-    env,
-  );
+  const capture = (name: string): Promise<{ code: number; output: string }> =>
+    runCli(
+      bin,
+      [...prefix, "checkpoint", name, "--run", dir, "--device", target.deviceId, "--label", target.label, "--role", "candidate"],
+      env,
+    );
+
+  const captured = await capture(g.progress.checkpoint);
   if (captured.code !== 0) {
     attempt.error = `could not capture the screen: ${captured.output.trim()}`;
     attempt.finishedAt = Date.now();
     return attempt;
+  }
+
+  // Interaction parity: from the base screen, send each recorded input and
+  // capture the screen it leaves. A step that fails to send is not fatal to
+  // the round — its checkpoint is simply absent, and the merge reports that as
+  // blocking, which is the honest reading of "the input did not land".
+  const names = [g.progress.checkpoint, ...(g.req.interaction ?? []).map((st) => st.checkpoint)];
+  for (const st of g.req.interaction ?? []) {
+    const sent = await sendStep(target.deviceId, st.input);
+    if (!sent.ok) {
+      attempt.steps = [...(attempt.steps ?? []), sent];
+      continue;
+    }
+    await capture(st.checkpoint);
   }
 
   const reportPath = path.join(dir, "parity.json");
@@ -228,18 +233,17 @@ async function measure(
     return attempt;
   }
 
-  const checkpoint = matrix.targets[0]?.report.checkpoints.find(
-    (c) => c.name === g.progress.checkpoint,
-  );
-  if (!checkpoint) {
+  const diffs = matrix.targets[0]?.report.checkpoints ?? [];
+  if (!diffs.some((c) => c.name === g.progress.checkpoint)) {
     attempt.error = `the diff has no result for "${g.progress.checkpoint}"`;
     attempt.finishedAt = Date.now();
     return attempt;
   }
-  attempt.findings = checkpoint.findings;
-  attempt.blocking = checkpoint.findings.filter((f) => f.severity === "blocking").length;
-  attempt.advisory = checkpoint.findings.filter((f) => f.severity === "advisory").length;
-  attempt.passed = checkpoint.passed;
+  const merged = mergeCheckpointDiffs(names, diffs);
+  attempt.findings = merged.findings;
+  attempt.blocking = merged.blocking;
+  attempt.advisory = merged.advisory;
+  attempt.passed = merged.passed;
 
   // The screen matching is necessary, not sufficient: Helix's gate also asks
   // the rebuild to "prove its behavior with tests". Run them only once the
@@ -696,6 +700,7 @@ export async function startConvergence(req: ConvergeRequest): Promise<{ goalId: 
   const goalId = randomUUID();
   const root = appState.projectRoot ?? process.cwd();
   const reference = await locateReference(req.referenceDir, req.checkpoint);
+  for (const st of req.interaction ?? []) await locateReference(req.referenceDir, st.checkpoint);
 
   goal = {
     req,

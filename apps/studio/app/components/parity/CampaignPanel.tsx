@@ -32,13 +32,19 @@ function summarise(campaign: CampaignProgress["campaign"]): {
   review: number;
   recheck: number;
   stuck: number;
+  usd: number;
+  ms: number;
 } {
   let accepted = 0;
   let total = 0;
   let review = 0;
   let recheck = 0;
   let stuck = 0;
+  let usd = 0;
+  let ms = 0;
   for (const g of campaign.goals) {
+    usd += g.spent?.usd ?? 0;
+    ms += g.spent?.ms ?? 0;
     for (const t of g.targets) {
       total += 1;
       const s = g.status[t.label] ?? "pending";
@@ -48,7 +54,7 @@ function summarise(campaign: CampaignProgress["campaign"]): {
       else if (s === "stalled" || s === "failed") stuck += 1;
     }
   }
-  return { goals: campaign.goals.length, accepted, total, review, recheck, stuck };
+  return { goals: campaign.goals.length, accepted, total, review, recheck, stuck, usd, ms };
 }
 
 function GoalRow({ goal, current, running }: { goal: ParityGoal; current: boolean; running: boolean }) {
@@ -56,6 +62,8 @@ function GoalRow({ goal, current, running }: { goal: ParityGoal; current: boolea
   const [editingLink, setEditingLink] = useState(false);
   const age = Math.round((Date.now() - goal.referenceCapturedAt) / 86_400_000);
   const route = goal.route;
+  const steps = goal.interaction?.length ?? 0;
+  const spent = goal.spent;
   const routeText = route?.deepLink
     ? `deep link`
     : route?.steps.length
@@ -68,7 +76,12 @@ function GoalRow({ goal, current, running }: { goal: ParityGoal; current: boolea
         <span className={styles.name}>{goal.checkpoint}</span>
         {current ? <StatusPill tone="running">converging</StatusPill> : null}
         <span className={styles.meta}>
-          {routeText} · reference {age === 0 ? "captured today" : `${age}d old`}
+          {routeText}
+          {steps ? ` · ${steps}-step interaction` : ""}
+          {" · "}reference {age === 0 ? "captured today" : `${age}d old`}
+          {spent && spent.rounds
+            ? ` · ${spent.rounds} rounds, ${Math.round(spent.ms / 60_000)} min${spent.usd ? `, $${spent.usd.toFixed(2)}` : ""}`
+            : ""}
         </span>
         <span className={styles.spacer} />
         <Button
@@ -150,6 +163,8 @@ export function CampaignPanel({ campaign }: { campaign: CampaignProgress | null 
             {s.review ? ` · ${s.review} to review` : ""}
             {s.recheck ? ` · ${s.recheck} to recheck` : ""}
             {s.stuck ? ` · ${s.stuck} stuck` : ""}
+            {s.ms ? ` · ${Math.round(s.ms / 60_000)} min` : ""}
+            {s.usd ? ` · $${s.usd.toFixed(2)}` : ""}
           </span>
           {campaign.running ? (
             <Button size="sm" variant="secondary" icon="stop" onClick={() => void haltCampaign()}>

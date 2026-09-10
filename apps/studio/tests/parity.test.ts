@@ -374,3 +374,60 @@ parity.test("a huge diff is truncated with a note, not dropped silently", () => 
   assert(brief.includes("diff truncated"), "says it was cut");
   assert(brief.length < REVIEW_DIFF_CAP + 3_000, "and actually cut it");
 });
+
+// ── Interaction parity and cost ──────────────────────────────────────────────
+
+import { mergeCheckpointDiffs } from "../electron/services/parity/convergeDecision";
+
+parity.test("a multi-step goal passes only when every checkpoint does", () => {
+  const ok = mergeCheckpointDiffs(
+    ["home", "home/1", "home/2"],
+    [
+      { name: "home", passed: true, findings: [] },
+      { name: "home/1", passed: true, findings: [] },
+      { name: "home/2", passed: true, findings: [] },
+    ],
+  );
+  assert(ok.passed && ok.blocking === 0, "all three match");
+
+  const focusWrong = mergeCheckpointDiffs(
+    ["home", "home/1"],
+    [
+      { name: "home", passed: true, findings: [] },
+      { name: "home/1", passed: false, findings: [{ kind: "focus", severity: "blocking", detail: "Browse has focus in the reference but not in the candidate" }] },
+    ],
+  );
+  assert(!focusWrong.passed, "one wrong step fails the round");
+  assert(focusWrong.findings[0].detail.startsWith("[home/1] "), "findings say which step");
+});
+
+parity.test("a step whose checkpoint was never captured blocks, and says why", () => {
+  const m = mergeCheckpointDiffs(["home", "home/1"], [{ name: "home", passed: true, findings: [] }]);
+  assert(!m.passed, "missing step fails");
+  assertEqual(m.findings[0].kind, "checkpoint-missing", "reported as a missing checkpoint");
+  assert(m.findings[0].detail.includes("did not land"), "with the honest reading");
+});
+
+parity.test("a single-checkpoint goal is not prefixed", () => {
+  const m = mergeCheckpointDiffs(["home"], [{ name: "home", passed: false, findings: [{ kind: "missing", severity: "blocking", detail: "gone" }] }]);
+  assertEqual(m.findings[0].detail, "gone", "no [home] prefix when there is only one");
+});
+
+parity.test("cost is folded into the goal across convergence runs", () => {
+  const before = goal("home", { tvOS: "converging" });
+  const progress: ConvergeProgress = {
+    goalId: "x", checkpoint: "home", referenceLabel: "R", referenceDir: "/r", running: false, startedAt: 0,
+    targets: [{
+      label: "tvOS", deviceId: "a", platform: "tvos", phase: "awaiting-review",
+      attempts: [
+        { index: 1, startedAt: 0, blocking: 2, advisory: 0, passed: false, findings: [], dir: "d1", agent: { costUsd: 0.5, durationMs: 60_000 }, steps: [{ step: "build", ok: true, durationMs: 120_000, output: "" }] },
+        { index: 2, startedAt: 0, blocking: 0, advisory: 0, passed: true, findings: [], dir: "d2", agent: { costUsd: 0.25, durationMs: 30_000 } },
+      ],
+    }],
+  };
+  const once = applyConvergence(before, progress);
+  assertEqual(once.spent, { usd: 0.75, ms: 210_000, rounds: 2 }, "summed over rounds and steps");
+  const twice = applyConvergence(once, progress);
+  assertEqual(twice.spent?.rounds, 4, "a second run accumulates rather than replaces");
+  assertEqual(burndown([twice]).spentUsd, 1.5, "and the burndown totals it");
+});

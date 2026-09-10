@@ -853,6 +853,8 @@ export interface ConvergeRequest {
   adversarialReview?: boolean;
   /** Commit the target's source dir when a human accepts it. Default true. */
   commitOnAccept?: boolean;
+  /** Inputs from the goal screen, each with its own checkpoint, all held to parity. */
+  interaction?: InteractionStep[];
   /**
    * Hold targets to layout as well as structure — every finding kind blocks,
    * including moved/resized/pixel. Off, a target passes as soon as the same
@@ -888,6 +890,21 @@ export interface Route {
   steps: RouteStep[];
   /** Milliseconds to wait after launch before the first step. */
   settleMs?: number;
+}
+
+/**
+ * One input *from* a goal's screen, and the checkpoint captured after it.
+ *
+ * Screen parity asks "does the screen match". Interaction parity asks "press
+ * Down three times — does focus land on the same element", which on a TV is
+ * the question that matters and the one a screen-level diff can't answer. A
+ * goal with interaction steps captures a checkpoint after each, on every
+ * build, and is held to all of them.
+ */
+export interface InteractionStep {
+  input: RouteStep;
+  /** Checkpoint name for the screen after this input, e.g. "home/1". */
+  checkpoint: string;
 }
 
 export interface RecipeCommand {
@@ -973,8 +990,11 @@ export interface ParityGoal {
   referenceDeviceId: string;
   referenceCapturedAt: number;
   route?: Route;
+  interaction?: InteractionStep[];
   targets: ParityTarget[];
   status: Record<string, GoalTargetStatus>;
+  /** Accumulated over every convergence run against this goal. */
+  spent?: { usd: number; ms: number; rounds: number };
   createdAt: number;
   updatedAt: number;
   /** Set when a refresh found the reference screen had changed. */
@@ -996,6 +1016,8 @@ export interface CampaignProgress {
 
 export interface CampaignBurndown {
   goals: number;
+  spentUsd: number;
+  spentMs: number;
   /** Per target label: how many goals it has been accepted on. */
   acceptedByTarget: Record<string, number>;
   accepted: number;

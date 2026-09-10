@@ -58,6 +58,9 @@ import {
   useParityConfig,
   useParityRoute,
   useReferenceAppId,
+  useRecordingInteraction,
+  useInteraction,
+  setRecordingInteraction,
 } from "../../stores/parityStore";
 import { CampaignPanel } from "./CampaignPanel";
 import { ConvergePanel } from "./ConvergePanel";
@@ -116,6 +119,8 @@ export function ParityWorkspace() {
   const referenceAppId = useReferenceAppId();
   const config = useParityConfig();
   const [editingRecipe, setEditingRecipe] = useState<string | null>(null);
+  const recordingInteraction = useRecordingInteraction();
+  const interaction = useInteraction();
   const [flows, setFlows] = useState<FileEntry[]>([]);
   const [snapName, setSnapName] = useState("");
 
@@ -216,6 +221,18 @@ export function ParityWorkspace() {
                 onChange={(e) => setParityMirror(e.target.checked)}
               />
               Mirror input to targets
+            </label>
+            <label
+              className={styles.mirrorToggle}
+              title="After a capture, every input to the reference becomes a step that captures its own checkpoint on every device — press Down three times and each screen is held to parity"
+            >
+              <input
+                type="checkbox"
+                checked={recordingInteraction}
+                disabled={snaps.length === 0 || converging}
+                onChange={(e) => setRecordingInteraction(e.target.checked)}
+              />
+              Record interaction{interaction.length ? ` · ${interaction.length}` : ""}
             </label>
             <label className={styles.mirrorToggle} title="Every finding kind blocks, including layout drift and pixels">
               <input

@@ -57,6 +57,7 @@ import type {
   ParityGoal,
   ParityTarget,
   Route,
+  InteractionStep,
 } from "./types";
 
 function invoke<T>(channel: string, args?: unknown): Promise<T> {
@@ -160,6 +161,7 @@ export const addCampaignGoal = (goal: {
   referenceLabel: string;
   referenceDeviceId: string;
   route?: Route;
+  interaction?: InteractionStep[];
   targets: ParityTarget[];
 }) => invoke<ParityGoal>("campaign_add_goal", goal);
 export const removeCampaignGoal = (id: string) => invoke<void>("campaign_remove_goal", { id });

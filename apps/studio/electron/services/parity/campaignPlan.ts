@@ -46,10 +46,16 @@ export function statusFromPhase(
 /** Fold a finished convergence back into the goal it was run for. */
 export function applyConvergence(goal: ParityGoal, progress: ConvergeProgress): ParityGoal {
   const status = { ...goal.status };
+  const spent = { ...(goal.spent ?? { usd: 0, ms: 0, rounds: 0 }) };
   for (const t of progress.targets) {
     status[t.label] = statusFromPhase(t.phase, t.accepted);
+    for (const a of t.attempts) {
+      spent.rounds += 1;
+      spent.usd += a.agent?.costUsd ?? 0;
+      spent.ms += (a.agent?.durationMs ?? 0) + (a.steps ?? []).reduce((m, st) => m + st.durationMs, 0);
+    }
   }
-  return { ...goal, status, updatedAt: Date.now() };
+  return { ...goal, status, spent, updatedAt: Date.now() };
 }
 
 /**
@@ -90,6 +96,8 @@ export function applyNoDrift(goal: ParityGoal, newReferenceDir: string): ParityG
 export function burndown(goals: ParityGoal[]): CampaignBurndown {
   const out: CampaignBurndown = {
     goals: goals.length,
+    spentUsd: goals.reduce((n, g) => n + (g.spent?.usd ?? 0), 0),
+    spentMs: goals.reduce((n, g) => n + (g.spent?.ms ?? 0), 0),
     acceptedByTarget: {},
     accepted: 0,
     review: 0,

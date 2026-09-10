@@ -96,3 +96,38 @@ export function universalBlockingFindings(firsts: ConvergeAttempt[]): ParityFind
       rest.every((a) => a.findings.some((o) => o.severity === "blocking" && key(o) === key(f))),
   );
 }
+
+/**
+ * Fold the checkpoints a multi-step goal is held to into one verdict.
+ *
+ * A goal with interaction steps captures several checkpoints per round — the
+ * base screen and one after each input. The round passes only if all of them
+ * do. A checkpoint the report has no entry for was never captured (the input
+ * failed, or the app went somewhere else), which is as blocking as a dropped
+ * element. Findings are prefixed with their checkpoint so the agent can tell
+ * "Browse is missing on the base screen" from "focus is wrong after Down×2".
+ */
+export function mergeCheckpointDiffs(
+  names: string[],
+  diffs: Array<{ name: string; passed: boolean; findings: ParityFinding[] }>,
+): { passed: boolean; findings: ParityFinding[]; blocking: number; advisory: number } {
+  const findings: ParityFinding[] = [];
+  const multi = names.length > 1;
+  for (const name of names) {
+    const d = diffs.find((x) => x.name === name);
+    if (!d) {
+      findings.push({
+        kind: "checkpoint-missing",
+        severity: "blocking",
+        detail: `${multi ? `[${name}] ` : ""}this checkpoint was never captured — the input before it did not land, or the app went somewhere else`,
+      });
+      continue;
+    }
+    for (const f of d.findings) {
+      findings.push(multi ? { ...f, detail: `[${name}] ${f.detail}` } : f);
+    }
+  }
+  const blocking = findings.filter((f) => f.severity === "blocking").length;
+  const advisory = findings.length - blocking;
+  return { passed: blocking === 0 && names.every((n) => diffs.some((d) => d.name === n && d.passed)), findings, blocking, advisory };
+}

@@ -725,6 +725,79 @@ the gate; a person still walks through it and presses **Accept**. That is
 deliberate: a screen can be structurally identical and still wrong, and the
 whole approach depends on a human looking before the work counts as finished.
 
+### What the loop owns, so the agent only edits code
+
+Three steps used to be handed to the agent on faith, and were the least
+reliable part of every round. All three belong to the loop now.
+
+**Build recipes.** Per target, in the project at `.conductor/parity/config.json`
+so they hold for anyone who checks the repo out: app id, source dir, and
+build / reload / install / test commands run through the shell. Open a
+target's **recipe** from the target list. Between the agent's turn and the next
+measurement the loop runs reload-or-build, install, relaunch. A failed build
+comes back to the agent verbatim and nothing is measured that round —
+measuring after a failed build would score the old binary and the trend would
+lie. **Prefer reload** uses the reload recipe over a full build where one
+exists. Leave a field empty and the loop asks the agent to do that step itself.
+
+**Recorded routes.** Every input to the reference in live mode is recorded;
+**Launch all** restarts every device and the route from a known state. The
+captured screen carries its route, and the loop replays it on each target
+after every rebuild — from `launch-app`, or a deep link set on the goal. This
+removes the failure most likely on a real run: the agent's turn ending on a
+splash screen and the next round diffing the splash screen.
+
+**Memory.** One file per target under `.conductor/parity/memory/`, written by
+the agent (`remember_for_target`), by every rejection note, and by the loop
+when a target stalls. Read back into every brief, newest kept when it runs
+long. This is what makes the loop *get better*: without it every goal started
+from zero, re-learning how the tvOS app is built.
+
+### The rest of Helix's gate
+
+**Tests.** A target's test recipe runs once its screen matches and holds the
+gate until green — a red suite on a screen that is still wrong is noise.
+
+**Adversarial review.** The comparison reads the accessibility snapshot, so a
+hidden element with the right label, a control renamed to match, a forced
+focus or a skipped test would all pass it. When a target matches, a second
+agent — no device, read-only — is handed the scoped diff with the one job of
+finding a gamed pass. Its objection goes back into the loop like a human
+rejection would; after two, a human decides. It fails open (no source dir, no
+git, an empty diff, no verdict) but every such case is recorded on the target
+and shown, because a gate that silently stops gating is worse than one known
+to be off.
+
+**Commit on accept.** Every target's agent works in the same checkout, so a
+commit is scoped to the recipe's source dir — `git add -A` from the root would
+sweep another target's half-finished round in. No scope, no commit, and the
+panel says why.
+
+### Campaign
+
+One screen is not an app. **Queue it** sits beside **Match it**: the same
+captured screen, deferred into the campaign. Goals live in
+`.conductor/parity/campaign.json` and **Run queue** works them in order,
+converging only the targets with something left to do and moving on. Review is
+never waited for; stalled and failed targets are retried on the next run, so
+the queue can be re-run until empty. Each goal shows its rounds, minutes and
+dollars.
+
+References rot — the app being ported from keeps shipping. **Refresh** replays
+a goal's route on the reference device, re-captures the screen, and diffs old
+against new. If it moved, the goal is held to the new reference and accepted
+targets go back for **recheck**: not wrong, but accepted against a screen that
+no longer exists.
+
+### Interaction parity
+
+A screen-level diff can't answer "press Down three times — does focus land on
+the same element?", which on a TV is the question that matters. Turn on
+**Record interaction** after a capture: every input to the reference becomes a
+step that captures its own checkpoint on every device, and a goal made from it
+is held to all of them. The loop replays the steps on each target after the
+route and diffs every screen; findings say which step.
+
 ### Agentic
 
 The agent drives the same machinery through MCP: `snap_parity` and
