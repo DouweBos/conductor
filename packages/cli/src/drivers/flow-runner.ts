@@ -28,6 +28,8 @@ import { makeIOSDirectResolver } from './direct-ios-selector.js';
 import { performance } from 'perf_hooks';
 import { executeScript } from './js-engine.js';
 import { sleep } from '../utils.js';
+import { captureScreen } from '../parity/capture.js';
+import { resolveActiveRun } from '../parity/store.js';
 
 function fmtMs(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
@@ -1487,6 +1489,22 @@ async function executeCommandBody(
           : ((val as { path?: string } | null)?.path ?? `screenshot-${Date.now()}.png`);
       const buf = await driver.screenshot();
       await fs.writeFile(outPath, buf);
+      break;
+    }
+
+    // Mark a comparison point for `conductor parity`. Outside a parity run this
+    // is a no-op, so a flow carrying checkpoints still runs normally under
+    // `run-flow` — the step marks *where* to compare, not that comparing is on.
+    case 'checkpoint': {
+      const name = typeof val === 'string' ? val : ((val as { name?: string } | null)?.name ?? '');
+      if (!name) throw new Error('checkpoint requires a name');
+      const run = resolveActiveRun();
+      if (!run) {
+        console.log(`  checkpoint "${name}" — no parity run recording, skipped`);
+        break;
+      }
+      run.add(name, await captureScreen(driver));
+      console.log(`  checkpoint "${name}" — captured`);
       break;
     }
 

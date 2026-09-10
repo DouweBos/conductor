@@ -65,6 +65,14 @@ import { swipe, HELP as swipeHelp } from './commands/swipe.js';
 import { assertVisible, HELP as assertVisibleHelp } from './commands/assert-visible.js';
 import { screenshot, HELP as screenshotHelp } from './commands/screenshot.js';
 import { captureUI, HELP as captureUIHelp } from './commands/capture-ui.js';
+import { checkpoint, HELP as checkpointHelp } from './commands/checkpoint.js';
+import {
+  parityRecord,
+  parityCompare,
+  parityDiff,
+  ParityFlags,
+  HELP as parityHelp,
+} from './commands/parity.js';
 import { inspect, HELP as inspectHelp } from './commands/inspect.js';
 import { focused, HELP as focusedHelp } from './commands/focused.js';
 import { runFlow, HELP as runFlowHelp } from './commands/run-flow.js';
@@ -225,6 +233,8 @@ const COMMAND_HELP: Record<string, string> = {
   'set-viewport': setViewportHelp,
   'take-screenshot': screenshotHelp,
   'capture-ui': captureUIHelp,
+  checkpoint: checkpointHelp,
+  parity: parityHelp,
   inspect: inspectHelp,
   focused: focusedHelp,
   'run-flow': runFlowHelp,
@@ -315,6 +325,8 @@ async function main(): Promise<void> {
       'report',
       'timeline',
       'baselines',
+      'strict',
+      'ignore-case',
     ],
     string: [
       'device',
@@ -348,6 +360,13 @@ async function main(): Promise<void> {
       'save',
       'save-baseline',
       'sequence',
+      'reference',
+      'label',
+      'json-report',
+      'html',
+      'ignore',
+      'blocking',
+      'run',
       'settle',
       'diff',
       'vs',
@@ -444,6 +463,8 @@ async function main(): Promise<void> {
     // `logs` always needs a device session — Metro discovery is device-scoped.
     // `daemon-stop --all` stops every daemon — no device needed
     ...(command === 'daemon-stop' && argv['all'] ? ['daemon-stop'] : []),
+    // `parity diff` compares two runs already on disk; only record/compare drive a device.
+    ...(command === 'parity' && rest[0] === 'diff' ? ['parity'] : []),
   ]);
 
   if (!NO_DEVICE_COMMANDS.has(command) && !COMMAND_HELP[command]) {
@@ -1087,6 +1108,57 @@ async function main(): Promise<void> {
     case 'capture-ui': {
       const outPath = argv['output'] as string | undefined;
       exitCode = await captureUI(outPath, opts, sessionName);
+      break;
+    }
+
+    case 'checkpoint': {
+      exitCode = await checkpoint(rest[0] ?? '', opts, sessionName, {
+        run: argv['run'] as string | undefined,
+      });
+      break;
+    }
+
+    case 'parity': {
+      const sub = rest[0] ?? '';
+      const flags: ParityFlags = {
+        out: argv['out'] as string | undefined,
+        reference: argv['reference'] as string | undefined,
+        label: argv['label'] as string | undefined,
+        report: argv['json-report'] as string | undefined,
+        html: argv['html'] as string | undefined,
+        frameTolerance:
+          argv['frame-tolerance'] !== undefined ? Number(argv['frame-tolerance']) : undefined,
+        pixelThreshold:
+          argv['pixel-threshold'] !== undefined ? Number(argv['pixel-threshold']) : undefined,
+        minOverlap: argv['min-overlap'] !== undefined ? Number(argv['min-overlap']) : undefined,
+        ignoreCase: argv['ignore-case'] as boolean | undefined,
+        ignore: argv['ignore'] as string | undefined,
+        blocking: argv['blocking'] as string | undefined,
+        strict: argv['strict'] as boolean | undefined,
+      };
+      const rawParityEnv = argv['env'];
+      const parityEnvPairs: string[] = Array.isArray(rawParityEnv)
+        ? rawParityEnv
+        : rawParityEnv
+          ? [rawParityEnv]
+          : [];
+      const parityEnv = Object.fromEntries(
+        parityEnvPairs.map((e: string) => e.split('=', 2) as [string, string])
+      );
+
+      if (sub === 'record') {
+        exitCode = await parityRecord(rest[1] ?? '', opts, sessionName, flags, parityEnv);
+      } else if (sub === 'compare') {
+        exitCode = await parityCompare(rest[1] ?? '', opts, sessionName, flags, parityEnv);
+      } else if (sub === 'diff') {
+        exitCode = await parityDiff(rest[1] ?? '', rest[2] ?? '', opts, flags);
+      } else {
+        console.error(
+          `parity: unknown subcommand "${sub || '(none)'}". Expected record, compare, or diff.`
+        );
+        console.error(parityHelp);
+        exitCode = 1;
+      }
       break;
     }
 

@@ -43,7 +43,7 @@ conductor init --global   # install into ~/.claude/skills/ for all repos
 conductor init --force    # re-sync skills you have already installed
 ```
 
-`init` is the one manual setup step — run it once per repository. In a terminal it prompts for which skills and where; piped or headless (CI, agent) it installs everything non-interactively. It writes a set of capability-scoped Claude Code skills — `conductor-device-interact`, `conductor-inspect`, `conductor-create-flow`, `conductor-native`, `conductor-metro-debugger`, `conductor-profiler` and `conductor-device-setup` — documenting every command and the act → observe → act workflow.
+`init` is the one manual setup step — run it once per repository. In a terminal it prompts for which skills and where; piped or headless (CI, agent) it installs everything non-interactively. It writes a set of capability-scoped Claude Code skills — `conductor-device-interact`, `conductor-inspect`, `conductor-create-flow`, `conductor-parity`, `conductor-native`, `conductor-metro-debugger`, `conductor-profiler` and `conductor-device-setup` — documenting every command and the act → observe → act workflow.
 
 After upgrading conductor, re-run `conductor init --force` to re-sync the installed skills. `init` stamps the version it installed, so it can tell you when they are stale and prune skills no longer shipped. Integrating another way (a custom `CLAUDE.md`, a slash command) works equally well.
 
@@ -59,6 +59,7 @@ Run `conductor --help` for the full command reference, or `conductor <command> -
 | Assertions | `assert-visible`, `assert-not-visible`, `assert-true`, `assert-screenshot` |
 | Navigation | `open-link`, `back` |
 | Flows | `run-flow`, `run-flow-inline`, `run-parallel`, `run-sequence`, `flow` |
+| Parity | `parity record`, `parity compare`, `parity diff`, `checkpoint` |
 | Devices | `start-device`, `stop-device`, `list-devices`, `device-pool`, `set-location`, `set-orientation`, `set-permissions` |
 | Debugging | `logs`, `crashes`, `network`, `memory`, `profile`, `metro`, `record-video`, `stream-server` |
 | In-process (iOS/tvOS) | `native-inspect`, `native-find`, `native-set`, `native-eval`, `native-heap`, and more |

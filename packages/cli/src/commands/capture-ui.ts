@@ -4,24 +4,15 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getDriver } from '../runner.js';
 import { printError, printSuccess, OutputOptions } from '../output.js';
-import { IOSDriver } from '../drivers/ios.js';
-import { AndroidDriver } from '../drivers/android.js';
-import { WebDriver } from '../drivers/web.js';
-import { VegaDriver } from '../drivers/vega.js';
-import { RokuDriver } from '../drivers/roku.js';
-import {
-  buildIOSA11y,
-  buildAndroidA11y,
-  buildWebA11y,
-  A11ySnapshotEntry,
-} from '../drivers/a11y.js';
+import { A11ySnapshotEntry } from '../drivers/a11y.js';
+import { captureScreen, CapturePlatform } from '../parity/capture.js';
 import { buildStoredSnapshot, saveSnapshot } from '../snapshot-store.js';
 
 export interface CaptureBundle {
   version: 1;
   capturedAt: string;
   device: {
-    platform: 'ios' | 'android' | 'web' | 'tvos' | 'vega' | 'roku';
+    platform: CapturePlatform;
     deviceId: string;
     width: number;
     height: number;
@@ -64,62 +55,8 @@ export async function captureUI(
 
     const driver = await getDriver(sessionName);
     const capturedAt = new Date().toISOString();
-
-    let platform: CaptureBundle['device']['platform'];
-    let width = 0;
-    let height = 0;
-    let hierarchy: unknown;
-    let a11ySnapshot: A11ySnapshotEntry[];
-    let screenshotBuf: Buffer;
-
-    if (driver instanceof IOSDriver) {
-      platform = driver.platform; // 'ios' | 'tvos'
-      const [info, vh, shot] = await Promise.all([
-        driver.deviceInfo(),
-        driver.viewHierarchy(false),
-        driver.screenshot(),
-      ]);
-      width = info.widthPoints;
-      height = info.heightPoints;
-      const built = buildIOSA11y(vh.axElement);
-      hierarchy = { axElement: built.hierarchy, depth: vh.depth };
-      a11ySnapshot = built.a11ySnapshot;
-      screenshotBuf = shot;
-    } else if (driver instanceof WebDriver) {
-      platform = 'web';
-      const [info, vh, shot] = await Promise.all([
-        driver.deviceInfo(),
-        driver.viewHierarchy(),
-        driver.screenshot(),
-      ]);
-      width = info.widthPixels;
-      height = info.heightPixels;
-      const built = buildWebA11y(vh);
-      hierarchy = { ...vh, elements: built.hierarchy };
-      a11ySnapshot = built.a11ySnapshot;
-      screenshotBuf = shot;
-    } else if (
-      driver instanceof AndroidDriver ||
-      driver instanceof VegaDriver ||
-      driver instanceof RokuDriver
-    ) {
-      // Vega and Roku emit uiautomator-style XML, so they reuse the Android a11y builder.
-      platform =
-        driver instanceof VegaDriver ? 'vega' : driver instanceof RokuDriver ? 'roku' : 'android';
-      const [info, xml, shot] = await Promise.all([
-        driver.deviceInfo(),
-        driver.viewHierarchy(),
-        driver.screenshot(),
-      ]);
-      width = info.widthPixels;
-      height = info.heightPixels;
-      const built = buildAndroidA11y(xml);
-      hierarchy = { xml, elements: built.hierarchy };
-      a11ySnapshot = built.a11ySnapshot;
-      screenshotBuf = shot;
-    } else {
-      throw new Error('Unknown driver type');
-    }
+    const { platform, width, height, hierarchy, a11ySnapshot, screenshot } =
+      await captureScreen(driver);
 
     const bundle: CaptureBundle = {
       version: 1,
@@ -133,7 +70,7 @@ export async function captureUI(
       screenshot: {
         kind: 'composite',
         encoding: 'png',
-        data: screenshotBuf.toString('base64'),
+        data: screenshot.toString('base64'),
       },
       hierarchy,
       a11ySnapshot,

@@ -41,6 +41,10 @@ Recognised step shapes mirror the CLI command names — `launchApp`,
 `takeScreenshot`, `captureUI`, `inspect`. Step arguments mirror the
 CLI flags as YAML keys.
 
+`checkpoint: <name>` marks a comparison point for
+[`conductor parity`](/conductor/docs/commands). Outside a parity run it is a
+no-op, so a flow carrying checkpoints still runs normally under `run-flow`.
+
 ---
 
 ## Running a flow

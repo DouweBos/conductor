@@ -120,6 +120,29 @@ injection, and parallel execution semantics.
 
 ---
 
+## Parity
+
+Prove a rebuilt screen still matches the original: walk one journey through two
+builds of an app, capture named checkpoints in each, and diff them. The
+comparison is semantic — over the accessibility snapshot — because two builds in
+different stacks never agree pixel-for-pixel while being, to a user, identical.
+The pixel ratio is reported alongside as corroborating evidence.
+
+| Command                  | What it does                                                                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `parity record <flow>`   | Walk a flow against the reference build, capturing every `checkpoint` step into `--out <dir>`.                                       |
+| `parity compare <flow>`  | Walk the same flow against the candidate build, diff it against `--reference <dir>`, and exit non-zero on a blocking difference.     |
+| `parity diff <ref> <cand>` | Diff two recorded runs already on disk — no device needed. Use it to re-tune thresholds without re-driving the app.                |
+| `checkpoint <name>`      | Capture one checkpoint ad hoc into `--run <dir>`, for journeys driven command-by-command rather than from a flow.                    |
+
+Findings are **blocking** (`missing`, `text`, `value`, `checkpoint-missing`,
+`geometry`) or **advisory** (`added`, `moved`, `resized`, `reordered`, `state`,
+`pixel`); `--blocking`, `--ignore` and `--strict` move the line. Every run
+writes `parity.json` next to the candidate; `--html <path>` adds a
+self-contained side-by-side report.
+
+---
+
 ## Web
 
 | Command       | What it does                                                                                                                                                              |

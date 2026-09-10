@@ -38,6 +38,22 @@ appId: com.example.myapp
 { "steps": [ { "cmd": "tap-on", "args": ["Login"] }, { "cmd": "input-text", "args": ["user@example.com"] } ] }
 ```
 
+## Parity checkpoints
+
+`- checkpoint: <name>` marks a point in the journey worth comparing between two
+builds of the app. Under plain `run-flow` it is a no-op, so a flow carrying
+checkpoints still runs normally; under `conductor parity record` / `parity
+compare` each one captures the screen for the diff.
+
+```yaml
+- launchApp
+- checkpoint: cart-empty
+- tapOn: "Checkout"
+- checkpoint: checkout
+```
+
+See the **`conductor-parity`** skill for the record → rebuild → compare loop.
+
 ## Record a flow from your interactions
 
 | Command | Purpose |

@@ -46,6 +46,12 @@ appearance/RTL, or run Swift in-process — use the **`conductor-native`** skill
 | `conductor assert-true <expr> [--env K=V]` | Assert a JavaScript expression is truthy (no device needed) |
 | `conductor assert-screenshot <reference.png> [--threshold <0-1>] [--update]` | Visual regression vs a baseline image; `--update` (re)writes the baseline. Writes `<ref>.diff.png` on mismatch |
 
+`assert-screenshot` compares one screen against a stored baseline of *itself*.
+To compare two **different builds** of the same screen — a port or rewrite —
+use the **`conductor-parity`** skill instead: a pixel threshold can't tell a
+font-rendering difference from a dropped button, and parity diffs the
+accessibility snapshot to do so.
+
 Both take the same selectors as `tap-on`: `--id`, `--text`, `--index`,
 `--below` / `--above` / `--left-of` / `--right-of`, `--focused`, `--enabled`,
 `--checked`, `--selected`, `--optional`.
