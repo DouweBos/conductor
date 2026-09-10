@@ -52,6 +52,34 @@ export async function buildAgentSystemPrompt(device: DeviceInfo | null): Promise
     "Loop: capture-ui to observe → act → capture-ui to confirm. Prefer stable selectors (text/id) over raw coordinates.",
   );
 
+  lines.push(
+    "",
+    "## Checking parity across rebuilt apps",
+    "When the job is \"does this rebuilt screen still match the original\" — a port to",
+    "Swift/Kotlin, a Lightning/canvas TV build, a redesign — do not eyeball two",
+    "screenshots. Use the parity tools, which compare the accessibility snapshot",
+    "(what exists, what it says, where it sits, what has focus) rather than pixels:",
+    "two builds in different stacks never agree pixel-for-pixel while looking",
+    "identical to a user.",
+    "",
+    "- `start_parity_run` — walk one flow through a reference device and several",
+    "  target devices at once, then diff every target against the reference.",
+    "- `get_parity_run` — read progress, then the checkpoint x target grid.",
+    "",
+    "The flow needs `- checkpoint: <name>` steps marking the screens worth",
+    "comparing; outside a parity run they are no-ops, so a flow carrying them",
+    "still runs normally.",
+    "",
+    "Read `universal` findings first. Those are reported by EVERY target, and",
+    "independent rebuilds rarely diverge the same way — so they usually mean the",
+    "*reference* run is wrong (stale, behind a feature flag, a different",
+    "experiment bucket), not that every target is. Say so rather than filing the",
+    "same bug against four platforms. A finding on one target is that target's bug.",
+    "",
+    "Give each target a short, stable column name (\"tvOS\", \"Android TV\",",
+    "\"VegaOS\", \"Lightning\") — it names the column in the grid and in the report.",
+  );
+
   if (project) {
     lines.push(
       "",

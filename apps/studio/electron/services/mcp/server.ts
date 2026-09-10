@@ -18,6 +18,8 @@ import { linkCases, listCases, projects as qaseProjects, refreshCases } from "..
 import { scaffoldFlow } from "../cases/pomBridge";
 import { createReportDir, writeReport } from "../report/reportService";
 import { recordExpectation, startSession } from "../report/testSession";
+import { listDevices } from "../conductor/conductorService";
+import { getParityRun, startParityRun } from "../parity/parityService";
 import { findPath, type SceneGraphIndex } from "../scenegraph/graph";
 import {
   currentApp,
@@ -131,6 +133,87 @@ async function resolveApp(
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({ name: "conductor-studio", version: "1.0.0" });
+
+  // ── Parity ──
+  //
+  // The agent sets a run up and reads the grid; it does not diff anything
+  // itself. The comparison is the CLI's, so the agent and a human clicking Run
+  // are held to exactly the same verdict.
+
+  server.tool(
+    "start_parity_run",
+    "Walk one flow through a reference build and several target builds at once, then diff every target against the reference. Use when checking whether rebuilt versions of a screen (tvOS, Android TV, VegaOS, a Lightning web build) still match the original. Returns immediately; poll `get_parity_run` for the grid.",
+    {
+      flowPath: z.string().describe("Flow to walk, relative to the flows directory."),
+      referenceDeviceId: z.string().describe("Device running the build being ported FROM."),
+      referenceLabel: z
+        .string()
+        .optional()
+        .describe('Name for the reference column, e.g. "React Native".'),
+      targets: z
+        .array(
+          z.object({
+            label: z.string().describe('Column name, e.g. "tvOS", "Android TV", "VegaOS".'),
+            deviceId: z.string(),
+          }),
+        )
+        .min(1)
+        .describe("The builds to compare against — one entry per device."),
+    },
+    async ({ flowPath, referenceDeviceId, referenceLabel, targets }) => {
+      const devices = await listDevices();
+      const missing = [referenceDeviceId, ...targets.map((t) => t.deviceId)].filter(
+        (id) => !devices.some((d) => d.id === id),
+      );
+      if (missing.length) {
+        return text({
+          error: `not connected: ${missing.join(", ")}`,
+          connected: devices.map((d) => ({ id: d.id, name: d.name, platform: d.platform })),
+        });
+      }
+      const started = await startParityRun({
+        flowPath,
+        referenceDeviceId,
+        referenceLabel: referenceLabel ?? "Reference",
+        targets: targets.map((t) => ({
+          label: t.label,
+          deviceId: t.deviceId,
+          platform:
+            devices.find((d) => d.id === t.deviceId)?.platform ?? ("ios" as const),
+        })),
+      });
+      return text({
+        started: true,
+        runId: started.runId,
+        note: "poll get_parity_run until phase is done or failed",
+      });
+    },
+  );
+
+  server.tool(
+    "get_parity_run",
+    "Read the current parity run: which builds have finished walking, and once diffing is done, the checkpoint x target grid and its findings. Findings marked `universal` are reported by EVERY target, which points at the reference run being wrong rather than the targets.",
+    {},
+    async () => {
+      const state = getParityRun();
+      if (!state) return text({ running: false, note: "no parity run has been started" });
+      return text({
+        phase: state.phase,
+        error: state.error,
+        reference: state.reference,
+        targets: state.targets,
+        matrix: state.matrix
+          ? {
+              passed: state.matrix.passed,
+              summary: state.matrix.summary,
+              rows: state.matrix.rows,
+              universal: state.matrix.shared.filter((f) => f.universal),
+              per_target: state.matrix.shared.filter((f) => !f.universal),
+            }
+          : undefined,
+      });
+    },
+  );
 
   server.tool(
     "list_apps",

@@ -2,7 +2,20 @@
 // sync manually (no codegen), mirroring Argus's convention. tsconfig.main.json
 // includes this file so the backend can import it too.
 
-export type Platform = "ios" | "android" | "tvos" | "web";
+/**
+ * Device families Studio can drive. Mirrors the conductor CLI's driver set —
+ * `vega` is an Amazon Fire TV (Vega) virtual device and `roku` a Roku, both of
+ * which the CLI has driven for some time; Studio only gained names for them
+ * when parity started comparing a reference build against them.
+ */
+export type Platform = "ios" | "android" | "tvos" | "web" | "vega" | "roku";
+
+/** Platforms driven by a remote's D-pad rather than a touch screen. */
+export const TV_PLATFORMS: readonly Platform[] = ["tvos", "vega", "roku"];
+
+export function isTvPlatform(platform: Platform | undefined): boolean {
+  return platform !== undefined && TV_PLATFORMS.includes(platform);
+}
 
 export interface ProjectInfo {
   root: string;
@@ -539,4 +552,167 @@ export interface TestReport {
   /** Counts for the pass/fail line in the list. */
   passed: number;
   failed: number;
+}
+
+// ── Parity ───────────────────────────────────────────────────────────────────
+//
+// Studio's mirror of the conductor CLI's parity model (`parity matrix --json`).
+// One reference build is walked once; every target build walks the same journey
+// and is diffed against it, producing a checkpoint × target grid.
+
+export type ParityFindingKind =
+  | "missing"
+  | "added"
+  | "text"
+  | "value"
+  | "state"
+  | "focus"
+  | "moved"
+  | "resized"
+  | "reordered"
+  | "pixel"
+  | "geometry"
+  | "checkpoint-missing";
+
+export type ParitySeverity = "blocking" | "advisory";
+
+/** A build to hold the reference to, bound to the device that runs it. */
+export interface ParityTarget {
+  /** Column name in the grid: "tvOS", "Android TV", "VegaOS", "Lightning". */
+  label: string;
+  deviceId: string;
+  platform: Platform;
+}
+
+export interface ParityFinding {
+  kind: ParityFindingKind;
+  severity: ParitySeverity;
+  detail: string;
+  role?: string;
+  label?: string;
+  identifier?: string;
+}
+
+export interface ParityCheckpointDiff {
+  name: string;
+  passed: boolean;
+  scaled: boolean;
+  rolesRelaxed: boolean;
+  counts: Record<string, number>;
+  findings: ParityFinding[];
+  pixel?: { diffPixels: number; ratio: number; diffPath?: string; skipped?: string };
+}
+
+export interface ParityMatrixCell {
+  target: string;
+  status: "pass" | "fail" | "absent";
+  blocking: number;
+  advisory: number;
+}
+
+export interface ParityMatrixRow {
+  checkpoint: string;
+  cells: ParityMatrixCell[];
+  passed: boolean;
+}
+
+/**
+ * A finding seen across one or more targets. `universal` — every target reports
+ * it — is the signal that the *reference* is the outlier rather than the
+ * targets, since independent rebuilds rarely diverge the same way.
+ */
+export interface ParitySharedFinding {
+  signature: string;
+  checkpoint: string;
+  kind: ParityFindingKind;
+  severity: ParitySeverity;
+  subject: string;
+  role?: string;
+  identifier?: string;
+  targets: string[];
+  universal: boolean;
+  detail: string;
+}
+
+export interface ParityTargetResult {
+  label: string;
+  dir: string;
+  platform: string;
+  passed: boolean;
+  report: {
+    summary: {
+      checkpoints: number;
+      passed: number;
+      failed: number;
+      blocking: number;
+      advisory: number;
+    };
+    checkpoints: ParityCheckpointDiff[];
+  };
+}
+
+export interface ParityMatrix {
+  version: 1;
+  passed: boolean;
+  comparedAt: string;
+  reference: { dir: string; label: string };
+  targets: ParityTargetResult[];
+  rows: ParityMatrixRow[];
+  shared: ParitySharedFinding[];
+  summary: {
+    targets: number;
+    targetsPassed: number;
+    checkpoints: number;
+    blocking: number;
+    advisory: number;
+    universal: number;
+  };
+}
+
+/** Where one target is in its walk. Drives the per-tile status in the grid. */
+export type ParityTargetPhase = "idle" | "walking" | "recorded" | "failed";
+
+export interface ParityTargetProgress {
+  label: string;
+  deviceId: string;
+  phase: ParityTargetPhase;
+  /** Checkpoints captured so far. */
+  checkpoints: number;
+  /** Most recent checkpoint name, for the tile caption. */
+  lastCheckpoint?: string;
+  error?: string;
+}
+
+export type ParityRunPhase =
+  | "idle"
+  | "recording-reference"
+  | "walking-targets"
+  | "diffing"
+  | "done"
+  | "failed";
+
+/** One broadcast tick of a parity run, per `parity_progress`. */
+export interface ParityProgress {
+  runId: string;
+  phase: ParityRunPhase;
+  reference: ParityTargetProgress;
+  targets: ParityTargetProgress[];
+  matrix?: ParityMatrix;
+  error?: string;
+}
+
+export interface ParityRunRequest {
+  flowPath: string;
+  /** Device that runs the build being ported *from*. */
+  referenceDeviceId: string;
+  referenceLabel: string;
+  targets: ParityTarget[];
+  /** Reuse an existing reference run instead of re-recording it. */
+  reuseReferenceDir?: string;
+}
+
+export interface ParityRunStarted {
+  runId: string;
+  outDir: string;
+  referenceDir: string;
 }

@@ -41,6 +41,10 @@ import type {
   UpdaterState,
   ConductorStatus,
   VideoConfig,
+  ParityMatrix,
+  ParityProgress,
+  ParityRunRequest,
+  ParityRunStarted,
 } from "./types";
 
 function invoke<T>(channel: string, args?: unknown): Promise<T> {
@@ -108,6 +112,14 @@ export const deviceInputText = (deviceId: string, text: string) =>
 export const devicePressKey = (deviceId: string, key: string) =>
   invoke<void>("device_press_key", { deviceId, key });
 export const captureUi = (deviceId: string) => invoke<CaptureUiResult>("capture_ui", { deviceId });
+
+// ── Parity ──
+export const startParity = (req: ParityRunRequest) =>
+  invoke<ParityRunStarted>("parity_start", req);
+export const cancelParity = () => invoke<void>("parity_cancel");
+export const getParityState = () => invoke<ParityProgress | null>("parity_state");
+export const rediffParity = (referenceDir: string, targetDirs: string[]) =>
+  invoke<ParityMatrix>("parity_rediff", { referenceDir, targetDirs });
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");

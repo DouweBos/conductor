@@ -1,0 +1,204 @@
+import { create } from "zustand";
+
+import { listen } from "../lib/events";
+import { cancelParity, getParityState, startParity } from "../lib/ipc";
+import type {
+  DeviceInfo,
+  ParityMatrix,
+  ParityProgress,
+  ParityTarget,
+  ParityTargetProgress,
+} from "../lib/types";
+import { setStreamedDevices } from "./deviceStore";
+
+/**
+ * A parity run: the reference build on one device, every target build on its
+ * own, and the grid that comes out of comparing them.
+ *
+ * The plan (which flow, which device is the reference, which devices are
+ * targets) lives here and survives leaving the view; the live progress is
+ * pushed from the main process on `parity_progress`.
+ */
+
+interface ParityState {
+  flowPath: string | null;
+  referenceDeviceId: string | null;
+  referenceLabel: string;
+  targets: ParityTarget[];
+  progress: ParityProgress | null;
+  starting: boolean;
+  error: string | null;
+}
+
+const store = create<ParityState>(() => ({
+  flowPath: null,
+  referenceDeviceId: null,
+  referenceLabel: "Reference",
+  targets: [],
+  progress: null,
+  starting: false,
+  error: null,
+}));
+
+export const useParityFlow = () => store((s) => s.flowPath);
+export const useParityReference = () =>
+  store((s) => ({ deviceId: s.referenceDeviceId, label: s.referenceLabel }));
+export const useParityTargets = () => store((s) => s.targets);
+export const useParityProgress = () => store((s) => s.progress);
+export const useParityStarting = () => store((s) => s.starting);
+export const useParityError = () => store((s) => s.error);
+
+export const useParityMatrix = (): ParityMatrix | null =>
+  store((s) => s.progress?.matrix ?? null);
+
+/** True while a run is under way — the controls lock, the streams stay up. */
+export const useParityRunning = () =>
+  store((s) => {
+    const phase = s.progress?.phase;
+    return (
+      s.starting ||
+      phase === "recording-reference" ||
+      phase === "walking-targets" ||
+      phase === "diffing"
+    );
+  });
+
+export function setParityFlow(flowPath: string | null): void {
+  store.setState({ flowPath });
+}
+
+export function setParityReference(deviceId: string | null, label?: string): void {
+  store.setState((s) => ({
+    referenceDeviceId: deviceId,
+    referenceLabel: label ?? s.referenceLabel,
+  }));
+}
+
+export function setParityReferenceLabel(label: string): void {
+  store.setState({ referenceLabel: label });
+}
+
+/**
+ * Add a device as a target. The label defaults to the device's own name, which
+ * is what makes a four-way run readable without typing four column headings —
+ * it stays editable because "Apple TV 4K (3rd gen)" is a worse column heading
+ * than "tvOS".
+ */
+export function addParityTarget(device: DeviceInfo): void {
+  store.setState((s) => {
+    if (s.targets.some((t) => t.deviceId === device.id)) return s;
+    if (s.referenceDeviceId === device.id) return s;
+    const label = uniqueLabel(suggestLabel(device), s.targets);
+    return { targets: [...s.targets, { label, deviceId: device.id, platform: device.platform }] };
+  });
+}
+
+export function removeParityTarget(deviceId: string): void {
+  store.setState((s) => ({ targets: s.targets.filter((t) => t.deviceId !== deviceId) }));
+}
+
+export function renameParityTarget(deviceId: string, label: string): void {
+  store.setState((s) => ({
+    targets: s.targets.map((t) => (t.deviceId === deviceId ? { ...t, label } : t)),
+  }));
+}
+
+/** A short, platform-shaped column heading. */
+export function suggestLabel(device: DeviceInfo): string {
+  switch (device.platform) {
+    case "tvos":
+      return "tvOS";
+    case "vega":
+      return "VegaOS";
+    case "roku":
+      return "Roku";
+    case "ios":
+      return "iOS";
+    case "web":
+      return "Web";
+    case "android":
+      return device.formFactor === "tv" ? "Android TV" : "Android";
+    default:
+      return device.name;
+  }
+}
+
+function uniqueLabel(base: string, existing: ParityTarget[]): string {
+  if (!existing.some((t) => t.label === base)) return base;
+  let n = 2;
+  while (existing.some((t) => t.label === `${base} ${n}`)) n++;
+  return `${base} ${n}`;
+}
+
+/** Every device the grid should be showing: the reference plus each target. */
+export function streamedDeviceIds(): string[] {
+  const s = store.getState();
+  return [s.referenceDeviceId, ...s.targets.map((t) => t.deviceId)].filter(
+    (id): id is string => Boolean(id),
+  );
+}
+
+export async function syncParityStreams(): Promise<void> {
+  await setStreamedDevices(streamedDeviceIds());
+}
+
+export async function startParityRun(): Promise<void> {
+  const s = store.getState();
+  if (!s.flowPath) {
+    store.setState({ error: "pick a flow to walk first" });
+    return;
+  }
+  if (!s.referenceDeviceId) {
+    store.setState({ error: "pick the device running the reference build" });
+    return;
+  }
+  if (s.targets.length === 0) {
+    store.setState({ error: "add at least one target build to compare against" });
+    return;
+  }
+
+  store.setState({ starting: true, error: null });
+  try {
+    // Bring every screen up before the walk starts, so the first checkpoints
+    // aren't captured against tiles that are still black.
+    await syncParityStreams();
+    await startParity({
+      flowPath: s.flowPath,
+      referenceDeviceId: s.referenceDeviceId,
+      referenceLabel: s.referenceLabel,
+      targets: s.targets,
+    });
+  } catch (err) {
+    store.setState({ error: String(err) });
+  } finally {
+    store.setState({ starting: false });
+  }
+}
+
+export async function cancelParityRun(): Promise<void> {
+  try {
+    await cancelParity();
+  } catch (err) {
+    store.setState({ error: String(err) });
+  }
+}
+
+/** Progress for one target label, for the tile that shows it. */
+export function progressFor(
+  progress: ParityProgress | null,
+  label: string,
+): ParityTargetProgress | undefined {
+  if (!progress) return undefined;
+  if (progress.reference.label === label) return progress.reference;
+  return progress.targets.find((t) => t.label === label);
+}
+
+/** Subscribe to main-process progress. Called once, at app start. */
+export function initParityStore(): () => void {
+  void getParityState().then((progress) => {
+    if (progress) store.setState({ progress });
+  });
+  return listen<ParityProgress>("parity_progress", (progress) => {
+    store.setState({ progress, error: progress.error ?? null });
+  });
+}

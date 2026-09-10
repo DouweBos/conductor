@@ -6,8 +6,9 @@ import styles from "./NavRail.module.css";
 const ITEMS: { view: View; icon: IconName; label: string }[] = [
   { view: "flows", icon: "flow", label: "Flows" },
   { view: "agent", icon: "agent", label: "Agent" },
-  { view: "cases", icon: "matrix", label: "Cases" },
-  { view: "reports", icon: "check", label: "Reports" },
+  { view: "parity", icon: "matrix", label: "Parity" },
+  { view: "cases", icon: "check", label: "Cases" },
+  { view: "reports", icon: "file", label: "Reports" },
 ];
 
 export function NavRail() {

@@ -43,6 +43,10 @@ import type {
   UpdaterState,
   ConductorStatus,
   VideoConfig,
+  ParityMatrix,
+  ParityProgress,
+  ParityRunRequest,
+  ParityRunStarted,
 } from "../app/lib/types";
 import {
   getAgentStatus,
@@ -128,6 +132,12 @@ import {
   runFolder,
   runRepeat,
 } from "./services/flow/flowRunner";
+import {
+  cancelParityRun,
+  getParityRun,
+  rediffParityRun,
+  startParityRun,
+} from "./services/parity/parityService";
 import { loadFlowCatalog } from "./services/flow/catalog";
 import { createFromTemplate, listTemplates } from "./services/flow/templates";
 import { lintOne, lintProject } from "./services/flow/lint";
@@ -194,6 +204,14 @@ function handle<A, R>(channel: string, fn: (args: A) => Promise<R> | R): void {
 }
 
 export function registerIpcHandlers(): void {
+  // ── Parity ──
+  handle<ParityRunRequest, ParityRunStarted>("parity_start", (a) => startParityRun(a));
+  handle<void, void>("parity_cancel", () => cancelParityRun());
+  handle<void, ParityProgress | null>("parity_state", () => getParityRun());
+  handle<{ referenceDir: string; targetDirs: string[] }, ParityMatrix>("parity_rediff", (a) =>
+    rediffParityRun(a.referenceDir, a.targetDirs),
+  );
+
   // ── Project / files ──
   handle<{ root?: string }, ProjectInfo>("project_open", (a) => openProject(a?.root));
   handle<void, ProjectInfo | null>("project_info", () => getProjectInfo());

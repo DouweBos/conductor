@@ -10,8 +10,9 @@ import { useSyncExternalStore } from "react";
 //   #/cases                 → test case management
 //   #/cases/<id>            → cases with one case open
 //   #/reports               → agentic test reports
+//   #/parity                → parity workspace (reference vs N target builds)
 
-export type View = "flows" | "agent" | "cases" | "reports";
+export type View = "flows" | "agent" | "cases" | "reports" | "parity";
 
 export interface ParsedRoute {
   view: View;
@@ -30,7 +31,7 @@ export function parseRoute(hash: string): ParsedRoute {
     return { view: "flows", flowPath };
   }
   if (view === "cases") return { view, caseId: segments[1] ? decodeURIComponent(segments[1]) : undefined };
-  if (view === "agent" || view === "reports") return { view };
+  if (view === "agent" || view === "reports" || view === "parity") return { view };
   return { view: "flows" };
 }
 

@@ -605,3 +605,69 @@ updates proxy. It filters releases to the `studio-v` prefix, resolves
 `beta` ⊇ stable, so beta testers still get a stable cut that outpaces the last
 beta), and streams the asset back. Adding a route there also requires listing it
 in that repo's `public/_routes.json`.
+
+---
+
+## 4. Parity — one reference, many rebuilds
+
+The **Parity** workspace answers "does this rebuilt screen still match the
+original?" for several rebuilds at once. Pick a flow, choose the device running
+the build being ported *from*, add every build being ported *to*, and run: each
+target walks the same journey on its own device, in parallel, and is diffed
+against the reference.
+
+It is built for a fan-out, not a pair. A reference build can be checked against
+tvOS, Android TV, VegaOS and a Lightning web build in one run, each named as its
+own column.
+
+### The screen
+
+The reference stream sits on the left at full size; every target tiles beside
+it, so you watch all of them walk the journey together. Tiles are watch-only by
+design — a stray tap on one build would put it on a different screen from the
+others, which is exactly the divergence the run is trying to measure. Each tile
+shows its phase and its checkpoint count as they land.
+
+Below the streams, the results: the checkpoint × target grid, then the findings.
+
+### Read the universal findings first
+
+This is the thing a fan-out tells you that four separate two-way runs cannot:
+
+- a finding on **one** target is that target's bug;
+- a finding on **every** target is a statement about the **reference**.
+
+Four independent rebuilds rarely drop the same button. When they all report it,
+the reference run is the likelier suspect — stale, behind a feature flag, or in
+a different experiment bucket — and one fix there clears the finding from every
+column at once. The results panel separates these out under **Reported by every
+target**.
+
+### Why not just compare screenshots
+
+Two builds in different stacks never agree pixel-for-pixel — fonts, shadows,
+ripples and sub-pixel rounding all differ while the screen is, to a user,
+identical. The comparison is semantic, over the accessibility snapshot: which
+elements exist, what they say, where they sit, what has focus. The pixel ratio
+rides along as corroborating evidence rather than as the verdict. See the
+`conductor-parity` skill for the finding kinds and how to tune them.
+
+### Marking the journey
+
+A flow opts into comparison with `- checkpoint: <name>` steps at the screens
+worth comparing. Outside a parity run they are no-ops, so the same flow still
+runs normally from the Flows workbench.
+
+### Agentic
+
+The agent drives the same machinery through two MCP tools — `start_parity_run`
+and `get_parity_run` — so an agent-run comparison and a human clicking **Run
+parity** are held to exactly the same verdict. The agent is told to read
+universal findings as a question about the reference, so it reports one
+reference bug rather than filing the same issue against four platforms.
+
+### Where runs are written
+
+`.conductor/parity/<runId>/` in the project: `reference/`, `targets/<slug>/`,
+`parity-matrix.json` and `parity-matrix.html`. Re-diffing costs nothing —
+`conductor parity matrix` compares recorded runs with no devices attached.
