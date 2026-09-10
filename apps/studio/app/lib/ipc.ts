@@ -49,6 +49,9 @@ import type {
   ParitySnapResult,
   ConvergeProgress,
   ConvergeRequest,
+  ParityProjectConfig,
+  TargetMemory,
+  TargetRecipe,
 } from "./types";
 
 function invoke<T>(channel: string, args?: unknown): Promise<T> {
@@ -116,6 +119,8 @@ export const deviceInputText = (deviceId: string, text: string) =>
 export const devicePressKey = (deviceId: string, key: string) =>
   invoke<void>("device_press_key", { deviceId, key });
 export const captureUi = (deviceId: string) => invoke<CaptureUiResult>("capture_ui", { deviceId });
+export const launchAppOnDevice = (deviceId: string, appId: string) =>
+  invoke<void>("device_launch_app", { deviceId, appId });
 
 // ── Parity ──
 export const startParity = (req: ParityRunRequest) =>
@@ -135,6 +140,14 @@ export const acceptConvergeTarget = (label: string) =>
   invoke<void>("parity_converge_accept", { label });
 export const rejectConvergeTarget = (label: string, note: string) =>
   invoke<void>("parity_converge_reject", { label, note });
+export const getParityConfig = () => invoke<ParityProjectConfig>("parity_config");
+export const putParityRecipe = (recipe: TargetRecipe) =>
+  invoke<ParityProjectConfig>("parity_recipe_put", recipe);
+export const deleteParityRecipe = (label: string) =>
+  invoke<ParityProjectConfig>("parity_recipe_delete", { label });
+export const getTargetMemory = (label: string) => invoke<TargetMemory>("parity_memory", { label });
+export const rememberForTarget = (label: string, text: string) =>
+  invoke<void>("parity_remember", { label, text });
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");

@@ -7,6 +7,7 @@ import { remoteKeyFor } from "../../lib/remoteKeys";
 import type { ParityTarget, ParityTargetProgress, Platform } from "../../lib/types";
 import { isTvPlatform } from "../../lib/types";
 import { useDevices, useStreamError, useStreamPhase } from "../../stores/deviceStore";
+import { recordRouteStep } from "../../stores/parityStore";
 import styles from "./ParityStreamGrid.module.css";
 
 /**
@@ -93,6 +94,9 @@ function StreamTile({
     if (!deviceId) return;
     void sendInput(deviceId, input);
     if (mirrorTo.length) void mirrorInput(mirrorTo, input);
+    // Every input to the reference is a step of the route the loop will replay
+    // on each target after a rebuild — so re-navigation is mechanical.
+    if (large) recordRouteStep(input);
   };
 
   const normalize = (clientX: number, clientY: number): { x: number; y: number } | null => {

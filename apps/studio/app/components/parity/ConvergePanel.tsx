@@ -19,6 +19,7 @@ import styles from "./ConvergePanel.module.css";
 
 const PHASE: Record<ConvergePhase, { label: string; tone: StatusTone }> = {
   idle: { label: "queued", tone: "neutral" },
+  preparing: { label: "rebuilding", tone: "running" },
   capturing: { label: "capturing", tone: "running" },
   diffing: { label: "diffing", tone: "running" },
   "agent-working": { label: "agent working", tone: "running" },
@@ -53,7 +54,19 @@ function TargetRow({ target }: { target: ConvergeTargetState }) {
   const [note, setNote] = useState("");
   const latest = target.attempts[target.attempts.length - 1];
   const phase = PHASE[target.phase];
-  const working = target.phase === "capturing" || target.phase === "diffing" || target.phase === "agent-working";
+  const working =
+    target.phase === "preparing" ||
+    target.phase === "capturing" ||
+    target.phase === "diffing" ||
+    target.phase === "agent-working";
+  const failedStep = latest?.steps?.find((st) => !st.ok);
+  const spent = target.attempts.reduce(
+    (acc, a) => ({
+      usd: acc.usd + (a.agent?.costUsd ?? 0),
+      ms: acc.ms + (a.agent?.durationMs ?? 0) + (a.steps ?? []).reduce((m, st) => m + st.durationMs, 0),
+    }),
+    { usd: 0, ms: 0 },
+  );
 
   return (
     <li className={styles.target}>
@@ -64,6 +77,8 @@ function TargetRow({ target }: { target: ConvergeTargetState }) {
         <StatusPill tone={phase.tone}>{phase.label}</StatusPill>
         <span className={styles.rounds}>
           {target.attempts.length} round{target.attempts.length === 1 ? "" : "s"}
+          {spent.ms > 0 ? ` · ${Math.round(spent.ms / 60_000)} min` : ""}
+          {spent.usd > 0 ? ` · $${spent.usd.toFixed(2)}` : ""}
         </span>
         {target.phase === "awaiting-review" && !target.accepted ? (
           <>
@@ -108,6 +123,17 @@ function TargetRow({ target }: { target: ConvergeTargetState }) {
 
       <Trend target={target} />
 
+      {failedStep ? (
+        <p className={styles.error}>
+          <Icon name="alert" size={12} /> {failedStep.step} failed — the agent sees the output
+          next round
+        </p>
+      ) : null}
+      {latest?.tests && !latest.tests.passed ? (
+        <p className={styles.error}>
+          <Icon name="alert" size={12} /> screen matches, but the target's tests fail
+        </p>
+      ) : null}
       {target.outcome ? <p className={styles.outcome}>{target.outcome}</p> : null}
       {target.error ? (
         <p className={styles.error}>

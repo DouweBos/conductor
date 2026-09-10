@@ -376,6 +376,22 @@ function boundsOf(node: Record<string, unknown>): CaptureElement["bounds"] {
   };
 }
 
+/**
+ * Launch an app, optionally straight into a deep link. Used to put a freshly
+ * built binary on screen before a recorded route is replayed on it.
+ */
+export async function launchApp(deviceId: string, appId?: string, deepLink?: string): Promise<void> {
+  if (deepLink) {
+    const res = await runConductor(["open-link", deepLink, ...deviceArgs(deviceId)], 30_000);
+    if (res.code !== 0) throw new Error(res.stderr.trim() || `open-link ${deepLink} failed`);
+    return;
+  }
+  if (!appId) throw new Error("launchApp needs an appId or a deep link");
+  const res = await runConductor(["launch-app", appId, ...deviceArgs(deviceId)], 60_000);
+  if (res.code !== 0) throw new Error(res.stderr.trim() || `launch-app ${appId} failed`);
+  appState.lastAction = `launchApp: ${appId}`;
+}
+
 /** x/y are normalized 0..1 relative to the device screen. */
 export async function tap(deviceId: string, x: number, y: number): Promise<void> {
   // Pass the fraction through: conductor resolves 0–1 coordinates against the

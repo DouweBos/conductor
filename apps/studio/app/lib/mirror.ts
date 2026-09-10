@@ -1,4 +1,5 @@
 import { deviceInputText, devicePressKey, deviceSwipe, deviceTap } from "./ipc";
+import type { RouteStep } from "./types";
 
 /**
  * Replay one input across several devices.
@@ -15,11 +16,7 @@ import { deviceInputText, devicePressKey, deviceSwipe, deviceTap } from "./ipc";
  * breaks, the parity diff is what tells you.
  */
 
-export type MirrorInput =
-  | { kind: "tap"; x: number; y: number }
-  | { kind: "swipe"; x1: number; y1: number; x2: number; y2: number }
-  | { kind: "key"; key: string }
-  | { kind: "text"; text: string };
+export type MirrorInput = RouteStep;
 
 export async function sendInput(deviceId: string, input: MirrorInput): Promise<void> {
   switch (input.kind) {

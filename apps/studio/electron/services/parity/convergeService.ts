@@ -30,6 +30,8 @@ import type {
   ParityFinding,
   ParityMatrix,
   ParityTarget,
+  RecipeStepResult,
+  TargetRecipe,
 } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { appState } from "../../state";
@@ -41,8 +43,11 @@ import {
   waitForAgentTurn,
 } from "../agent/agentService";
 import { resolveConductor } from "../maestro/maestroService";
+import { getRecipe } from "./config";
 import { decideNextRound, universalBlockingFindings } from "./convergeDecision";
 import { slugForLabel } from "./labels";
+import { readMemory, remember, renderMemoryForBrief } from "./memory";
+import { prepareTarget, runTargetTests } from "./recipes";
 
 const DEFAULT_MAX_ATTEMPTS = 8;
 const DEFAULT_PATIENCE = 3;
@@ -152,6 +157,8 @@ async function locateReference(referenceDir: string, checkpoint: string): Promis
 async function measure(
   target: ParityTarget,
   attemptIndex: number,
+  recipe?: TargetRecipe,
+  steps: RecipeStepResult[] = [],
 ): Promise<ConvergeAttempt> {
   const g = goal;
   if (!g) throw new Error("no convergence goal");
@@ -168,6 +175,7 @@ async function measure(
     passed: false,
     findings: [],
     dir,
+    steps,
   };
 
   const captured = await runCli(
@@ -230,8 +238,43 @@ async function measure(
   attempt.blocking = checkpoint.findings.filter((f) => f.severity === "blocking").length;
   attempt.advisory = checkpoint.findings.filter((f) => f.severity === "advisory").length;
   attempt.passed = checkpoint.passed;
+
+  // The screen matching is necessary, not sufficient: Helix's gate also asks
+  // the rebuild to "prove its behavior with tests". Run them only once the
+  // screen passes — a red suite on a screen that is still wrong is noise.
+  if (attempt.passed && recipe?.test) {
+    const t = await runTargetTests(recipe);
+    attempt.tests = { passed: t.passed, output: t.output };
+    if (t.step) attempt.steps = [...(attempt.steps ?? []), t.step];
+    if (!t.passed) attempt.passed = false;
+  }
+
   attempt.finishedAt = Date.now();
   return attempt;
+}
+
+/**
+ * An attempt that never got as far as a capture because the rebuild failed.
+ * Findings carry over unchanged — nothing was measured — so the trend shows a
+ * flat line rather than a false zero, and patience ticks down as it should.
+ */
+function unbuiltAttempt(
+  previous: ConvergeAttempt | undefined,
+  index: number,
+  dir: string,
+  steps: RecipeStepResult[],
+): ConvergeAttempt {
+  return {
+    index,
+    startedAt: Date.now(),
+    finishedAt: Date.now(),
+    blocking: previous?.blocking ?? 0,
+    advisory: previous?.advisory ?? 0,
+    passed: false,
+    findings: previous?.findings ?? [],
+    dir,
+    steps,
+  };
 }
 
 // ── The brief handed to the agent ────────────────────────────────────────────
@@ -262,10 +305,14 @@ function describeFindings(findings: ParityFinding[]): string {
 function buildBrief(
   target: ConvergeTargetState,
   attempt: ConvergeAttempt,
-  humanNote?: string,
+  humanNote: string | undefined,
+  recipe: TargetRecipe | undefined,
+  memoryBlock: string,
 ): string {
   const g = goal;
   if (!g) return "";
+  const loopOwnsRebuild = Boolean(recipe?.build || recipe?.reload);
+  const loopOwnsRoute = Boolean(g.req.route || recipe?.appId);
   const { checkpoint, referenceLabel } = g.progress;
   const budget = g.maxAttempts + (g.extraRounds.get(target.label) ?? 0);
   const previous = target.attempts.slice(0, -1);
@@ -285,6 +332,30 @@ function buildBrief(
         .join("\n")
     : "";
 
+  const failedStep = (attempt.steps ?? []).find((s) => !s.ok);
+  const buildBlock = failedStep
+    ? [
+        "",
+        `## The ${failedStep.step} step failed last round — fix this first`,
+        "```",
+        failedStep.output.trim(),
+        "```",
+        "Nothing was measured, because measuring a screen after a failed build would score",
+        "the old binary. The findings below are from the last successful capture.",
+      ].join("\n")
+    : "";
+  const testBlock =
+    attempt.tests && !attempt.tests.passed
+      ? [
+          "",
+          "## The screen matches, but the target's tests fail",
+          "```",
+          attempt.tests.output.trim(),
+          "```",
+          "Parity is not the whole gate: the rebuild has to prove its behaviour too.",
+        ].join("\n")
+      : "";
+
   const reviewer = humanNote
     ? [
         "",
@@ -301,8 +372,12 @@ function buildBrief(
     `screen called "${checkpoint}". The two were just compared. Here is what still differs:`,
     "",
     describeFindings(attempt.findings) || "- (nothing — see the reviewer's note)",
+    buildBlock,
+    testBlock,
     reviewer,
     history,
+    memoryBlock ? "" : "",
+    memoryBlock,
     "",
     "## The reference — read this before changing anything",
     "",
@@ -321,10 +396,22 @@ function buildBrief(
     `1. Fix the cause in the ${target.label} app's source. These are real differences in what`,
     "   the app renders — a missing control, wrong copy, the wrong thing focused. Change the",
     "   code, not the test.",
-    "2. Rebuild / reload so the running app picks the change up. If you worked out how to",
-    "   build and launch this app in an earlier round, do the same again.",
-    `3. Navigate the app back to the "${checkpoint}" screen and leave it there.`,
-    "4. End your turn.",
+    ...(loopOwnsRebuild
+      ? [
+          "2. Save your changes and end your turn. **The loop rebuilds the app for you** using",
+          `   the recipe (${recipe?.reload ? "reload" : "build"}${recipe?.install ? " + install" : ""}); a build error comes back to you verbatim next round.`,
+        ]
+      : [
+          "2. Rebuild / reload so the running app picks the change up. If you worked out how to",
+          "   build and launch this app in an earlier round, do the same again — and record how",
+          "   with `remember_for_target` so the next goal doesn't have to rediscover it.",
+        ]),
+    ...(loopOwnsRoute
+      ? ["3. **The loop re-navigates for you** by replaying the recorded route. Do not navigate."]
+      : [`3. Navigate the app back to the "${checkpoint}" screen and leave it there.`]),
+    "4. If you learned something that will still be true next time — how this app builds,",
+    "   a convention, a trap — write it down with `remember_for_target`. It is read back to",
+    "   you at the start of every round on this target, in every future goal.",
     "",
     "## What not to do",
     "",
@@ -354,15 +441,38 @@ async function runRounds(
   if (!g) return;
   const label = target.label;
   let note = firstBrief?.note;
+  const recipe = await getRecipe(label);
 
   try {
     for (let index = startIndex; ; index++) {
       if (g.cancelled) return;
 
+      // Between the agent's edit and the next measurement: rebuild, relaunch,
+      // replay the route. On the first round of a resume there is nothing to
+      // rebuild — the agent has not touched anything yet.
+      let prepared: { ok: boolean; steps: RecipeStepResult[] } = { ok: true, steps: [] };
+      const previous = targetState(label)?.attempts.at(-1);
+      if (index > 1 && index !== startIndex) {
+        update(label, (t) => {
+          t.phase = "preparing";
+        });
+        prepared = await prepareTarget(target.deviceId, recipe, g.req.route, {
+          preferReload: g.req.preferReload,
+        });
+        if (g.cancelled) return;
+      }
+
       update(label, (t) => {
         t.phase = "capturing";
       });
-      const attempt = await measure(target, index);
+      const attempt = prepared.ok
+        ? await measure(target, index, recipe, prepared.steps)
+        : unbuiltAttempt(
+            previous,
+            index,
+            path.join(g.dir, "targets", slugForLabel(label), `attempt-${index}`),
+            prepared.steps,
+          );
       if (g.cancelled) return;
 
       update(label, (t) => {
@@ -393,6 +503,18 @@ async function runRounds(
           t.outcome = decision.reason;
           if (attempt.error) t.error = attempt.error;
         });
+        if (!attempt.error && attempt.blocking > 0) {
+          const stuckOn = attempt.findings
+            .filter((f) => f.severity === "blocking")
+            .slice(0, 3)
+            .map((f) => f.detail)
+            .join("; ");
+          await remember(
+            label,
+            "loop",
+            `Stalled on "${g.progress.checkpoint}" after ${state.attempts.length} rounds, stuck on: ${stuckOn}`,
+          );
+        }
         await stopTargetAgent(label);
         return;
       }
@@ -412,12 +534,17 @@ async function runRounds(
       update(label, (t) => {
         t.phase = "agent-working";
       });
-      sendAgentMessage(agentId, buildBrief(state, attempt, note));
+      const memoryBlock = renderMemoryForBrief(await readMemory(label));
+      sendAgentMessage(agentId, buildBrief(state, attempt, note, recipe, memoryBlock));
       // A reviewer's note is delivered once, with the round it prompted.
       note = undefined;
 
       try {
-        await waitForAgentTurn(agentId);
+        const turn = await waitForAgentTurn(agentId);
+        update(label, (t) => {
+          const a = t.attempts.at(-1);
+          if (a) a.agent = { durationMs: turn.durationMs, costUsd: turn.costUsd, turns: turn.turns };
+        });
       } catch (err) {
         update(label, (t) => {
           t.phase = "failed";
@@ -502,7 +629,9 @@ export async function startConvergence(req: ConvergeRequest): Promise<{ goalId: 
     // and halt if they agree.
     for (const t of g.progress.targets) t.phase = "capturing";
     publish();
-    const firsts = await Promise.all(req.targets.map((t) => measure(t, 1)));
+    const firsts = await Promise.all(
+      req.targets.map(async (t) => measure(t, 1, await getRecipe(t.label))),
+    );
     if (g.cancelled) return;
     for (let i = 0; i < req.targets.length; i++) {
       update(req.targets[i].label, (t) => {
@@ -572,9 +701,15 @@ async function dispatchAndContinue(target: ParityTarget, first: ConvergeAttempt)
     t.phase = "agent-working";
   });
   await sleep(AGENT_WARMUP_MS);
-  sendAgentMessage(started.agentId, buildBrief(state, first));
+  const recipe = await getRecipe(target.label);
+  const memoryBlock = renderMemoryForBrief(await readMemory(target.label));
+  sendAgentMessage(started.agentId, buildBrief(state, first, undefined, recipe, memoryBlock));
   try {
-    await waitForAgentTurn(started.agentId);
+    const turn = await waitForAgentTurn(started.agentId);
+    update(target.label, (t) => {
+      const a = t.attempts.at(-1);
+      if (a) a.agent = { durationMs: turn.durationMs, costUsd: turn.costUsd, turns: turn.turns };
+    });
   } catch (err) {
     update(target.label, (t) => {
       t.phase = "failed";
@@ -629,6 +764,7 @@ export async function rejectTarget(label: string, note: string): Promise<void> {
   if (!note.trim()) throw new Error("say what is wrong — the note is what the agent works from");
 
   g.extraRounds.set(label, (g.extraRounds.get(label) ?? 0) + REJECT_EXTRA_ROUNDS);
+  await remember(label, "reviewer", `On "${g.progress.checkpoint}": ${note.trim()}`);
   g.progress.running = true;
   g.progress.finishedAt = undefined;
   update(label, (t) => {

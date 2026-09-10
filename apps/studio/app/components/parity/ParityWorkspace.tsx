@@ -14,7 +14,7 @@ import {
 } from "@conductor/studio-ui";
 import { useEffect, useMemo, useState } from "react";
 
-import { listFlows } from "../../lib/ipc";
+import { launchAppOnDevice, listFlows } from "../../lib/ipc";
 import type { DeviceInfo, FileEntry, ParityMode, ParityRunPhase } from "../../lib/types";
 import { refreshDevices, useDevices } from "../../stores/deviceStore";
 import {
@@ -50,8 +50,15 @@ import {
   useConvergeOptions,
   useConvergeRunning,
   setConvergeOptions,
+  loadParityConfigIntoStore,
+  resetRoute,
+  setReferenceAppId,
+  useParityConfig,
+  useParityRoute,
+  useReferenceAppId,
 } from "../../stores/parityStore";
 import { ConvergePanel } from "./ConvergePanel";
+import { RecipeEditor } from "./RecipeEditor";
 import { ParityResults } from "./ParityResults";
 import { ParityStreamGrid } from "./ParityStreamGrid";
 import styles from "./ParityWorkspace.module.css";
@@ -101,13 +108,32 @@ export function ParityWorkspace() {
   const converge = useConverge();
   const converging = useConvergeRunning();
   const convergeOptions = useConvergeOptions();
+  const route = useParityRoute();
+  const referenceAppId = useReferenceAppId();
+  const config = useParityConfig();
+  const [editingRecipe, setEditingRecipe] = useState<string | null>(null);
   const [flows, setFlows] = useState<FileEntry[]>([]);
   const [snapName, setSnapName] = useState("");
 
   useEffect(() => {
     void refreshDevices();
     void listFlows().then(setFlows).catch(() => setFlows([]));
+    void loadParityConfigIntoStore();
   }, []);
+
+  // A fresh launch on every streamed device, and a fresh route from here: the
+  // steps recorded after this are exactly what the loop replays after a rebuild.
+  const launchAll = async (): Promise<void> => {
+    const ids = [reference.deviceId, ...targets.map((t) => t.deviceId)].filter(Boolean) as string[];
+    await Promise.allSettled(
+      ids.map((id) => {
+        const label = targets.find((t) => t.deviceId === id)?.label;
+        const appId = (label && config.recipes[label]?.appId) || referenceAppId;
+        return appId ? launchAppOnDevice(id, appId) : Promise.resolve();
+      }),
+    );
+    resetRoute();
+  };
 
   // Keep the streams matching the plan, so adding a target lights its tile up
   // immediately rather than at the start of the next run.
@@ -205,6 +231,15 @@ export function ParityWorkspace() {
               />
               Unattended
             </label>
+            <label className={styles.mirrorToggle} title="Use a target's reload recipe instead of a full build when it has one">
+              <input
+                type="checkbox"
+                checked={convergeOptions.preferReload}
+                disabled={converging}
+                onChange={(e) => setConvergeOptions({ preferReload: e.target.checked })}
+              />
+              Prefer reload
+            </label>
             {converging ? (
               <Button
                 size="sm"
@@ -285,7 +320,37 @@ export function ParityWorkspace() {
               placeholder="Reference"
               aria-label="Reference name"
             />
+            <TextField
+              value={referenceAppId}
+              onChange={(e) => setReferenceAppId(e.target.value)}
+              placeholder="App id, e.g. com.example.app"
+              aria-label="Reference app id"
+            />
           </div>
+          {mode === "live" ? (
+            <div className={styles.routeBar}>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="play"
+                disabled={!reference.deviceId || (!referenceAppId && targets.every((t) => !config.recipes[t.label]?.appId))}
+                title="Launch the app on every device and start recording the route from here"
+                onClick={() => void launchAll()}
+              >
+                Launch all
+              </Button>
+              <span className={styles.routeStatus}>
+                {route.length === 0
+                  ? "route: nothing recorded since launch"
+                  : `route: ${route.length} step${route.length === 1 ? "" : "s"} recorded — replayed on each target after every rebuild`}
+              </span>
+              {route.length > 0 ? (
+                <Button size="sm" variant="ghost" icon="close" onClick={resetRoute}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <p className={styles.hint}>
             The build being ported <em>from</em>.{" "}
             {mode === "flow"
@@ -335,12 +400,36 @@ export function ParityWorkspace() {
                     {p?.phase === "failed" ? <StatusPill tone="error">failed</StatusPill> : null}
                     <Button
                       size="sm"
+                      variant={config.recipes[t.label] ? "secondary" : "ghost"}
+                      icon="settings"
+                      title={
+                        config.recipes[t.label]
+                          ? "Edit how this target is rebuilt and relaunched"
+                          : "No recipe: the agent will have to rebuild and navigate itself"
+                      }
+                      onClick={() => setEditingRecipe((v) => (v === t.label ? null : t.label))}
+                    >
+                      {config.recipes[t.label]?.build || config.recipes[t.label]?.reload
+                        ? "recipe"
+                        : "no recipe"}
+                    </Button>
+                    <Button
+                      size="sm"
                       variant="ghost"
                       icon="close"
                       aria-label={`Remove ${t.label}`}
                       disabled={running}
                       onClick={() => removeParityTarget(t.deviceId)}
                     />
+                    {editingRecipe === t.label ? (
+                      <div className={styles.recipeSlot}>
+                        <RecipeEditor
+                          target={t}
+                          recipe={config.recipes[t.label]}
+                          onClose={() => setEditingRecipe(null)}
+                        />
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}

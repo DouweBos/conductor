@@ -3,6 +3,9 @@ import { create } from "zustand";
 import { listen } from "../lib/events";
 import {
   acceptConvergeTarget,
+  deleteParityRecipe,
+  getParityConfig,
+  putParityRecipe,
   rejectConvergeTarget,
   cancelConverge,
   cancelParity,
@@ -16,6 +19,9 @@ import {
 import type {
   ConvergeProgress,
   DeviceInfo,
+  ParityProjectConfig,
+  RouteStep,
+  TargetRecipe,
   ParityMatrix,
   ParityMode,
   ParityProgress,
@@ -53,7 +59,15 @@ interface ParityState {
   progress: ParityProgress | null;
   /** The Helix loop, when one is running. */
   converge: ConvergeProgress | null;
-  convergeOptions: { strict: boolean; autoApprove: boolean; maxAttempts: number };
+  convergeOptions: { strict: boolean; autoApprove: boolean; maxAttempts: number; preferReload: boolean };
+  /**
+   * The inputs sent to the reference since it was last launched, in order.
+   * Attached to the next snap as the route the loop replays on each target.
+   */
+  route: RouteStep[];
+  /** App the reference is running, so a route can start from a fresh launch. */
+  referenceAppId: string;
+  config: ParityProjectConfig;
   starting: boolean;
   error: string | null;
 }
@@ -69,7 +83,10 @@ const store = create<ParityState>(() => ({
   targets: [],
   progress: null,
   converge: null,
-  convergeOptions: { strict: false, autoApprove: true, maxAttempts: 8 },
+  convergeOptions: { strict: false, autoApprove: true, maxAttempts: 8, preferReload: true },
+  route: [],
+  referenceAppId: "",
+  config: { version: 1, recipes: {} },
   starting: false,
   error: null,
 }));
@@ -86,6 +103,47 @@ export const useParityProgress = () => store((s) => s.progress);
 export const useParityStarting = () => store((s) => s.starting);
 export const useParityError = () => store((s) => s.error);
 export const useConverge = () => store((s) => s.converge);
+export const useParityRoute = () => store((s) => s.route);
+export const useReferenceAppId = () => store((s) => s.referenceAppId);
+export const useParityConfig = () => store((s) => s.config);
+
+/** Called for every input dispatched to the reference in live mode. */
+export function recordRouteStep(step: RouteStep): void {
+  store.setState((s) => ({ route: [...s.route, step] }));
+}
+
+/** A fresh launch starts a fresh route. */
+export function resetRoute(): void {
+  store.setState({ route: [] });
+}
+
+export function setReferenceAppId(appId: string): void {
+  store.setState({ referenceAppId: appId });
+}
+
+export async function loadParityConfigIntoStore(): Promise<void> {
+  try {
+    store.setState({ config: await getParityConfig() });
+  } catch (err) {
+    store.setState({ error: String(err) });
+  }
+}
+
+export async function saveRecipe(recipe: TargetRecipe): Promise<void> {
+  try {
+    store.setState({ config: await putParityRecipe(recipe) });
+  } catch (err) {
+    store.setState({ error: String(err) });
+  }
+}
+
+export async function removeRecipe(label: string): Promise<void> {
+  try {
+    store.setState({ config: await deleteParityRecipe(label) });
+  } catch (err) {
+    store.setState({ error: String(err) });
+  }
+}
 export const useConvergeRunning = () => store((s) => s.converge?.running === true);
 
 export const useParityMatrix = (): ParityMatrix | null =>
@@ -189,6 +247,10 @@ export async function convergeOnLastSnap(): Promise<void> {
       referenceDir: matrix.reference.dir,
       referenceLabel: s.referenceLabel,
       targets: s.targets,
+      route:
+        s.route.length || s.referenceAppId
+          ? { appId: s.referenceAppId || undefined, steps: s.route }
+          : undefined,
       ...s.convergeOptions,
     });
   } catch (err) {

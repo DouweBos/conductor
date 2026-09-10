@@ -131,7 +131,16 @@ function studioMcpServer(): Record<string, unknown> {
  * Rejects if the agent exits first, so a crashed agent fails the round instead
  * of hanging it forever.
  */
-export function waitForAgentTurn(agentId: string): Promise<void> {
+export interface AgentTurnResult {
+  /** The agent's final text for the turn. */
+  text: string;
+  isError: boolean;
+  durationMs?: number;
+  costUsd?: number;
+  turns?: number;
+}
+
+export function waitForAgentTurn(agentId: string): Promise<AgentTurnResult> {
   const agent = sessions.get(agentId);
   if (!agent) return Promise.reject(new Error("Agent is not running."));
 
@@ -141,8 +150,25 @@ export function waitForAgentTurn(agentId: string): Promise<void> {
       // each token delta.
       if (!line.includes('"result"')) return;
       try {
-        const parsed = JSON.parse(line) as { type?: string };
-        if (parsed.type === "result") finish(resolve);
+        const parsed = JSON.parse(line) as {
+          type?: string;
+          result?: string;
+          is_error?: boolean;
+          duration_ms?: number;
+          total_cost_usd?: number;
+          num_turns?: number;
+        };
+        if (parsed.type === "result") {
+          finish(() =>
+            resolve({
+              text: parsed.result ?? "",
+              isError: parsed.is_error === true,
+              durationMs: parsed.duration_ms,
+              costUsd: parsed.total_cost_usd,
+              turns: parsed.num_turns,
+            }),
+          );
+        }
       } catch {
         // A partial or non-JSON line is not a turn boundary.
       }

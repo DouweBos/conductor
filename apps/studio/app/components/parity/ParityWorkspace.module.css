@@ -107,3 +107,26 @@
   justify-content: flex-end;
   max-width: 60ch;
 }
+
+.routeBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.routeStatus {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.target {
+  flex-wrap: wrap;
+}
+
+.recipeSlot {
+  flex: 1 0 100%;
+}

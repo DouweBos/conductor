@@ -51,6 +51,9 @@ import type {
   ParitySnapResult,
   ConvergeProgress,
   ConvergeRequest,
+  ParityProjectConfig,
+  TargetMemory,
+  TargetRecipe,
 } from "../app/lib/types";
 import {
   getAgentStatus,
@@ -106,6 +109,7 @@ import {
   startDevice,
   swipe,
   tap,
+  launchApp,
 } from "./services/conductor/conductorService";
 import {
   getDeviceStreamConfig,
@@ -136,6 +140,8 @@ import {
   runFolder,
   runRepeat,
 } from "./services/flow/flowRunner";
+import { deleteRecipe, loadParityConfig, putRecipe } from "./services/parity/config";
+import { readMemory, remember } from "./services/parity/memory";
 import {
   acceptTarget,
   cancelConvergence,
@@ -232,6 +238,13 @@ export function registerIpcHandlers(): void {
   handle<{ label: string; note: string }, void>("parity_converge_reject", (a) =>
     rejectTarget(a.label, a.note),
   );
+  handle<void, ParityProjectConfig>("parity_config", () => loadParityConfig());
+  handle<TargetRecipe, ParityProjectConfig>("parity_recipe_put", (a) => putRecipe(a));
+  handle<{ label: string }, ParityProjectConfig>("parity_recipe_delete", (a) => deleteRecipe(a.label));
+  handle<{ label: string }, TargetMemory>("parity_memory", (a) => readMemory(a.label));
+  handle<{ label: string; text: string }, void>("parity_remember", (a) =>
+    remember(a.label, "reviewer", a.text),
+  );
   handle<void, void>("parity_reset_live", () => resetLiveSession());
 
   // ── Project / files ──
@@ -298,6 +311,9 @@ export function registerIpcHandlers(): void {
     pressKey(a.deviceId, a.key),
   );
   handle<{ deviceId: string }, CaptureUiResult>("capture_ui", (a) => captureUi(a.deviceId));
+  handle<{ deviceId: string; appId: string }, void>("device_launch_app", (a) =>
+    launchApp(a.deviceId, a.appId),
+  );
 
   // ── Flow running ──
   handle<void, MaestroStatus>("maestro_status", () => getMaestroStatus());

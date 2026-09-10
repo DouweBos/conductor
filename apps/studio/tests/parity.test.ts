@@ -184,3 +184,66 @@ parity.test("one target cannot be universal", () => {
     "nothing to agree with",
   );
 });
+
+// ── Memory, recipes, routes ──────────────────────────────────────────────────
+
+import { parseMemory, renderMemoryForBrief } from "../electron/services/parity/memory";
+import { normalise } from "../electron/services/parity/config";
+import { describeStep } from "../electron/services/parity/routes";
+
+parity.test("memory round-trips through its file format", () => {
+  const file = [
+    "## 2026-09-10T12:00:00.000Z · agent",
+    "Build with `xcodebuild -scheme App`.",
+    "",
+    "## 2026-09-10T12:05:00.000Z · reviewer",
+    "The focus ring is the wrong colour.",
+    "Two lines.",
+    "",
+  ].join("\n");
+  const m = parseMemory("tvOS", file);
+  assertEqual(m.entries.length, 2, "two entries");
+  assertEqual(m.entries[0].source, "agent", "first is the agent's");
+  assertEqual(m.entries[1].source, "reviewer", "second is the reviewer's");
+  assert(m.entries[1].text.includes("Two lines."), "multi-line bodies survive");
+});
+
+parity.test("hand-edited text before any header is kept, not lost", () => {
+  const m = parseMemory("tvOS", "someone typed this by hand\n\n## 2026-09-10T12:00:00.000Z · loop\nfact\n");
+  assertEqual(m.entries.length, 2, "the preamble becomes an entry");
+  assert(m.entries[0].text.includes("by hand"), "and keeps its text");
+});
+
+parity.test("the brief keeps the newest memory when the cap bites", () => {
+  const entries = Array.from({ length: 40 }, (_, i) => ({
+    at: i,
+    source: "agent" as const,
+    text: `note number ${i} ${"x".repeat(200)}`,
+  }));
+  const out = renderMemoryForBrief({ label: "tvOS", entries }, 2_000);
+  assert(out.includes("note number 39"), "the newest is present");
+  assert(!out.includes("note number 0 "), "the oldest was dropped");
+  assert(out.includes("older note"), "and the drop is declared");
+});
+
+parity.test("an empty memory renders nothing, so the brief has no empty heading", () => {
+  assertEqual(renderMemoryForBrief({ label: "x", entries: [] }), "", "empty");
+});
+
+parity.test("a recipe drops blank commands rather than running an empty string", () => {
+  const r = normalise({
+    label: "tvOS",
+    platform: "tvos",
+    appId: "  ",
+    build: { command: "  xcodebuild  ", cwd: " apps/tvos " },
+    reload: { command: "" },
+    test: { command: "   " },
+  });
+  assert(r.build?.command === "xcodebuild" && r.build.cwd === "apps/tvos", "build is kept and trimmed");
+  assert(!("reload" in r) && !("test" in r) && !("appId" in r), "blanks are gone");
+});
+
+parity.test("a route step describes itself for the log", () => {
+  assertEqual(describeStep({ kind: "key", key: "Remote Dpad Down" }), "press Remote Dpad Down", "key");
+  assert(describeStep({ kind: "tap", x: 0.5, y: 0.25 }).startsWith("tap 0.500,0.250"), "tap");
+});

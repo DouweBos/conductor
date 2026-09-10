@@ -19,6 +19,8 @@ import { scaffoldFlow } from "../cases/pomBridge";
 import { createReportDir, writeReport } from "../report/reportService";
 import { recordExpectation, startSession } from "../report/testSession";
 import { listDevices } from "../conductor/conductorService";
+import { getRecipe } from "../parity/config";
+import { readMemory, remember } from "../parity/memory";
 import { getParityRun, resetLiveSession, snapParity, startParityRun } from "../parity/parityService";
 import { findPath, type SceneGraphIndex } from "../scenegraph/graph";
 import {
@@ -242,6 +244,29 @@ export function createMcpServer(): McpServer {
     async () => {
       resetLiveSession();
       return text({ reset: true });
+    },
+  );
+
+  server.tool(
+    "remember_for_target",
+    "Write down something about a target build that will still be true next time: how it builds and launches, an identifier or naming convention, a trap you fell into. It is read back to you at the start of every parity round on that target, in every future goal — this is how the loop stops re-learning the same things.",
+    {
+      target: z.string().describe('The target label, e.g. "tvOS" or "Android TV".'),
+      note: z.string().describe("One fact, in a sentence or two."),
+    },
+    async ({ target, note }) => {
+      await remember(target, "agent", note);
+      return text({ remembered: true, target });
+    },
+  );
+
+  server.tool(
+    "get_target_memory",
+    "Everything already known about a target build: notes from earlier rounds, reviewer feedback, and its build recipe if one is configured. Read this before working a target you have not seen this session.",
+    { target: z.string() },
+    async ({ target }) => {
+      const [memory, recipe] = await Promise.all([readMemory(target), getRecipe(target)]);
+      return text({ target, recipe: recipe ?? null, notes: memory.entries });
     },
   );
 

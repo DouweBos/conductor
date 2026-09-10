@@ -753,6 +753,7 @@ export interface ParitySnapResult {
 
 export type ConvergePhase =
   | "idle"
+  | "preparing" // rebuilding, relaunching, replaying the route
   | "capturing" // taking this attempt's screenshot of the target
   | "diffing"
   | "agent-working" // findings handed over; waiting for the turn to end
@@ -773,6 +774,12 @@ export interface ConvergeAttempt {
   /** Run directory this attempt captured into. */
   dir: string;
   error?: string;
+  /** What the loop ran to get here: rebuild, relaunch, route, tests. */
+  steps?: RecipeStepResult[];
+  /** The target's own tests, when the recipe has them. Part of the gate. */
+  tests?: { passed: boolean; output: string };
+  /** What the agent's turn for this round cost, when the CLI reports it. */
+  agent?: { durationMs?: number; costUsd?: number; turns?: number };
 }
 
 export interface ConvergeTargetState {
@@ -822,6 +829,10 @@ export interface ConvergeRequest {
    * stops to ask would wait forever and the loop with it.
    */
   autoApprove?: boolean;
+  /** How the reference reached the screen; replayed on every target after a rebuild. */
+  route?: Route;
+  /** Use a target's `reload` recipe instead of `build` when it has one. */
+  preferReload?: boolean;
   /**
    * Hold targets to layout as well as structure — every finding kind blocks,
    * including moved/resized/pixel. Off, a target passes as soon as the same
@@ -829,4 +840,90 @@ export interface ConvergeRequest {
    * in the same place.
    */
   strict?: boolean;
+}
+
+// ── Routes, recipes, memory ──────────────────────────────────────────────────
+//
+// What the convergence loop needs to own instead of hoping the agent does:
+// how to rebuild each target, how to get it back to the screen, and what was
+// learned last time.
+
+/** One input as replayed on a device. Coordinates are normalised 0–1. */
+export type RouteStep =
+  | { kind: "tap"; x: number; y: number }
+  | { kind: "swipe"; x1: number; y1: number; x2: number; y2: number }
+  | { kind: "key"; key: string }
+  | { kind: "text"; text: string };
+
+/**
+ * How a screen was reached from a fresh launch. Recorded while you drive the
+ * reference in live mode, replayed on every target after each rebuild — so
+ * re-navigation is mechanical, not the agent's job. A deep link, where the app
+ * has one, replaces the steps entirely.
+ */
+export interface Route {
+  /** Launched app, so replay starts from a known state. */
+  appId?: string;
+  deepLink?: string;
+  steps: RouteStep[];
+  /** Milliseconds to wait after launch before the first step. */
+  settleMs?: number;
+}
+
+export interface RecipeCommand {
+  /** Run through the shell, so `cd ios && xcodebuild …` works. */
+  command: string;
+  /** Relative to the project root. Also the scope committed on accept. */
+  cwd?: string;
+  timeoutMs?: number;
+}
+
+/**
+ * How to turn a target's source into a running app. Without this every round
+ * re-derives `xcodebuild -scheme … -destination …` in a fresh agent context,
+ * and gets it wrong in novel ways — it is the least reliable step and the one
+ * that sets the round time everything else multiplies.
+ */
+export interface TargetRecipe {
+  label: string;
+  platform: Platform;
+  /** Bundle / package id, so the loop can `launch-app` it. */
+  appId?: string;
+  /** Full rebuild from source. */
+  build?: RecipeCommand;
+  /** Cheaper than a build where the stack has it — RN / Lightning hot reload. */
+  reload?: RecipeCommand;
+  /** Install onto the device after a build, when `launch-app` alone won't. */
+  install?: RecipeCommand;
+  /** The target's own test suite, run as part of the gate. */
+  test?: RecipeCommand;
+  /** Where this target's source lives; what gets committed on accept. */
+  sourceDir?: string;
+}
+
+export interface ParityProjectConfig {
+  version: 1;
+  recipes: Record<string, TargetRecipe>;
+}
+
+/** One thing a target's agent (or a reviewer) learned, kept across goals. */
+export interface MemoryEntry {
+  at: number;
+  /** Who wrote it: the agent, a human rejection, or the loop itself. */
+  source: "agent" | "reviewer" | "loop";
+  text: string;
+}
+
+export interface TargetMemory {
+  label: string;
+  entries: MemoryEntry[];
+}
+
+/** What a recipe step produced, kept on the attempt so the trend is honest. */
+export interface RecipeStepResult {
+  step: "reload" | "build" | "install" | "launch" | "route" | "test";
+  ok: boolean;
+  durationMs: number;
+  /** Tail of the output, for the brief and the panel. */
+  output: string;
 }
