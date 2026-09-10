@@ -3,6 +3,13 @@ import { create } from "zustand";
 import { listen } from "../lib/events";
 import {
   acceptConvergeTarget,
+  addCampaignGoal,
+  getCampaign,
+  refreshCampaignReference,
+  removeCampaignGoal,
+  runCampaign,
+  setCampaignDeepLink,
+  stopCampaign,
   deleteParityRecipe,
   getParityConfig,
   putParityRecipe,
@@ -17,6 +24,7 @@ import {
   startParity,
 } from "../lib/ipc";
 import type {
+  CampaignProgress,
   ConvergeProgress,
   DeviceInfo,
   ParityProjectConfig,
@@ -59,6 +67,7 @@ interface ParityState {
   progress: ParityProgress | null;
   /** The Helix loop, when one is running. */
   converge: ConvergeProgress | null;
+  campaign: CampaignProgress | null;
   convergeOptions: { strict: boolean; autoApprove: boolean; maxAttempts: number; preferReload: boolean };
   /**
    * The inputs sent to the reference since it was last launched, in order.
@@ -83,6 +92,7 @@ const store = create<ParityState>(() => ({
   targets: [],
   progress: null,
   converge: null,
+  campaign: null,
   convergeOptions: { strict: false, autoApprove: true, maxAttempts: 8, preferReload: true },
   route: [],
   referenceAppId: "",
@@ -104,6 +114,55 @@ export const useParityStarting = () => store((s) => s.starting);
 export const useParityError = () => store((s) => s.error);
 export const useConverge = () => store((s) => s.converge);
 export const useParityRoute = () => store((s) => s.route);
+export const useCampaign = () => store((s) => s.campaign);
+
+/** Queue the screen just captured as a goal, with its frozen reference and route. */
+export async function addLastSnapToCampaign(): Promise<void> {
+  const s = store.getState();
+  const matrix = s.progress?.matrix;
+  const checkpoint = s.snaps[s.snaps.length - 1];
+  if (!matrix || !checkpoint || !s.referenceDeviceId) {
+    store.setState({ error: "capture a reference screen first — there is nothing to queue yet" });
+    return;
+  }
+  try {
+    await addCampaignGoal({
+      checkpoint,
+      referenceDir: matrix.reference.dir,
+      referenceLabel: s.referenceLabel,
+      referenceDeviceId: s.referenceDeviceId,
+      route:
+        s.route.length || s.referenceAppId
+          ? { appId: s.referenceAppId || undefined, steps: s.route }
+          : undefined,
+      targets: s.targets,
+    });
+  } catch (err) {
+    store.setState({ error: String(err) });
+  }
+}
+
+export async function removeGoal(id: string): Promise<void> {
+  await removeCampaignGoal(id).catch((err: unknown) => store.setState({ error: String(err) }));
+}
+
+export async function setGoalDeepLink(id: string, deepLink: string): Promise<void> {
+  await setCampaignDeepLink(id, deepLink).catch((err: unknown) => store.setState({ error: String(err) }));
+}
+
+export async function startCampaign(): Promise<void> {
+  const { convergeOptions } = store.getState();
+  await runCampaign(convergeOptions).catch((err: unknown) => store.setState({ error: String(err) }));
+}
+
+export async function haltCampaign(): Promise<void> {
+  await stopCampaign().catch((err: unknown) => store.setState({ error: String(err) }));
+}
+
+export async function refreshGoal(id: string): Promise<void> {
+  store.setState({ error: null });
+  await refreshCampaignReference(id).catch((err: unknown) => store.setState({ error: String(err) }));
+}
 export const useReferenceAppId = () => store((s) => s.referenceAppId);
 export const useParityConfig = () => store((s) => s.config);
 
@@ -428,6 +487,10 @@ export function initParityStore(): () => void {
   void getConvergeState().then((converge) => {
     if (converge) store.setState({ converge });
   });
+  void getCampaign().then((campaign) => store.setState({ campaign })).catch(() => {});
+  const offCampaign = listen<CampaignProgress>("parity_campaign", (campaign) => {
+    store.setState({ campaign, error: campaign.error ?? null });
+  });
   const offProgress = listen<ParityProgress>("parity_progress", (progress) => {
     store.setState({ progress, error: progress.error ?? null });
   });
@@ -437,5 +500,6 @@ export function initParityStore(): () => void {
   return () => {
     offProgress();
     offConverge();
+    offCampaign();
   };
 }

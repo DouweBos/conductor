@@ -47,6 +47,8 @@ import {
   useParitySnaps,
   useParityTargets,
   useConverge,
+  useCampaign,
+  addLastSnapToCampaign,
   useConvergeOptions,
   useConvergeRunning,
   setConvergeOptions,
@@ -57,6 +59,7 @@ import {
   useParityRoute,
   useReferenceAppId,
 } from "../../stores/parityStore";
+import { CampaignPanel } from "./CampaignPanel";
 import { ConvergePanel } from "./ConvergePanel";
 import { RecipeEditor } from "./RecipeEditor";
 import { ParityResults } from "./ParityResults";
@@ -106,6 +109,7 @@ export function ParityWorkspace() {
   const snaps = useParitySnaps();
   const snapping = useParitySnapping();
   const converge = useConverge();
+  const campaign = useCampaign();
   const converging = useConvergeRunning();
   const convergeOptions = useConvergeOptions();
   const route = useParityRoute();
@@ -250,15 +254,27 @@ export function ParityWorkspace() {
                 Stop agents
               </Button>
             ) : (
-              <Button
-                size="sm"
-                icon="agent"
-                disabled={snaps.length === 0 || targets.length === 0 || snapping}
-                title="Freeze the captured screen and let an agent work each target until it matches"
-                onClick={() => void convergeOnLastSnap()}
-              >
-                Match it
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  icon="agent"
+                  disabled={snaps.length === 0 || targets.length === 0 || snapping}
+                  title="Freeze the captured screen and let an agent work each target until it matches"
+                  onClick={() => void convergeOnLastSnap()}
+                >
+                  Match it
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="plus"
+                  disabled={snaps.length === 0 || targets.length === 0 || snapping}
+                  title="Queue the captured screen, with its route and targets, to be matched later with the rest"
+                  onClick={() => void addLastSnapToCampaign()}
+                >
+                  Queue it
+                </Button>
+              </>
             )}
           </>
         )}
@@ -479,6 +495,8 @@ export function ParityWorkspace() {
           />
         </div>
       </Panel>
+
+      <CampaignPanel campaign={campaign} />
 
       <ConvergePanel converge={converge} />
 

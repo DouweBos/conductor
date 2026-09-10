@@ -54,6 +54,11 @@ import type {
   ParityProjectConfig,
   TargetMemory,
   TargetRecipe,
+  CampaignProgress,
+  ParityGoal,
+  ParityTarget,
+  Route,
+  GoalTargetStatus,
 } from "../app/lib/types";
 import {
   getAgentStatus,
@@ -140,6 +145,16 @@ import {
   runFolder,
   runRepeat,
 } from "./services/flow/flowRunner";
+import {
+  addGoal,
+  getCampaign,
+  refreshGoalReference,
+  removeGoal,
+  runCampaign,
+  setGoalDeepLink,
+  setGoalTargetStatus,
+  stopCampaign,
+} from "./services/parity/campaignService";
 import { deleteRecipe, loadParityConfig, putRecipe } from "./services/parity/config";
 import { readMemory, remember } from "./services/parity/memory";
 import {
@@ -245,6 +260,31 @@ export function registerIpcHandlers(): void {
   handle<{ label: string; text: string }, void>("parity_remember", (a) =>
     remember(a.label, "reviewer", a.text),
   );
+  handle<void, CampaignProgress>("campaign_get", () => getCampaign());
+  handle<
+    {
+      checkpoint: string;
+      referenceDir: string;
+      referenceLabel: string;
+      referenceDeviceId: string;
+      route?: Route;
+      targets: ParityTarget[];
+    },
+    ParityGoal
+  >("campaign_add_goal", (a) => addGoal(a));
+  handle<{ id: string }, void>("campaign_remove_goal", (a) => removeGoal(a.id));
+  handle<{ id: string; deepLink: string }, void>("campaign_set_deeplink", (a) =>
+    setGoalDeepLink(a.id, a.deepLink),
+  );
+  handle<{ id: string; label: string; status: GoalTargetStatus }, void>("campaign_set_status", (a) =>
+    setGoalTargetStatus(a.id, a.label, a.status),
+  );
+  handle<
+    { strict?: boolean; autoApprove?: boolean; maxAttempts?: number; preferReload?: boolean },
+    void
+  >("campaign_run", (a) => runCampaign(a ?? {}));
+  handle<void, void>("campaign_stop", () => stopCampaign());
+  handle<{ id: string }, ParityGoal>("campaign_refresh_reference", (a) => refreshGoalReference(a.id));
   handle<void, void>("parity_reset_live", () => resetLiveSession());
 
   // ── Project / files ──

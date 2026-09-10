@@ -489,11 +489,13 @@ async function runRounds(
         // Deliberately not "done". Parity is the gate, not the sign-off — a
         // human still looks at the screen before this counts as finished. The
         // agent stays alive so a rejection can send the note back to the same
-        // context rather than to a fresh one that has forgotten the codebase.
+        // context rather than to a fresh one that has forgotten the codebase —
+        // unless a campaign needs the device back for the next goal.
         update(label, (t) => {
           t.phase = "awaiting-review";
           t.outcome = decision.reason;
         });
+        if (g.req.holdAgentForReview === false) await stopTargetAgent(label);
         return;
       }
 
@@ -719,6 +721,25 @@ async function dispatchAndContinue(target: ParityTarget, first: ConvergeAttempt)
     return;
   }
   await runRounds(target, 2);
+}
+
+/**
+ * Resolve once the current convergence has nothing left running — every target
+ * is at review, accepted, stalled or failed. A campaign waits on this between
+ * goals.
+ */
+export function waitForConvergenceSettled(): Promise<ConvergeProgress | null> {
+  return new Promise((resolve) => {
+    const check = (): void => {
+      const g = goal;
+      if (!g || !g.progress.running) {
+        resolve(g?.progress ?? null);
+        return;
+      }
+      setTimeout(check, 1_000);
+    };
+    check();
+  });
 }
 
 export async function cancelConvergence(): Promise<void> {

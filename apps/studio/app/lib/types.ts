@@ -834,6 +834,13 @@ export interface ConvergeRequest {
   /** Use a target's `reload` recipe instead of `build` when it has one. */
   preferReload?: boolean;
   /**
+   * Keep a target's agent alive while it awaits review, so a rejection goes
+   * back to the same context. Off in a campaign, where holding four devices
+   * per finished goal would starve the next one; a rejection there restarts
+   * an agent, which reads the memory file to catch up.
+   */
+  holdAgentForReview?: boolean;
+  /**
    * Hold targets to layout as well as structure — every finding kind blocks,
    * including moved/resized/pixel. Off, a target passes as soon as the same
    * elements exist with the same text and focus; on, it also has to put them
@@ -926,4 +933,61 @@ export interface RecipeStepResult {
   durationMs: number;
   /** Tail of the output, for the brief and the panel. */
   output: string;
+}
+
+// ── Campaign ─────────────────────────────────────────────────────────────────
+//
+// One screen is not an app. A campaign is the queue of reference screens a
+// rebuild is being held to, each with its frozen reference, the route that
+// reached it, and where every target stands — the "sequence of checkpoints"
+// Helix starts from, with a burn-down.
+
+export type GoalTargetStatus =
+  | "pending"
+  | "converging"
+  | "review" // at parity, waiting for a human
+  | "accepted"
+  | "recheck" // was accepted; the reference has since moved
+  | "stalled"
+  | "failed";
+
+export interface ParityGoal {
+  id: string;
+  checkpoint: string;
+  referenceDir: string;
+  referenceLabel: string;
+  /** Device the reference build runs on — needed to refresh the reference. */
+  referenceDeviceId: string;
+  referenceCapturedAt: number;
+  route?: Route;
+  targets: ParityTarget[];
+  status: Record<string, GoalTargetStatus>;
+  createdAt: number;
+  updatedAt: number;
+  /** Set when a refresh found the reference screen had changed. */
+  drift?: { at: number; blocking: number; summary: string };
+}
+
+export interface ParityCampaign {
+  version: 1;
+  goals: ParityGoal[];
+}
+
+export interface CampaignProgress {
+  campaign: ParityCampaign;
+  running: boolean;
+  /** Goal being converged right now, when running. */
+  currentGoalId?: string;
+  error?: string;
+}
+
+export interface CampaignBurndown {
+  goals: number;
+  /** Per target label: how many goals it has been accepted on. */
+  acceptedByTarget: Record<string, number>;
+  accepted: number;
+  review: number;
+  recheck: number;
+  stalled: number;
+  pending: number;
 }

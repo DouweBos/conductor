@@ -247,3 +247,82 @@ parity.test("a route step describes itself for the log", () => {
   assertEqual(describeStep({ kind: "key", key: "Remote Dpad Down" }), "press Remote Dpad Down", "key");
   assert(describeStep({ kind: "tap", x: 0.5, y: 0.25 }).startsWith("tap 0.500,0.250"), "tap");
 });
+
+// ── The campaign's decisions ─────────────────────────────────────────────────
+
+import {
+  applyConvergence,
+  applyDrift,
+  burndown,
+  nextGoal,
+  runnableTargets,
+} from "../electron/services/parity/campaignPlan";
+import type { ConvergeProgress, ParityGoal } from "../app/lib/types";
+
+const goal = (id: string, status: ParityGoal["status"]): ParityGoal => ({
+  id,
+  checkpoint: id,
+  referenceDir: `/ref/${id}`,
+  referenceLabel: "Reference",
+  referenceDeviceId: "ref-dev",
+  referenceCapturedAt: 0,
+  targets: Object.keys(status).map((label) => ({ label, deviceId: `dev-${label}`, platform: "tvos" as const })),
+  status,
+  createdAt: 0,
+  updatedAt: 0,
+});
+
+parity.test("the next goal is the first with anything left to do", () => {
+  const goals = [
+    goal("home", { tvOS: "accepted", VegaOS: "accepted" }),
+    goal("detail", { tvOS: "accepted", VegaOS: "stalled" }),
+    goal("search", { tvOS: "pending", VegaOS: "pending" }),
+  ];
+  assertEqual(nextGoal(goals)?.id, "detail", "a stalled target is retried before new work");
+  assertEqual(runnableTargets(goals[1]), ["VegaOS"], "and only that target is re-run");
+});
+
+parity.test("a goal at review is finished as far as the queue is concerned", () => {
+  const goals = [goal("home", { tvOS: "review", VegaOS: "accepted" })];
+  assertEqual(nextGoal(goals), undefined, "review waits for a human, not the queue");
+});
+
+parity.test("a finished convergence folds back into the goal", () => {
+  const progress: ConvergeProgress = {
+    goalId: "x",
+    checkpoint: "home",
+    referenceLabel: "Reference",
+    referenceDir: "/ref/home",
+    running: false,
+    startedAt: 0,
+    targets: [
+      { label: "tvOS", deviceId: "a", platform: "tvos", phase: "awaiting-review", attempts: [] },
+      { label: "VegaOS", deviceId: "b", platform: "vega", phase: "stalled", attempts: [] },
+      { label: "Web", deviceId: "c", platform: "web", phase: "awaiting-review", attempts: [], accepted: true },
+    ],
+  };
+  const next = applyConvergence(goal("home", { tvOS: "converging", VegaOS: "converging", Web: "converging" }), progress);
+  assertEqual(next.status, { tvOS: "review", VegaOS: "stalled", Web: "accepted" }, "each target lands where the loop left it");
+});
+
+parity.test("a moved reference sends accepted work back for recheck, nothing else", () => {
+  const next = applyDrift(
+    goal("home", { tvOS: "accepted", VegaOS: "stalled", Web: "pending" }),
+    "/ref/home-2",
+    { blocking: 2, summary: "Browse moved" },
+  );
+  assertEqual(next.status, { tvOS: "recheck", VegaOS: "stalled", Web: "pending" }, "only accepted flips");
+  assertEqual(next.referenceDir, "/ref/home-2", "and the goal is held to the new reference");
+  assert(next.drift?.blocking === 2, "with the drift recorded");
+});
+
+parity.test("burndown counts per target and overall", () => {
+  const b = burndown([
+    goal("home", { tvOS: "accepted", VegaOS: "review" }),
+    goal("detail", { tvOS: "accepted", VegaOS: "recheck" }),
+    goal("search", { tvOS: "stalled", VegaOS: "pending" }),
+  ]);
+  assertEqual(b.accepted, 2, "two accepted");
+  assertEqual(b.acceptedByTarget, { tvOS: 2 }, "both by tvOS");
+  assertEqual([b.review, b.recheck, b.stalled, b.pending], [1, 1, 1, 1], "the rest are counted");
+});

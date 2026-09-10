@@ -52,6 +52,11 @@ import type {
   ParityProjectConfig,
   TargetMemory,
   TargetRecipe,
+  CampaignProgress,
+  GoalTargetStatus,
+  ParityGoal,
+  ParityTarget,
+  Route,
 } from "./types";
 
 function invoke<T>(channel: string, args?: unknown): Promise<T> {
@@ -148,6 +153,29 @@ export const deleteParityRecipe = (label: string) =>
 export const getTargetMemory = (label: string) => invoke<TargetMemory>("parity_memory", { label });
 export const rememberForTarget = (label: string, text: string) =>
   invoke<void>("parity_remember", { label, text });
+export const getCampaign = () => invoke<CampaignProgress>("campaign_get");
+export const addCampaignGoal = (goal: {
+  checkpoint: string;
+  referenceDir: string;
+  referenceLabel: string;
+  referenceDeviceId: string;
+  route?: Route;
+  targets: ParityTarget[];
+}) => invoke<ParityGoal>("campaign_add_goal", goal);
+export const removeCampaignGoal = (id: string) => invoke<void>("campaign_remove_goal", { id });
+export const setCampaignDeepLink = (id: string, deepLink: string) =>
+  invoke<void>("campaign_set_deeplink", { id, deepLink });
+export const setCampaignStatus = (id: string, label: string, status: GoalTargetStatus) =>
+  invoke<void>("campaign_set_status", { id, label, status });
+export const runCampaign = (opts: {
+  strict?: boolean;
+  autoApprove?: boolean;
+  maxAttempts?: number;
+  preferReload?: boolean;
+}) => invoke<void>("campaign_run", opts);
+export const stopCampaign = () => invoke<void>("campaign_stop");
+export const refreshCampaignReference = (id: string) =>
+  invoke<ParityGoal>("campaign_refresh_reference", { id });
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");
