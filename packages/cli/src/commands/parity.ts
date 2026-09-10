@@ -10,6 +10,8 @@ export const HELP = `  parity record <flow> --out <dir>     Walk a flow and capt
     --pixel-threshold <0-1>           Pixel difference allowed before a 'pixel' finding (default 0.1)
     --min-overlap <0-1>               Frame overlap needed to pair elements by position (default 0.5)
     --ignore-case                     Compare labels case-insensitively
+    --ignore-role                     Pair elements without requiring roles to agree
+                                       (automatic when the two runs are on different platforms)
     --ignore <kinds>                  Comma-separated finding kinds to drop entirely
     --blocking <kinds>                Comma-separated finding kinds that fail a checkpoint
                                        (default missing,text,value,checkpoint-missing,geometry)
@@ -36,6 +38,7 @@ export interface ParityFlags {
   pixelThreshold?: number;
   minOverlap?: number;
   ignoreCase?: boolean;
+  ignoreRole?: boolean;
   ignore?: string;
   blocking?: string;
   strict?: boolean;
@@ -64,6 +67,7 @@ function diffOptionsFrom(flags: ParityFlags): Partial<DiffOptions> {
     pixelThreshold: flags.pixelThreshold,
     minOverlap: flags.minOverlap,
     ignoreCase: flags.ignoreCase,
+    ignoreRole: flags.ignoreRole,
     ignore: parseKinds(flags.ignore, '--ignore'),
     blocking: parseKinds(flags.blocking, '--blocking'),
   };

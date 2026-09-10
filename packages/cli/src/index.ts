@@ -327,6 +327,7 @@ async function main(): Promise<void> {
       'baselines',
       'strict',
       'ignore-case',
+      'ignore-role',
     ],
     string: [
       'device',
@@ -1132,6 +1133,7 @@ async function main(): Promise<void> {
           argv['pixel-threshold'] !== undefined ? Number(argv['pixel-threshold']) : undefined,
         minOverlap: argv['min-overlap'] !== undefined ? Number(argv['min-overlap']) : undefined,
         ignoreCase: argv['ignore-case'] as boolean | undefined,
+        ignoreRole: argv['ignore-role'] as boolean | undefined,
         ignore: argv['ignore'] as string | undefined,
         blocking: argv['blocking'] as string | undefined,
         strict: argv['strict'] as boolean | undefined,

@@ -1,6 +1,6 @@
 ---
 name: conductor-parity
-description: Prove that a rebuilt screen still matches the original by walking the same journey through two builds of an app and diffing the captured checkpoints semantically — missing elements, changed text, layout drift and reading order — with the conductor CLI. Use when porting or rewriting a screen (React Native → Swift/Kotlin, a redesign, a framework upgrade), verifying an old build against a new one, gating a migration checkpoint on visual parity, or comparing the same app across two devices or platforms.
+description: Prove that a rebuilt screen still matches the original by walking the same journey through two builds of an app and diffing the captured checkpoints semantically — missing elements, changed text, focus, layout drift and reading order — with the conductor CLI. Use when porting or rewriting a screen (React Native → Swift/Kotlin, tvOS ↔ a Lightning/canvas TV app, a redesign, a framework upgrade), verifying an old build against a new one, gating a migration checkpoint on visual parity, or comparing one app across two platforms.
 ---
 
 # Conductor — parity between two builds
@@ -87,8 +87,9 @@ nothing, so tune against a recorded pair rather than re-driving the app.
 | `--pixel-threshold <0-1>` | Pixel difference allowed before a `pixel` finding (default 0.1) |
 | `--min-overlap <0-1>` | Frame overlap needed to pair elements by position (default 0.5) |
 | `--ignore-case` | Compare labels case-insensitively |
+| `--ignore-role` | Pair elements without requiring roles to agree (automatic across platforms) |
 | `--ignore <kinds>` | Drop these finding kinds entirely |
-| `--blocking <kinds>` | Which kinds fail a checkpoint (default `missing,text,value,checkpoint-missing,geometry`) |
+| `--blocking <kinds>` | Which kinds fail a checkpoint (default `missing,text,value,focus,checkpoint-missing,geometry`) |
 | `--strict` | Every kind blocks — including layout drift |
 | `--env K=V` | Inject an env var into the flow (repeatable) |
 
@@ -102,6 +103,7 @@ does not fail).
 | `missing` | In the reference, absent from the candidate — **a dropped element** | blocking |
 | `text` | Matched element, different label | blocking |
 | `value` | Matched element, different value | blocking |
+| `focus` | Focused in one build but not the other — **the wrong thing is selected** | blocking |
 | `checkpoint-missing` | The candidate never reached this checkpoint — the journey diverged | blocking |
 | `geometry` | The two screens are not comparable; position findings suppressed | blocking |
 | `added` | In the candidate only | advisory |
@@ -114,7 +116,49 @@ does not fail).
 button. A **changed label** is reported as `text` on the matched element, not as
 a `missing` + `added` pair, so don't read those two as unrelated.
 
+`focus` blocks because on a remote-driven TV app focus *is* the interaction
+model — a screen that comes up with the wrong tile selected is not at parity. It
+produces nothing when neither build reports focus, so it costs nothing on
+platforms where focus isn't meaningful; `--ignore focus` switches it off.
+
+Every finding about a specific element carries its `identifier` when it has one,
+so you have the handle to fix it by.
+
 Work the blocking findings first — they are sorted to the top of both reports.
+
+## Across two stacks (tvOS ↔ Lightning, native ↔ web)
+
+Parity works between *different platforms*, not just two builds of one. That is
+what covers tvOS against a canvas TV app (Lightning/WPE/RDK, e.g. an app built
+with `@plexinc/react-lightning`), or a native app against its web build.
+
+Two things make it work, and one thing you have to do:
+
+- **Roles are relaxed automatically** when the platforms differ. Role
+  vocabularies don't line up across stacks — a control is `button` on tvOS and
+  `generic` in a canvas app, where the scene graph is mirrored into off-screen
+  divs with no ARIA role. The report tags such checkpoints `roles relaxed`.
+- **Frames line up** if you drive both at the same resolution, and screens at
+  the same aspect ratio are rescaled automatically — 1280×720 against 1920×1080
+  compares fine. Use `set-viewport 1920 1080` on the web side.
+- **Tag your elements the same on both sides.** This is the one that's on you.
+  Parity pairs on test identity first — `accessibilityIdentifier` on tvOS,
+  `data-testid` on web — because identity is the only signal that survives a
+  port. Give the same control the same id in both builds and matching is exact,
+  labels can be reworded without confusing the diff, and findings name the id to
+  fix them by. Without ids it falls back to label and position, which works but
+  is much weaker across stacks.
+
+```bash
+conductor parity record cart.yaml --out .parity/ref --device <tvos-sim>
+conductor set-viewport 1920 1080 --device web
+conductor parity compare cart.yaml --reference .parity/ref --device web
+```
+
+On a TV app, drive focus with `press-key 'Remote Dpad Down'` and put a
+checkpoint after each move: the `focus` finding then verifies that the D-pad
+walks the two builds in the same order, which is the thing most likely to
+diverge in a port and the hardest to eyeball.
 
 ## Choosing checkpoints
 
@@ -134,6 +178,7 @@ artefact and not a real regression. Reach for the narrowest tool that works:
 
 1. `--frame-tolerance` for consistent spacing differences between stacks.
 2. `--ignore reordered,state` when a platform genuinely exposes a11y differently.
+   `--ignore-role` forces role relaxation on within one platform, too.
 3. `--ignore missing` — almost never. It switches off the check that catches
    dropped elements, which is the main thing parity is for.
 

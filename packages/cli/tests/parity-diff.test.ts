@@ -24,7 +24,9 @@ import {
 import { RunWriter, loadRun, setActiveRun, slugify } from '../src/parity/store.js';
 import { executeFlow, parseFlowString } from '../src/drivers/flow-runner.js';
 import { MockIOSDriver, makeIOSHierarchy } from './mock-driver.js';
+import { buildIOSA11y, buildWebA11y } from '../src/drivers/a11y.js';
 import type { A11ySnapshotEntry } from '../src/drivers/a11y.js';
+import type { WebElement } from '../src/drivers/web.js';
 
 export const parityDiff = new TestSuite('parity-diff');
 
@@ -39,6 +41,7 @@ function el(
   const order = extra.order ?? orderCounter++;
   return {
     nodeId: `n${order}`,
+    identifier: '',
     ref: `@e${order + 1}`,
     order,
     frame,
@@ -480,4 +483,180 @@ parityDiff.test('a checkpoint step with no name fails the flow', async () => {
     threw = true;
   }
   assert(threw, 'an unnamed checkpoint is an error, not a silent skip');
+});
+
+// ── Cross-stack parity (tvOS vs a canvas TV app) ─────────────────────────────
+//
+// The case these guard is tvOS ↔ Lightning/WPE: one side is a native view tree,
+// the other is a WebGL canvas whose scene graph is mirrored into off-screen divs
+// carrying `data-testid`. They share no role vocabulary, so these run through
+// the real a11y builders rather than hand-written snapshots.
+
+/** A canvas scene node as the web driver merges it in from the DOM mirror. */
+function canvasNode(
+  testId: string,
+  name: string,
+  y: number,
+  focused = false
+): WebElement {
+  return {
+    role: 'generic',
+    name,
+    ref: '',
+    testId,
+    bounds: { x: 760, y, width: 400, height: 80 },
+    enabled: true,
+    focused,
+    children: [],
+  };
+}
+
+/** The same screen on tvOS: XCUIElementType 9 is a button. */
+function tvosScreen(buttons: Array<{ id: string; label: string; y: number; focused?: boolean }>) {
+  return buildIOSA11y({
+    identifier: 'App',
+    frame: { X: 0, Y: 0, Width: 1920, Height: 1080 },
+    label: '',
+    value: '',
+    title: '',
+    elementType: 3,
+    enabled: true,
+    selected: false,
+    hasFocus: false,
+    children: buttons.map((b) => ({
+      identifier: b.id,
+      frame: { X: 760, Y: b.y, Width: 400, Height: 80 },
+      label: b.label,
+      value: '',
+      title: '',
+      elementType: 9,
+      enabled: true,
+      selected: false,
+      hasFocus: !!b.focused,
+      children: [],
+    })),
+  }).a11ySnapshot;
+}
+
+function crossStack(tv: A11ySnapshotEntry[], web: A11ySnapshotEntry[]): DiffInput {
+  return {
+    name: 'welcome',
+    reference: { a11ySnapshot: tv, width: 1920, height: 1080, platform: 'tvos' },
+    candidate: { a11ySnapshot: web, width: 1920, height: 1080, platform: 'web' },
+  };
+}
+
+parityDiff.test('canvas scene nodes reach the a11y snapshot', async () => {
+  // Regression guard: these carry no ARIA role, so a role-only gate drops them
+  // and every element on the native side then reads as missing.
+  const built = buildWebA11y({
+    elements: [canvasNode('sign-in-button', 'Sign In', 600, true)],
+  } as never);
+  assert(built.a11ySnapshot.length === 1, 'a testid-tagged canvas node is snapshotted');
+  assert(built.a11ySnapshot[0].identifier === 'sign-in-button', 'its testid is its identity');
+  assert(built.a11ySnapshot[0].state.focused, 'its focus state carries through');
+});
+
+parityDiff.test('tvOS carries accessibilityIdentifier into the snapshot', async () => {
+  const button = tvosScreen([{ id: 'sign-in-button', label: 'Sign In', y: 600 }]).find(
+    (e) => e.label === 'Sign In'
+  );
+  assert(button !== undefined, 'the button is in the snapshot');
+  assert(
+    button.identifier === 'sign-in-button',
+    `expected the identifier, got "${button.identifier}"`
+  );
+});
+
+parityDiff.test('the app root and untagged containers are not parity subjects', async () => {
+  // tvosScreen wraps its buttons in an `application` root, which the a11y
+  // snapshot includes and the diff must then ignore.
+  const tv = tvosScreen([{ id: 'a', label: 'A', y: 600 }]);
+  assert(
+    tv.some((e) => e.role === 'application'),
+    'sanity: the snapshot does contain the app root'
+  );
+  const web = buildWebA11y({ elements: [canvasNode('a', 'A', 600)] } as never).a11ySnapshot;
+  const result = diffCheckpoint(crossStack(tv, web));
+  assert(
+    !result.findings.some((f) => f.role === 'application'),
+    `the application root must not be reported, got ${JSON.stringify(result.findings)}`
+  );
+  assert(result.passed, `expected parity, got ${JSON.stringify(result.findings)}`);
+});
+
+parityDiff.test('tvOS and a canvas TV app at parity pass despite differing roles', async () => {
+  const tv = tvosScreen([
+    { id: 'sign-in-button', label: 'Sign In', y: 600, focused: true },
+    { id: 'skip-sign-up-button', label: 'Skip Sign Up', y: 700 },
+  ]);
+  const web = buildWebA11y({
+    elements: [
+      canvasNode('sign-in-button', 'Sign In', 600, true),
+      canvasNode('skip-sign-up-button', 'Skip Sign Up', 700),
+    ],
+  } as never).a11ySnapshot;
+
+  const result = diffCheckpoint(crossStack(tv, web));
+  assert(result.rolesRelaxed, 'roles are relaxed automatically across platforms');
+  assert(result.passed, `expected parity, got ${JSON.stringify(result.findings)}`);
+});
+
+parityDiff.test('identity pairs elements even when the label was reworded', async () => {
+  const tv = tvosScreen([{ id: 'skip-sign-up-button', label: 'Skip Sign Up', y: 700 }]);
+  const web = buildWebA11y({
+    elements: [canvasNode('skip-sign-up-button', 'Skip', 700)],
+  } as never).a11ySnapshot;
+
+  const result = diffCheckpoint(crossStack(tv, web));
+  const k = kinds(result.findings);
+  assert(k.includes('text'), `expected a text finding, got ${JSON.stringify(result.findings)}`);
+  assert(!k.includes('missing') && !k.includes('added'), 'identity kept them paired');
+  const text = result.findings.find((f) => f.kind === 'text');
+  assert(text?.identifier === 'skip-sign-up-button', 'the finding names the testid to fix it by');
+});
+
+parityDiff.test('focus landing on the wrong element blocks', async () => {
+  const tv = tvosScreen([
+    { id: 'sign-in-button', label: 'Sign In', y: 600, focused: true },
+    { id: 'skip-sign-up-button', label: 'Skip Sign Up', y: 700 },
+  ]);
+  const web = buildWebA11y({
+    elements: [
+      canvasNode('sign-in-button', 'Sign In', 600, false),
+      canvasNode('skip-sign-up-button', 'Skip Sign Up', 700, true),
+    ],
+  } as never).a11ySnapshot;
+
+  const result = diffCheckpoint(crossStack(tv, web));
+  const focus = result.findings.filter((f) => f.kind === 'focus');
+  assert(focus.length === 2, `both sides of the swap are reported, got ${focus.length}`);
+  assert(focus.every((f) => f.severity === 'blocking'), 'focus blocks on a TV app');
+  assert(!result.passed, 'the checkpoint fails');
+});
+
+parityDiff.test('a control the rebuild never implemented is still missing', async () => {
+  const tv = tvosScreen([
+    { id: 'sign-in-button', label: 'Sign In', y: 600 },
+    { id: 'help-button', label: 'Help', y: 800 },
+  ]);
+  const web = buildWebA11y({
+    elements: [canvasNode('sign-in-button', 'Sign In', 600)],
+  } as never).a11ySnapshot;
+
+  const result = diffCheckpoint(crossStack(tv, web));
+  const missing = result.findings.filter((f) => f.kind === 'missing');
+  assert(missing.length === 1 && missing[0].label === 'Help', 'the dropped control is named');
+  assert(!result.passed, 'and it blocks');
+});
+
+parityDiff.test('same-platform runs still require roles to agree', async () => {
+  orderCounter = 0;
+  const reference = [el('Go', 'button', { x: 16, y: 100, w: 100, h: 40 })];
+  orderCounter = 0;
+  const candidate = [el('Go', 'text', { x: 16, y: 100, w: 100, h: 40 })];
+  // Both sides are iOS, so a control that became static text is a real finding.
+  const result = diffCheckpoint(input(reference, candidate));
+  assert(!result.rolesRelaxed, 'roles are not relaxed within one platform');
+  assert(kinds(result.findings).includes('missing'), 'the role change surfaces');
 });

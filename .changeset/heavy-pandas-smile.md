@@ -26,3 +26,20 @@ differences fail a checkpoint.
 
 Ships a `conductor-parity` agent skill documenting the record → rebuild →
 compare loop.
+
+Parity spans two *platforms*, not just two builds of one — tvOS against a
+Lightning/canvas TV app, or a native app against its web build:
+
+- `A11ySnapshotEntry` gains `identifier` (`accessibilityIdentifier` on iOS/tvOS,
+  `resource-id` on Android, `data-testid` on web), and elements pair on it first.
+  Identity is the only signal that survives a port between stacks.
+- Canvas TV apps (Lightning/WPE/RDK) mirror their scene graph into off-screen
+  divs that carry `data-testid` but no ARIA role. Those nodes were dropped from
+  the a11y snapshot entirely, so `inspect`, `capture-ui` and parity all under-
+  reported them; a node with a testid or reported focus is now included.
+- Roles are relaxed automatically when the two runs are on different platforms,
+  whose role vocabularies don't line up. `--ignore-role` forces it within one.
+- `focus` is its own finding kind and blocks by default: on a remote-driven TV
+  app focus is the interaction model, not a state detail. It reports nothing when
+  neither build has focus.
+- The app/window root and untagged layout containers are no longer compared.

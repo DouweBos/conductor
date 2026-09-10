@@ -100,6 +100,7 @@ export function compareRuns(
       name,
       passed: true,
       scaled: false,
+      rolesRelaxed: false,
       counts: { added: cp.snapshot.a11ySnapshot.length },
       findings: [
         {

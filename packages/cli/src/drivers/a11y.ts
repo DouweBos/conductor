@@ -29,6 +29,14 @@ export interface A11yState {
 
 export interface A11ySnapshotEntry {
   nodeId: string;
+  /**
+   * Stable test identity, when the app sets one: `accessibilityIdentifier` on
+   * iOS/tvOS, `resource-id` on Android, `data-testid` on web. Empty when absent.
+   *
+   * Unlike a label or a role, this survives a port to another stack, so it is
+   * the strongest signal available when comparing two builds of one screen.
+   */
+  identifier: string;
   /** Ephemeral, snapshot-scoped element ref (`@e1`, `@e2`, …). Sequential over
    *  the snapshot array, 1-indexed. Only valid for the snapshot it was built in. */
   ref: string;
@@ -139,6 +147,7 @@ export function buildIOSA11y(root: AXElement): A11yBuildResult<IOSA11yNode> {
       accessibilityOrder = order++;
       snapshot.push({
         nodeId: path,
+        identifier: node.identifier || '',
         ref: `@e${accessibilityOrder + 1}`,
         order: accessibilityOrder,
         frame: {
@@ -407,6 +416,7 @@ export function buildAndroidA11y(xml: string): A11yBuildResult<AndroidA11yNode[]
       accessibilityOrder = order++;
       snapshot.push({
         nodeId: path,
+        identifier: n.resourceId || '',
         ref: `@e${accessibilityOrder + 1}`,
         order: accessibilityOrder,
         frame: {
@@ -492,8 +502,18 @@ const WEB_FOCUSABLE_ROLES = new Set([
   'option',
 ]);
 
+/**
+ * Whether a web node earns a place in the a11y snapshot.
+ *
+ * ARIA role is the usual signal, but it misses canvas TV apps entirely:
+ * Lightning/WPE/RDK draw the UI into one `<canvas>` and mirror the scene graph
+ * as off-screen divs that carry `data-testid` and `data-focused` but no role,
+ * so they'd all read as `generic` and be dropped. A node the app deliberately
+ * tagged with a testid — or one the app says is focused — is exactly the kind
+ * of node the snapshot exists to describe, so those count too.
+ */
 function isWebFocusable(node: WebElement): boolean {
-  return WEB_FOCUSABLE_ROLES.has(node.role);
+  return WEB_FOCUSABLE_ROLES.has(node.role) || Boolean(node.testId) || node.focused === true;
 }
 
 /** Web announcement: `[accessibleName], [role], [state]` — screen readers read role after name. */
@@ -526,6 +546,7 @@ export function buildWebA11y(hierarchy: WebViewHierarchy): A11yBuildResult<WebA1
         accessibilityOrder = order++;
         snapshot.push({
           nodeId: path,
+          identifier: n.testId ?? '',
           ref: `@e${accessibilityOrder + 1}`,
           order: accessibilityOrder,
           frame: { x: n.bounds.x, y: n.bounds.y, w: n.bounds.width, h: n.bounds.height },

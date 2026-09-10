@@ -61,7 +61,7 @@ function checkpointSection(cp: CheckpointDiff, refDir: string, candDir: string):
 <section class="cp ${cp.passed ? 'pass' : 'fail'}">
   <h2><span class="badge">${cp.passed ? 'PASS' : 'FAIL'}</span> ${esc(cp.name)}${
     cp.scaled ? '<span class="tag">frames rescaled</span>' : ''
-  }</h2>
+  }${cp.rolesRelaxed ? '<span class="tag">roles relaxed</span>' : ''}</h2>
   <div class="shots">
     ${shot('Reference', ref)}
     ${shot('Candidate', cand)}

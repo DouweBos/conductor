@@ -23,6 +23,7 @@ function entry(ref: string, x: number, y: number, label: string): A11ySnapshotEn
   const order = Number(ref.replace(/\D/g, '')) - 1;
   return {
     nodeId: `0.${order}`,
+    identifier: '',
     ref,
     order,
     frame: { x, y, w: 100, h: 40 },

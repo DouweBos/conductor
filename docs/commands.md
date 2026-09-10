@@ -135,9 +135,16 @@ The pixel ratio is reported alongside as corroborating evidence.
 | `parity diff <ref> <cand>` | Diff two recorded runs already on disk — no device needed. Use it to re-tune thresholds without re-driving the app.                |
 | `checkpoint <name>`      | Capture one checkpoint ad hoc into `--run <dir>`, for journeys driven command-by-command rather than from a flow.                    |
 
-Findings are **blocking** (`missing`, `text`, `value`, `checkpoint-missing`,
-`geometry`) or **advisory** (`added`, `moved`, `resized`, `reordered`, `state`,
-`pixel`); `--blocking`, `--ignore` and `--strict` move the line. Every run
+Findings are **blocking** (`missing`, `text`, `value`, `focus`,
+`checkpoint-missing`, `geometry`) or **advisory** (`added`, `moved`, `resized`,
+`reordered`, `state`, `pixel`); `--blocking`, `--ignore` and `--strict` move the
+line.
+
+Elements pair on test identity first (`accessibilityIdentifier` / `resource-id` /
+`data-testid`), which is what lets the comparison span two *platforms* — tvOS
+against a Lightning/canvas TV app, or a native app against its web build. Roles
+are relaxed automatically when the platforms differ, since their role
+vocabularies don't line up. Every run
 writes `parity.json` next to the candidate; `--html <path>` adds a
 self-contained side-by-side report.
 
