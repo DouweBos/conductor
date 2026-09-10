@@ -68,7 +68,14 @@ interface ParityState {
   /** The Helix loop, when one is running. */
   converge: ConvergeProgress | null;
   campaign: CampaignProgress | null;
-  convergeOptions: { strict: boolean; autoApprove: boolean; maxAttempts: number; preferReload: boolean };
+  convergeOptions: {
+    strict: boolean;
+    autoApprove: boolean;
+    maxAttempts: number;
+    preferReload: boolean;
+    adversarialReview: boolean;
+    commitOnAccept: boolean;
+  };
   /**
    * The inputs sent to the reference since it was last launched, in order.
    * Attached to the next snap as the route the loop replays on each target.
@@ -93,7 +100,14 @@ const store = create<ParityState>(() => ({
   progress: null,
   converge: null,
   campaign: null,
-  convergeOptions: { strict: false, autoApprove: true, maxAttempts: 8, preferReload: true },
+  convergeOptions: {
+    strict: false,
+    autoApprove: true,
+    maxAttempts: 8,
+    preferReload: true,
+    adversarialReview: true,
+    commitOnAccept: true,
+  },
   route: [],
   referenceAppId: "",
   config: { version: 1, recipes: {} },

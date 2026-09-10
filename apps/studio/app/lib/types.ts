@@ -757,6 +757,7 @@ export type ConvergePhase =
   | "capturing" // taking this attempt's screenshot of the target
   | "diffing"
   | "agent-working" // findings handed over; waiting for the turn to end
+  | "reviewing" // at parity; a second agent is reading the diff for a gamed pass
   | "awaiting-review" // at parity, waiting for a human's nod
   | "stalled" // out of attempts, or no longer improving
   | "failed";
@@ -795,6 +796,14 @@ export interface ConvergeTargetState {
   error?: string;
   /** A human looked at the matching screen and said yes. */
   accepted?: boolean;
+  /**
+   * The adversarial reviewer's take on the diff that reached parity. Runs
+   * before a human sees the target: its job is to catch a pass that was gamed
+   * — a hidden element, a label renamed to match, a weakened test.
+   */
+  review?: { verdict: "ok" | "reject" | "none"; reasons: string; at: number; rounds: number };
+  /** What landed in git on accept, or why nothing did. */
+  commit?: { sha?: string; note: string; at: number };
 }
 
 export interface ConvergeProgress {
@@ -840,6 +849,10 @@ export interface ConvergeRequest {
    * an agent, which reads the memory file to catch up.
    */
   holdAgentForReview?: boolean;
+  /** Run a review agent over the target's diff before a human sees it. Default true. */
+  adversarialReview?: boolean;
+  /** Commit the target's source dir when a human accepts it. Default true. */
+  commitOnAccept?: boolean;
   /**
    * Hold targets to layout as well as structure — every finding kind blocks,
    * including moved/resized/pixel. Off, a target passes as soon as the same

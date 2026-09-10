@@ -326,3 +326,51 @@ parity.test("burndown counts per target and overall", () => {
   assertEqual(b.acceptedByTarget, { tvOS: 2 }, "both by tvOS");
   assertEqual([b.review, b.recheck, b.stalled, b.pending], [1, 1, 1, 1], "the rest are counted");
 });
+
+// ── The adversarial reviewer ─────────────────────────────────────────────────
+
+import { buildReviewBrief, parseVerdict, REVIEW_DIFF_CAP } from "../electron/services/parity/reviewDecision";
+
+parity.test("a reviewer's OK is read from its last VERDICT line", () => {
+  const v = parseVerdict("I looked at both files.\nAt first I thought VERDICT: REJECT but no.\n\n**VERDICT: OK**\n");
+  assertEqual(v.verdict, "ok", "the final decision wins over thinking aloud");
+});
+
+parity.test("a rejection carries its reasons, inline and on following lines", () => {
+  const v = parseVerdict("VERDICT: REJECT — the button is hidden\n- Foo.swift sets alpha to 0\n- test skipped");
+  assert(v.verdict === "reject", "rejected");
+  if (v.verdict === "reject") {
+    assert(v.reasons.includes("hidden") && v.reasons.includes("alpha to 0"), `reasons kept: ${v.reasons}`);
+  }
+});
+
+parity.test("a reviewer that never answers is reported as such, not guessed", () => {
+  assertEqual(parseVerdict("Looks fine to me I suppose.").verdict, "none", "no VERDICT line");
+  assertEqual(parseVerdict("VERDICT: maybe?").verdict, "none", "an unreadable verdict is not an OK");
+});
+
+parity.test("the review brief names the gaming patterns and demands one verdict line", () => {
+  const brief = buildReviewBrief({
+    targetLabel: "tvOS",
+    referenceLabel: "RN",
+    checkpoint: "home",
+    fixed: [{ kind: "missing", severity: "blocking", detail: "button Browse is gone", identifier: "browse-button" }],
+    referenceSnapshotPath: "/ref/home.json",
+    targetSnapshotPath: "/att/home.json",
+    diff: "+ let x = 1",
+    untracked: ["apps/tvos/New.swift"],
+  });
+  for (const must of ["renders nothing", "test deleted", "hard-coded", "VERDICT: OK", "VERDICT: REJECT", "[browse-button]", "New.swift", "Do not edit"]) {
+    assert(brief.includes(must), `brief mentions "${must}"`);
+  }
+});
+
+parity.test("a huge diff is truncated with a note, not dropped silently", () => {
+  const brief = buildReviewBrief({
+    targetLabel: "t", referenceLabel: "r", checkpoint: "c", fixed: [],
+    referenceSnapshotPath: "a", targetSnapshotPath: "b",
+    diff: "x".repeat(REVIEW_DIFF_CAP + 500), untracked: [],
+  });
+  assert(brief.includes("diff truncated"), "says it was cut");
+  assert(brief.length < REVIEW_DIFF_CAP + 3_000, "and actually cut it");
+});

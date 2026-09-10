@@ -46,8 +46,10 @@ import { resolveConductor } from "../maestro/maestroService";
 import { getRecipe } from "./config";
 import { decideNextRound, universalBlockingFindings } from "./convergeDecision";
 import { slugForLabel } from "./labels";
+import { commitScope, isGitRepo, scopedDiff } from "./gitScope";
 import { readMemory, remember, renderMemoryForBrief } from "./memory";
 import { prepareTarget, runTargetTests } from "./recipes";
+import { buildReviewBrief, parseVerdict } from "./reviewDecision";
 
 const DEFAULT_MAX_ATTEMPTS = 8;
 const DEFAULT_PATIENCE = 3;
@@ -431,6 +433,95 @@ function buildBrief(
 
 // ── The loop ─────────────────────────────────────────────────────────────────
 
+/** How many times the adversarial reviewer may send one target back before a human decides. */
+const MAX_ADVERSARIAL_REJECTS = 2;
+
+/**
+ * A second agent reads the diff that reached parity and looks for a gamed
+ * pass. Returns the objection to send back, or null to hand off to a human.
+ *
+ * Fails open: no scope, no git, an empty diff, or a reviewer that never
+ * answers all let the target through — with the outcome recorded, because a
+ * gate that silently stops gating is worse than one that is known to be off.
+ */
+async function adversarialReview(
+  target: ParityTarget,
+  recipe: TargetRecipe | undefined,
+  attempt: ConvergeAttempt,
+): Promise<string | null> {
+  const g = goal;
+  const state = targetState(target.label);
+  if (!g || !state || g.req.adversarialReview === false) return null;
+
+  const rounds = (state.review?.rounds ?? 0) + 1;
+  const record = (verdict: "ok" | "reject" | "none", reasons: string): void =>
+    update(target.label, (t) => {
+      t.review = { verdict, reasons, at: Date.now(), rounds };
+    });
+
+  const root = appState.projectRoot ?? process.cwd();
+  const scope = recipe?.sourceDir;
+  if (!scope) {
+    record("none", "not reviewed: the recipe has no source dir, so there is no diff to scope");
+    return null;
+  }
+  if (!(await isGitRepo(root))) {
+    record("none", "not reviewed: the project is not a git repository");
+    return null;
+  }
+  const changes = await scopedDiff(root, scope);
+  if (changes.empty) {
+    record("none", "not reviewed: no changes in scope since the last commit");
+    return null;
+  }
+  if (rounds > MAX_ADVERSARIAL_REJECTS + 1) {
+    record("none", "reviewer objections exhausted — a human decides");
+    return null;
+  }
+
+  // The reviewer's material: what the last agent round was told to fix is what
+  // a gamed pass would fake.
+  const previous = state.attempts.at(-2);
+  const fixed = previous?.findings ?? [];
+  const targetSnapshot = path.join(attempt.dir, `${slugForLabel(g.progress.checkpoint)}.json`);
+
+  const reviewer = await startAgent(undefined, true);
+  await sleep(AGENT_WARMUP_MS);
+  try {
+    sendAgentMessage(
+      reviewer.agentId,
+      buildReviewBrief({
+        targetLabel: target.label,
+        referenceLabel: g.progress.referenceLabel,
+        checkpoint: g.progress.checkpoint,
+        fixed,
+        referenceSnapshotPath: g.reference?.snapshot ?? "(unavailable)",
+        targetSnapshotPath: targetSnapshot,
+        diff: changes.diff,
+        untracked: changes.untracked,
+      }),
+    );
+    const turn = await waitForAgentTurn(reviewer.agentId);
+    const verdict = parseVerdict(turn.text);
+    if (verdict.verdict === "ok") {
+      record("ok", "the diff does what it claims");
+      return null;
+    }
+    if (verdict.verdict === "reject") {
+      record("reject", verdict.reasons);
+      await remember(target.label, "reviewer", `Adversarial review on "${g.progress.checkpoint}": ${verdict.reasons}`);
+      return verdict.reasons;
+    }
+    record("none", "the reviewer gave no verdict — letting it through to a human");
+    return null;
+  } catch (err) {
+    record("none", `reviewer failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  } finally {
+    await stopAgent(reviewer.agentId).catch(() => {});
+  }
+}
+
 /** Run rounds for one target until the decision says stop. Resumable. */
 async function runRounds(
   target: ParityTarget,
@@ -486,17 +577,31 @@ async function runRounds(
       const decision = decideNextRound(state.attempts, { maxAttempts, patience: g.patience });
 
       if (decision.next === "review" && !note) {
-        // Deliberately not "done". Parity is the gate, not the sign-off — a
-        // human still looks at the screen before this counts as finished. The
-        // agent stays alive so a rejection can send the note back to the same
-        // context rather than to a fresh one that has forgotten the codebase —
-        // unless a campaign needs the device back for the next goal.
+        // The screen matches. Before a human sees it, a second agent reads the
+        // diff for a gamed pass; an objection goes back into the loop like a
+        // human rejection would, with more rounds.
         update(label, (t) => {
-          t.phase = "awaiting-review";
-          t.outcome = decision.reason;
+          t.phase = "reviewing";
         });
-        if (g.req.holdAgentForReview === false) await stopTargetAgent(label);
-        return;
+        const objection = await adversarialReview(target, recipe, attempt);
+        if (g.cancelled) return;
+        if (objection) {
+          g.extraRounds.set(label, (g.extraRounds.get(label) ?? 0) + REJECT_EXTRA_ROUNDS);
+          note = `[adversarial reviewer] ${objection}`;
+          // Fall through: the next block dispatches the agent with the note.
+        } else {
+          // Deliberately not "done". Parity is the gate, not the sign-off — a
+          // human still looks at the screen before this counts as finished. The
+          // agent stays alive so a rejection can send the note back to the same
+          // context rather than to a fresh one that has forgotten the codebase —
+          // unless a campaign needs the device back for the next goal.
+          update(label, (t) => {
+            t.phase = "awaiting-review";
+            t.outcome = decision.reason;
+          });
+          if (g.req.holdAgentForReview === false) await stopTargetAgent(label);
+          return;
+        }
       }
 
       if (decision.next === "stop") {
@@ -760,13 +865,34 @@ export async function cancelConvergence(): Promise<void> {
 
 /** The human's nod: looked at, accepted. The agent is released. */
 export async function acceptTarget(label: string): Promise<void> {
+  const g = goal;
   const state = targetState(label);
-  if (!state || state.phase !== "awaiting-review") return;
+  if (!g || !state || state.phase !== "awaiting-review") return;
   update(label, (t) => {
     t.accepted = true;
     t.outcome = `${t.outcome ?? "matched"} · accepted`;
   });
   await stopTargetAgent(label);
+
+  // Accepted work lands in git, scoped to this target's source dir — without
+  // that, eight rounds of agent edits sit in a dirty tree and the next goal
+  // builds on unreviewed mush. No scope, no commit, and the panel says why.
+  if (g.req.commitOnAccept !== false) {
+    const root = appState.projectRoot ?? process.cwd();
+    const recipe = await getRecipe(label);
+    let result: { sha?: string; note: string };
+    if (!recipe?.sourceDir) result = { note: "not committed: the recipe has no source dir to scope the commit to" };
+    else if (!(await isGitRepo(root))) result = { note: "not committed: the project is not a git repository" };
+    else
+      result = await commitScope(
+        root,
+        recipe.sourceDir,
+        `parity(${label}): "${g.progress.checkpoint}" matches ${g.progress.referenceLabel}`,
+      );
+    update(label, (t) => {
+      t.commit = { ...result, at: Date.now() };
+    });
+  }
   finishGoalIfIdle();
 }
 

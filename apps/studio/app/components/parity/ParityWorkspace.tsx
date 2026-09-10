@@ -244,6 +244,24 @@ export function ParityWorkspace() {
               />
               Prefer reload
             </label>
+            <label className={styles.mirrorToggle} title="A second agent reads the diff that reached parity and looks for a gamed pass before a human sees it">
+              <input
+                type="checkbox"
+                checked={convergeOptions.adversarialReview}
+                disabled={converging}
+                onChange={(e) => setConvergeOptions({ adversarialReview: e.target.checked })}
+              />
+              Adversarial review
+            </label>
+            <label className={styles.mirrorToggle} title="On accept, commit the target's source dir (from its recipe)">
+              <input
+                type="checkbox"
+                checked={convergeOptions.commitOnAccept}
+                disabled={converging}
+                onChange={(e) => setConvergeOptions({ commitOnAccept: e.target.checked })}
+              />
+              Commit on accept
+            </label>
             {converging ? (
               <Button
                 size="sm"

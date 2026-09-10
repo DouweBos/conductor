@@ -23,6 +23,7 @@ const PHASE: Record<ConvergePhase, { label: string; tone: StatusTone }> = {
   capturing: { label: "capturing", tone: "running" },
   diffing: { label: "diffing", tone: "running" },
   "agent-working": { label: "agent working", tone: "running" },
+  reviewing: { label: "adversarial review", tone: "running" },
   "awaiting-review": { label: "awaiting review", tone: "success" },
   stalled: { label: "stalled", tone: "warning" },
   failed: { label: "failed", tone: "error" },
@@ -55,6 +56,7 @@ function TargetRow({ target }: { target: ConvergeTargetState }) {
   const latest = target.attempts[target.attempts.length - 1];
   const phase = PHASE[target.phase];
   const working =
+    target.phase === "reviewing" ||
     target.phase === "preparing" ||
     target.phase === "capturing" ||
     target.phase === "diffing" ||
@@ -132,6 +134,18 @@ function TargetRow({ target }: { target: ConvergeTargetState }) {
       {latest?.tests && !latest.tests.passed ? (
         <p className={styles.error}>
           <Icon name="alert" size={12} /> screen matches, but the target's tests fail
+        </p>
+      ) : null}
+      {target.review ? (
+        <p className={target.review.verdict === "reject" ? styles.error : styles.outcome}>
+          <Icon name={target.review.verdict === "reject" ? "alert" : "check"} size={12} />{" "}
+          reviewer: {target.review.verdict === "ok" ? "the diff does what it claims" : target.review.reasons}
+        </p>
+      ) : null}
+      {target.commit ? (
+        <p className={styles.outcome}>
+          <Icon name="code" size={12} /> {target.commit.sha ? `${target.commit.sha} · ` : ""}
+          {target.commit.note}
         </p>
       ) : null}
       {target.outcome ? <p className={styles.outcome}>{target.outcome}</p> : null}
