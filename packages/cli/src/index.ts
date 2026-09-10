@@ -71,6 +71,7 @@ import {
   parityCompare,
   parityDiff,
   parityMatrix,
+  paritySnap,
   ParityFlags,
   HELP as parityHelp,
 } from './commands/parity.js';
@@ -1159,11 +1160,13 @@ async function main(): Promise<void> {
         exitCode = await parityCompare(rest[1] ?? '', opts, sessionName, flags, parityEnv);
       } else if (sub === 'diff') {
         exitCode = await parityDiff(rest[1] ?? '', rest[2] ?? '', opts, flags);
+      } else if (sub === 'snap') {
+        exitCode = await paritySnap(rest[1] ?? '', opts, sessionName, flags);
       } else if (sub === 'matrix') {
         exitCode = await parityMatrix(rest[1] ?? '', rest.slice(2).map(String), opts, flags);
       } else {
         console.error(
-          `parity: unknown subcommand "${sub || '(none)'}". Expected record, compare, diff, or matrix.`
+          `parity: unknown subcommand "${sub || '(none)'}". Expected record, compare, snap, diff, or matrix.`
         );
         console.error(parityHelp);
         exitCode = 1;

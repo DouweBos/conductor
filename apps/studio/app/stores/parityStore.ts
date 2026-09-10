@@ -1,10 +1,11 @@
 import { create } from "zustand";
 
 import { listen } from "../lib/events";
-import { cancelParity, getParityState, startParity } from "../lib/ipc";
+import { cancelParity, getParityState, resetLiveParity, snapParity, startParity } from "../lib/ipc";
 import type {
   DeviceInfo,
   ParityMatrix,
+  ParityMode,
   ParityProgress,
   ParityTarget,
   ParityTargetProgress,
@@ -21,6 +22,18 @@ import { setStreamedDevices } from "./deviceStore";
  */
 
 interface ParityState {
+  /**
+   * `flow` walks a scripted journey; `live` compares whatever the devices are
+   * showing right now. Live exists because the reference is often already on
+   * the screen you care about, and writing a flow to get back there is work
+   * that answers no question.
+   */
+  mode: ParityMode;
+  /** In live mode, replay input on the reference to every target. */
+  mirrorInput: boolean;
+  /** Names of the screens captured in this live session, in order. */
+  snaps: string[];
+  snapping: boolean;
   flowPath: string | null;
   referenceDeviceId: string | null;
   referenceLabel: string;
@@ -31,6 +44,10 @@ interface ParityState {
 }
 
 const store = create<ParityState>(() => ({
+  mode: "live",
+  mirrorInput: true,
+  snaps: [],
+  snapping: false,
   flowPath: null,
   referenceDeviceId: null,
   referenceLabel: "Reference",
@@ -40,6 +57,10 @@ const store = create<ParityState>(() => ({
   error: null,
 }));
 
+export const useParityMode = () => store((s) => s.mode);
+export const useParityMirror = () => store((s) => s.mirrorInput);
+export const useParitySnaps = () => store((s) => s.snaps);
+export const useParitySnapping = () => store((s) => s.snapping);
 export const useParityFlow = () => store((s) => s.flowPath);
 export const useParityReference = () =>
   store((s) => ({ deviceId: s.referenceDeviceId, label: s.referenceLabel }));
@@ -65,6 +86,70 @@ export const useParityRunning = () =>
 
 export function setParityFlow(flowPath: string | null): void {
   store.setState({ flowPath });
+}
+
+export function setParityMode(mode: ParityMode): void {
+  store.setState({ mode });
+}
+
+export function setParityMirror(mirrorInput: boolean): void {
+  store.setState({ mirrorInput });
+}
+
+/** Device ids a mirrored input should reach: every target, not the reference. */
+export function mirrorTargets(): string[] {
+  const s = store.getState();
+  return s.mode === "live" && s.mirrorInput ? s.targets.map((t) => t.deviceId) : [];
+}
+
+/**
+ * Capture what every device is showing right now and diff it.
+ *
+ * Appends to the running session, so the grid grows a row per captured screen
+ * as you move through the app.
+ */
+export async function snapParityNow(name: string, reset = false): Promise<void> {
+  const s = store.getState();
+  if (!s.referenceDeviceId) {
+    store.setState({ error: "pick the device running the reference build" });
+    return;
+  }
+  if (s.targets.length === 0) {
+    store.setState({ error: "add at least one target build to compare against" });
+    return;
+  }
+  const trimmed = name.trim();
+  if (!trimmed) {
+    store.setState({ error: "name this screen so it can be found in the grid" });
+    return;
+  }
+
+  store.setState({ snapping: true, error: null });
+  try {
+    const result = await snapParity({
+      name: trimmed,
+      referenceDeviceId: s.referenceDeviceId,
+      referenceLabel: s.referenceLabel,
+      targets: s.targets,
+      reset,
+    });
+    store.setState((prev) => ({
+      snaps: reset ? [result.name] : [...prev.snaps, result.name],
+    }));
+  } catch (err) {
+    store.setState({ error: String(err) });
+  } finally {
+    store.setState({ snapping: false });
+  }
+}
+
+/** Throw the captured screens away and start the session over. */
+export async function resetParitySession(): Promise<void> {
+  try {
+    await resetLiveParity();
+  } finally {
+    store.setState({ snaps: [], progress: null, error: null });
+  }
 }
 
 export function setParityReference(deviceId: string | null, label?: string): void {

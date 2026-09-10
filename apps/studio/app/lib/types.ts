@@ -716,3 +716,30 @@ export interface ParityRunStarted {
   outDir: string;
   referenceDir: string;
 }
+
+/** How a parity comparison gets its screens. */
+export type ParityMode = "flow" | "live";
+
+/**
+ * Capture what every device is showing right now.
+ *
+ * The flow path assumes a journey worth scripting; often there isn't one and
+ * the reference is simply already on the screen you care about. Snaps append to
+ * one session, so moving through the app and capturing as you go builds the
+ * grid a screen at a time with no flow file anywhere.
+ */
+export interface ParitySnapRequest {
+  /** What to call this screen in the grid. */
+  name: string;
+  referenceDeviceId: string;
+  referenceLabel: string;
+  targets: ParityTarget[];
+  /** Start a fresh session rather than appending to the current one. */
+  reset?: boolean;
+}
+
+export interface ParitySnapResult {
+  /** The name it was actually filed under — a repeat gets numbered. */
+  name: string;
+  matrix: ParityMatrix;
+}

@@ -19,6 +19,8 @@ import type {
   ParityProgress,
   ParityRunRequest,
   ParityRunStarted,
+  ParitySnapRequest,
+  ParitySnapResult,
   ParityTarget,
   ParityTargetProgress,
 } from "../../../app/lib/types";
@@ -387,4 +389,114 @@ export async function rediffParityRun(
     child.on("error", () => reject(new Error(err || "parity matrix failed")));
   });
   return JSON.parse(await readFile(jsonPath, "utf-8")) as ParityMatrix;
+}
+
+// ── Live snaps (no flow) ─────────────────────────────────────────────────────
+
+/**
+ * A flow-less comparison session.
+ *
+ * Snaps accumulate into one set of run directories, so capturing repeatedly as
+ * you move through the app builds the grid a screen at a time. The session
+ * lasts until it is reset, which is what makes "navigate, capture, navigate,
+ * capture" work without a flow file.
+ */
+let liveSession: { dir: string; snaps: string[] } | null = null;
+
+export function getLiveSession(): { dir: string; snaps: string[] } | null {
+  return liveSession;
+}
+
+export function resetLiveSession(): void {
+  liveSession = null;
+}
+
+/**
+ * Capture the current screen on the reference and every target, then diff.
+ *
+ * Delegates the whole job to `conductor parity snap` rather than orchestrating
+ * `checkpoint` calls here: an ad-hoc comparison and a flow-driven one then run
+ * through exactly the same capture, naming and diff code, and cannot drift into
+ * disagreeing about whether two screens match.
+ */
+export async function snapParity(req: ParitySnapRequest): Promise<ParitySnapResult> {
+  if (req.targets.length === 0) throw new Error("a parity snap needs at least one target");
+  const collision = slugCollision(req.targets.map((t) => t.label));
+  if (collision) {
+    throw new Error(
+      `target names "${collision.a}" and "${collision.b}" are too alike — ` +
+        `both become "${collision.slug}" on disk`,
+    );
+  }
+
+  const cli = await conductorArgs();
+  if (req.reset || !liveSession) {
+    const root = appState.projectRoot ?? process.cwd();
+    liveSession = { dir: path.join(root, ".conductor", "parity", `live-${randomUUID()}`), snaps: [] };
+  }
+  const session = liveSession;
+  const jsonPath = path.join(session.dir, "parity-matrix.json");
+  await mkdir(session.dir, { recursive: true });
+
+  const args = [
+    ...cli.prefix,
+    "parity",
+    "snap",
+    req.name,
+    "--out",
+    session.dir,
+    "--device",
+    req.referenceDeviceId,
+    "--label",
+    req.referenceLabel,
+    "--json-report",
+    jsonPath,
+    ...req.targets.flatMap((t) => ["--target", `${t.label}=${t.deviceId}`]),
+  ];
+
+  const output = await new Promise<string>((resolve) => {
+    const child = spawn(cli.bin, args, { stdio: ["ignore", "pipe", "pipe"], env: cli.env });
+    let buf = "";
+    child.stdout?.on("data", (c: Buffer) => (buf += c.toString()));
+    child.stderr?.on("data", (c: Buffer) => (buf += c.toString()));
+    // Non-zero means "the targets differ", which is the answer, not a failure.
+    child.on("close", () => resolve(buf));
+    child.on("error", (err) => resolve(err.message));
+  });
+
+  let matrix: ParityMatrix;
+  try {
+    matrix = JSON.parse(await readFile(jsonPath, "utf-8")) as ParityMatrix;
+  } catch {
+    throw new Error(`parity snap failed:\n${output.trim()}`);
+  }
+
+  // The CLI numbers a repeated name ("home" → "home-2"); the last row in the
+  // reference's order is the one just captured.
+  const filed = matrix.rows.length ? matrix.rows[matrix.rows.length - 1].checkpoint : req.name;
+  session.snaps.push(filed);
+
+  // A live session has no walk to report, but the grid is still parity
+  // progress — reuse the same channel so the results panel updates either way.
+  broadcastToRenderers("parity_progress", {
+    runId: path.basename(session.dir),
+    phase: "done",
+    reference: {
+      label: req.referenceLabel,
+      deviceId: req.referenceDeviceId,
+      phase: "recorded",
+      checkpoints: session.snaps.length,
+      lastCheckpoint: filed,
+    },
+    targets: req.targets.map((t) => ({
+      label: t.label,
+      deviceId: t.deviceId,
+      phase: "recorded" as const,
+      checkpoints: session.snaps.length,
+      lastCheckpoint: filed,
+    })),
+    matrix,
+  } satisfies ParityProgress);
+
+  return { name: filed, matrix };
 }

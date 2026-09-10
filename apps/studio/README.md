@@ -652,17 +652,39 @@ elements exist, what they say, where they sit, what has focus. The pixel ratio
 rides along as corroborating evidence rather than as the verdict. See the
 `conductor-parity` skill for the finding kinds and how to tune them.
 
-### Marking the journey
+### Two ways to get the screens: Live and Flow
 
-A flow opts into comparison with `- checkpoint: <name>` steps at the screens
-worth comparing. Outside a parity run they are no-ops, so the same flow still
-runs normally from the Flows workbench.
+**Live** is the default, and the one to reach for when someone asks whether a
+screen matches. There is no flow: drive the reference to the screen you want and
+press **Capture & compare**. Every device's current screen is captured and
+diffed on the spot, and each capture adds a row — so moving through the app
+builds the comparison a screen at a time.
+
+Because there is no flow driving them, the reference tile is **drivable** in
+live mode, and **Mirror input** (on by default) sends the same taps and remote
+presses to every target so they walk with it. For a TV app, where navigation is
+a sequence of D-pad presses, that is usually all it takes to keep four devices
+on the same screen. Mirrored coordinates are normalised, so a tap lands in the
+same relative place on a 1080p TV and a 720p browser window — an assumption that
+holds while the builds lay out alike, and when it stops holding, the diff is what
+tells you.
+
+**Flow** walks a scripted journey instead, for a comparison worth repeating — in
+CI, or across many screens at once. The flow opts in with `- checkpoint: <name>`
+steps at the screens worth comparing; outside a parity run they are no-ops, so
+the same flow still runs normally from the Flows workbench. While a flow is
+walking, every tile is watch-only: the flow drives all of them, and a stray tap
+would put one build on a different screen from the others — exactly the
+divergence being measured.
 
 ### Agentic
 
-The agent drives the same machinery through two MCP tools — `start_parity_run`
-and `get_parity_run` — so an agent-run comparison and a human clicking **Run
-parity** are held to exactly the same verdict. The agent is told to read
+The agent drives the same machinery through MCP: `snap_parity` and
+`reset_parity_session` for the live path, `start_parity_run` and
+`get_parity_run` for the flow path. An agent-run comparison and a human pressing
+**Capture** are held to exactly the same verdict, because both go through the
+same CLI. The agent is told to reach for `snap_parity` first and not to write a
+flow just to reach one screen. The agent is told to read
 universal findings as a question about the reference, so it reports one
 reference bug rather than filing the same issue against four platforms.
 

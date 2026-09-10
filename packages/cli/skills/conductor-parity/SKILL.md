@@ -71,6 +71,7 @@ meet, and it stops being reproducible once the old build is gone.
 | `conductor parity compare <flow> --reference <dir>` | Walk it against the candidate build, then diff and gate |
 | `conductor parity diff <ref-dir> <cand-dir>` | Diff two runs already on disk — no device, no app, instant |
 | `conductor parity matrix <ref-dir> <dir...>` | Diff one reference against **many** recorded runs, as a grid |
+| `conductor parity snap <name> --out <dir>` | Compare what every device is showing **right now** — no flow |
 | `conductor checkpoint <name> --run <dir>` | Capture one checkpoint ad hoc, for journeys driven command-by-command |
 
 `parity diff` is the one to reach for while tuning thresholds: re-diffing costs
@@ -161,6 +162,33 @@ On a TV app, drive focus with `press-key 'Remote Dpad Down'` and put a
 checkpoint after each move: the `focus` finding then verifies that the D-pad
 walks the two builds in the same order, which is the thing most likely to
 diverge in a port and the hardest to eyeball.
+
+## No flow: compare what is on screen right now
+
+A flow is the wrong tool when the reference is *already* on the screen you care
+about. Writing one to get back there answers no question. `parity snap` captures
+the current screen on the reference and on every target, diffs them, and appends
+to the same session — so calling it as you move through the app builds the grid
+one screen at a time:
+
+```bash
+S=.parity/live
+conductor parity snap home   --out $S --device <ref> --target "tvOS=<udid>" --target "VegaOS=<vvd>"
+# ...navigate all the devices to the next screen...
+conductor parity snap detail --out $S --device <ref> --target "tvOS=<udid>" --target "VegaOS=<vvd>"
+```
+
+The reference is whatever `--device` resolves to; targets are `--target`. A name
+already used in the session is numbered (`home` → `home-2`) **for every device
+at once**, so the screens still pair up.
+
+Getting the targets onto the matching screen is yours to arrange — by hand, with
+an agent, or with mirrored input in Studio. That is the honest division of
+labour: `snap` compares what it is given, and none of those ways needs a flow.
+
+Reach for `snap` first when someone asks whether a screen matches. Use the flow
+path when the journey is worth scripting, or when the check has to be repeatable
+in CI.
 
 ## One reference, many targets
 

@@ -45,6 +45,8 @@ import type {
   ParityProgress,
   ParityRunRequest,
   ParityRunStarted,
+  ParitySnapRequest,
+  ParitySnapResult,
 } from "./types";
 
 function invoke<T>(channel: string, args?: unknown): Promise<T> {
@@ -120,6 +122,9 @@ export const cancelParity = () => invoke<void>("parity_cancel");
 export const getParityState = () => invoke<ParityProgress | null>("parity_state");
 export const rediffParity = (referenceDir: string, targetDirs: string[]) =>
   invoke<ParityMatrix>("parity_rediff", { referenceDir, targetDirs });
+export const snapParity = (req: ParitySnapRequest) =>
+  invoke<ParitySnapResult>("parity_snap", req);
+export const resetLiveParity = () => invoke<void>("parity_reset_live");
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");

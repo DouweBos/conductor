@@ -2,8 +2,10 @@ import {
   Button,
   Icon,
   Panel,
+  SegmentedControl,
   Select,
   StatusPill,
+  Tag,
   TextField,
   Toolbar,
   ToolbarSpacer,
@@ -13,25 +15,34 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { listFlows } from "../../lib/ipc";
-import type { DeviceInfo, FileEntry, ParityRunPhase } from "../../lib/types";
+import type { DeviceInfo, FileEntry, ParityMode, ParityRunPhase } from "../../lib/types";
 import { refreshDevices, useDevices } from "../../stores/deviceStore";
 import {
   addParityTarget,
   cancelParityRun,
+  mirrorTargets,
   progressFor,
   removeParityTarget,
   renameParityTarget,
+  resetParitySession,
   setParityFlow,
+  setParityMirror,
+  setParityMode,
   setParityReference,
   setParityReferenceLabel,
+  snapParityNow,
   startParityRun,
   syncParityStreams,
   useParityError,
   useParityFlow,
   useParityMatrix,
+  useParityMirror,
+  useParityMode,
   useParityProgress,
   useParityReference,
   useParityRunning,
+  useParitySnapping,
+  useParitySnaps,
   useParityTargets,
 } from "../../stores/parityStore";
 import { ParityResults } from "./ParityResults";
@@ -76,7 +87,12 @@ export function ParityWorkspace() {
   const matrix = useParityMatrix();
   const running = useParityRunning();
   const error = useParityError();
+  const mode = useParityMode();
+  const mirror = useParityMirror();
+  const snaps = useParitySnaps();
+  const snapping = useParitySnapping();
   const [flows, setFlows] = useState<FileEntry[]>([]);
+  const [snapName, setSnapName] = useState("");
 
   useEffect(() => {
     void refreshDevices();
@@ -109,32 +125,93 @@ export function ParityWorkspace() {
   );
 
   const phase = progress?.phase;
+  const canSnap = Boolean(
+    reference.deviceId && targets.length > 0 && snapName.trim() && !snapping,
+  );
+
+  const capture = async (): Promise<void> => {
+    await snapParityNow(snapName);
+    // Clear the field so the next screen gets its own name rather than
+    // silently piling up as "home-2", "home-3".
+    setSnapName("");
+  };
 
   return (
     <div className={styles.workspace}>
       <Toolbar>
-        <Select
-          value={flowPath ?? ""}
-          onChange={(e) => setParityFlow(e.target.value || null)}
-          options={[{ value: "", label: "Pick a flow…" }, ...flowOptions]}
-          aria-label="Flow to walk"
+        <SegmentedControl
+          label="How screens are compared"
+          value={mode}
+          onChange={(v) => setParityMode(v as ParityMode)}
+          options={[
+            { value: "live", label: "Live" },
+            { value: "flow", label: "Flow" },
+          ]}
         />
+        {mode === "flow" ? (
+          <Select
+            value={flowPath ?? ""}
+            onChange={(e) => setParityFlow(e.target.value || null)}
+            options={[{ value: "", label: "Pick a flow…" }, ...flowOptions]}
+            aria-label="Flow to walk"
+          />
+        ) : (
+          <>
+            <TextField
+              value={snapName}
+              onChange={(e) => setSnapName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && canSnap) void capture();
+              }}
+              placeholder="Name this screen…"
+              aria-label="Name for the screen being captured"
+            />
+            <Button size="sm" icon="camera" disabled={!canSnap} onClick={() => void capture()}>
+              {snapping ? "Capturing…" : "Capture & compare"}
+            </Button>
+            <label className={styles.mirrorToggle}>
+              <input
+                type="checkbox"
+                checked={mirror}
+                onChange={(e) => setParityMirror(e.target.checked)}
+              />
+              Mirror input to targets
+            </label>
+          </>
+        )}
         <ToolbarSpacer />
         <StatusPill tone={phaseTone(phase, matrix?.passed)}>
           {phase ? PHASE_LABEL[phase] : "ready"}
         </StatusPill>
-        {running ? (
-          <Button size="sm" variant="secondary" icon="stop" onClick={() => void cancelParityRun()}>
-            Cancel
-          </Button>
+        {mode === "flow" ? (
+          running ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="stop"
+              onClick={() => void cancelParityRun()}
+            >
+              Cancel
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              icon="play"
+              disabled={!flowPath || !reference.deviceId || targets.length === 0}
+              onClick={() => void startParityRun()}
+            >
+              Run parity
+            </Button>
+          )
         ) : (
           <Button
             size="sm"
-            icon="play"
-            disabled={!flowPath || !reference.deviceId || targets.length === 0}
-            onClick={() => void startParityRun()}
+            variant="secondary"
+            icon="trash"
+            disabled={snaps.length === 0 || snapping}
+            onClick={() => void resetParitySession()}
           >
-            Run parity
+            New session
           </Button>
         )}
       </Toolbar>
@@ -162,9 +239,10 @@ export function ParityWorkspace() {
             />
           </div>
           <p className={styles.hint}>
-            The build being ported <em>from</em>. It walks the flow first — if the reference can't
-            complete the journey there is nothing to hold the targets to, so the run stops there
-            rather than spending every device to find out.
+            The build being ported <em>from</em>.{" "}
+            {mode === "flow"
+              ? "It walks the flow first — if the reference can't complete the journey there is nothing to hold the targets to, so the run stops there rather than spending every device to find out."
+              : "Drive it to whatever screen you want compared; the targets are held to what it is showing when you capture."}
           </p>
         </Panel>
 
@@ -223,6 +301,28 @@ export function ParityWorkspace() {
         </Panel>
       </div>
 
+      {mode === "live" ? (
+        <Panel
+          title={`Captured screens · ${snaps.length}`}
+          actions={
+            snaps.length ? (
+              <span className={styles.snapList}>
+                {snaps.map((name, i) => (
+                  <Tag key={`${name}-${i}`}>{name}</Tag>
+                ))}
+              </span>
+            ) : null
+          }
+        >
+          <p className={styles.hint}>
+            No flow. Drive the reference to the screen you want — mirroring sends the same taps and
+            remote presses to every target, so they walk with it — then <strong>Capture</strong> to
+            compare what all of them are showing right now. Each capture adds a row to the grid, so
+            moving through the app builds the comparison a screen at a time.
+          </p>
+        </Panel>
+      ) : null}
+
       <Panel title="Devices" flush>
         <div className={styles.streams}>
           <ParityStreamGrid
@@ -231,6 +331,10 @@ export function ParityWorkspace() {
             referenceProgress={progress?.reference}
             targets={targets}
             progressFor={(label) => progressFor(progress, label)}
+            // Only live mode hands the reference over: while a flow is walking,
+            // a stray tap is the divergence, not the measurement.
+            interactive={mode === "live" && !running}
+            mirrorTo={mirrorTargets()}
           />
         </div>
       </Panel>

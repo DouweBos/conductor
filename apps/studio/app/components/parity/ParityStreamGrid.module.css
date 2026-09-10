@@ -117,3 +117,25 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  outline: none;
+  touch-action: none;
+}
+
+.overlay.overlayFocused {
+  box-shadow: inset 0 0 0 2px var(--accent, #4c7dfd);
+}
+
+.mirror {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}

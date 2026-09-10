@@ -1,18 +1,26 @@
 import { DeviceFrame, Icon, Spinner, StatusPill, type StatusTone } from "@conductor/studio-ui";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDeviceStream } from "../../hooks/useDeviceStream";
-import type { ParityTarget, ParityTargetProgress } from "../../lib/types";
+import { mirrorInput, sendInput, type MirrorInput } from "../../lib/mirror";
+import { remoteKeyFor } from "../../lib/remoteKeys";
+import type { ParityTarget, ParityTargetProgress, Platform } from "../../lib/types";
+import { isTvPlatform } from "../../lib/types";
 import { useDevices, useStreamError, useStreamPhase } from "../../stores/deviceStore";
 import styles from "./ParityStreamGrid.module.css";
 
 /**
  * The reference build on the left, every target build tiled beside it.
  *
- * All tiles are watch-only. A parity run is a controlled comparison: the flow
- * drives every device through the same journey, and a stray tap on one tile
- * would put that build on a different screen from the others — which is exactly
- * the divergence the run is trying to measure.
+ * Whether a tile can be driven depends on how the comparison gets its screens.
+ * While a flow is walking, every tile is watch-only: the flow drives all of
+ * them through the same journey, and a stray tap would put one build on a
+ * different screen from the others — exactly the divergence being measured.
+ *
+ * In a live session there is no flow, so the reference *must* be drivable —
+ * that is how you get to the screen you want to compare. With mirroring on, the
+ * same input goes to every target, which is what keeps four devices walking
+ * together without a script.
  */
 
 function toneFor(phase: ParityTargetProgress["phase"] | undefined): StatusTone {
@@ -50,22 +58,93 @@ function StreamTile({
   sublabel,
   progress,
   large = false,
+  platform,
+  interactive = false,
+  mirrorTo = [],
 }: {
   deviceId: string | null;
   label: string;
   sublabel?: string;
   progress?: ParityTargetProgress;
   large?: boolean;
+  platform?: Platform;
+  /** Drivable — live mode's reference tile. */
+  interactive?: boolean;
+  /** Devices that receive a copy of every input sent here. */
+  mirrorTo?: string[];
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const downRef = useRef<{ x: number; y: number } | null>(null);
   const stream = useDeviceStream(deviceId, canvasRef);
   const phase = useStreamPhase(deviceId);
   const streamError = useStreamError(deviceId);
   const connecting = phase === "connecting";
+  const [focused, setFocused] = useState(false);
+  // A TV has no touch screen — the remote is the only way in, so the overlay
+  // takes keyboard focus rather than pointer gestures.
+  const isTv = isTvPlatform(platform);
+
+  useEffect(() => {
+    if (interactive && isTv && stream.connected) overlayRef.current?.focus();
+  }, [interactive, isTv, stream.connected]);
+
+  const dispatch = (input: MirrorInput): void => {
+    if (!deviceId) return;
+    void sendInput(deviceId, input);
+    if (mirrorTo.length) void mirrorInput(mirrorTo, input);
+  };
+
+  const normalize = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const el = overlayRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return {
+      x: Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (clientY - rect.top) / rect.height)),
+    };
+  };
+
+  const overlay =
+    interactive && deviceId ? (
+      <div
+        ref={overlayRef}
+        className={[styles.overlay, focused && styles.overlayFocused].filter(Boolean).join(" ")}
+        tabIndex={0}
+        role="application"
+        aria-label={`Drive ${label}${mirrorTo.length ? ` and ${mirrorTo.length} target(s)` : ""}`}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onPointerDown={(e) => {
+          const p = normalize(e.clientX, e.clientY);
+          if (p) downRef.current = p;
+        }}
+        onPointerUp={(e) => {
+          const start = downRef.current;
+          downRef.current = null;
+          const end = normalize(e.clientX, e.clientY);
+          if (!start || !end) return;
+          const dist = Math.hypot(end.x - start.x, end.y - start.y);
+          if (dist < 0.02) dispatch({ kind: "tap", x: end.x, y: end.y });
+          else dispatch({ kind: "swipe", x1: start.x, y1: start.y, x2: end.x, y2: end.y });
+        }}
+        onKeyDown={(e) => {
+          const remote = remoteKeyFor(e.key);
+          if (remote) {
+            e.preventDefault();
+            dispatch({ kind: "key", key: remote });
+          }
+        }}
+      />
+    ) : null;
 
   return (
     <figure className={[styles.tile, large && styles.large].filter(Boolean).join(" ")}>
-      <DeviceFrame width={stream.width || undefined} height={stream.height || undefined}>
+      <DeviceFrame
+        width={stream.width || undefined}
+        height={stream.height || undefined}
+        overlay={overlay}
+      >
         <canvas ref={canvasRef} className={styles.canvas} />
         {!stream.connected ? (
           <div className={styles.placeholder}>
@@ -86,6 +165,11 @@ function StreamTile({
         <span className={styles.label} title={label}>
           {label}
         </span>
+        {interactive && mirrorTo.length > 0 ? (
+          <span className={styles.mirror} title={`Input is copied to ${mirrorTo.length} target(s)`}>
+            <Icon name="refresh" size={11} /> mirroring
+          </span>
+        ) : null}
         {sublabel ? <span className={styles.sub}>{sublabel}</span> : null}
         <StatusPill tone={toneFor(progress?.phase)}>{captionFor(progress)}</StatusPill>
       </figcaption>
@@ -109,15 +193,23 @@ export function ParityStreamGrid({
   referenceProgress,
   targets,
   progressFor,
+  interactive = false,
+  mirrorTo = [],
 }: {
   referenceDeviceId: string | null;
   referenceLabel: string;
   referenceProgress?: ParityTargetProgress;
   targets: ParityTarget[];
   progressFor: (label: string) => ParityTargetProgress | undefined;
+  /** Live mode: the reference can be driven by hand. */
+  interactive?: boolean;
+  /** Devices that receive a copy of what is done to the reference. */
+  mirrorTo?: string[];
 }) {
   const devices = useDevices();
   const nameOf = (id: string): string => devices.find((d) => d.id === id)?.name ?? id;
+  const platformOf = (id: string | null): Platform | undefined =>
+    id ? devices.find((d) => d.id === id)?.platform : undefined;
 
   return (
     <div className={styles.grid}>
@@ -129,6 +221,9 @@ export function ParityStreamGrid({
           label={referenceLabel}
           sublabel={referenceDeviceId ? nameOf(referenceDeviceId) : undefined}
           progress={referenceProgress}
+          platform={platformOf(referenceDeviceId)}
+          interactive={interactive}
+          mirrorTo={mirrorTo}
         />
       </div>
 
@@ -155,6 +250,7 @@ export function ParityStreamGrid({
                 label={t.label}
                 sublabel={nameOf(t.deviceId)}
                 progress={progressFor(t.label)}
+                platform={t.platform}
               />
             ))}
           </div>

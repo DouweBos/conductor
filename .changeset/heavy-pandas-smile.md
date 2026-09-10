@@ -57,3 +57,11 @@ Parity compares one reference against **many** targets, not just one:
   drop the same control, so that is usually a statement about the reference run
   (stale, behind a flag, a different experiment bucket) rather than about the
   targets. A finding on one target is that target's bug.
+
+Parity no longer needs a flow. `parity snap <name> --out <dir>` captures what
+the reference and every target are showing **right now**, diffs them, and
+appends to one session — so calling it as you move through the app builds the
+grid a screen at a time. A repeated name is numbered for every device at once,
+so the screens still pair. Getting the targets onto the matching screen is the
+caller's to arrange (by hand, with an agent, or with mirrored input); `snap`
+compares what it is given.

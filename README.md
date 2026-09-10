@@ -59,7 +59,7 @@ Run `conductor --help` for the full command reference, or `conductor <command> -
 | Assertions | `assert-visible`, `assert-not-visible`, `assert-true`, `assert-screenshot` |
 | Navigation | `open-link`, `back` |
 | Flows | `run-flow`, `run-flow-inline`, `run-parallel`, `run-sequence`, `flow` |
-| Parity | `parity record`, `parity compare`, `parity diff`, `parity matrix`, `checkpoint` |
+| Parity | `parity record`, `parity compare`, `parity snap`, `parity diff`, `parity matrix`, `checkpoint` |
 | Devices | `start-device`, `stop-device`, `list-devices`, `device-pool`, `set-location`, `set-orientation`, `set-permissions` |
 | Debugging | `logs`, `crashes`, `network`, `memory`, `profile`, `metro`, `record-video`, `stream-server` |
 | In-process (iOS/tvOS) | `native-inspect`, `native-find`, `native-set`, `native-eval`, `native-heap`, and more |

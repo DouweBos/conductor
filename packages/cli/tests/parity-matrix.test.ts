@@ -10,7 +10,7 @@ import os from 'os';
 import path from 'path';
 import { TestSuite, assert } from './runner.js';
 import { buildMatrix, findingSignature, renderMatrixText } from '../src/parity/matrix.js';
-import { parseTargets } from '../src/commands/parity.js';
+import { parseTargets, uniqueCheckpointName } from '../src/commands/parity.js';
 import { RunWriter } from '../src/parity/store.js';
 import type { A11ySnapshotEntry } from '../src/drivers/a11y.js';
 import type { CapturePlatform } from '../src/parity/capture.js';
@@ -312,5 +312,53 @@ parityMatrix.test('the text grid names every target and checkpoint', async () =>
     assert(text.includes('tvOS') && text.includes('Lightning'), 'both columns are labelled');
     assert(text.includes('home'), 'the checkpoint row is present');
     assert(text.includes('2/2 targets at parity'), `summary line, got:\n${text}`);
+  });
+});
+
+// ── Flow-less snaps ──────────────────────────────────────────────────────────
+
+parityMatrix.test('a snap name is reused until it collides, then numbered', async () => {
+  withTempRoot((root) => {
+    const dir = path.join(root, 'reference');
+    // Nothing recorded yet — the name is free.
+    assert(uniqueCheckpointName(dir, 'home') === 'home', 'first snap keeps its name');
+
+    const w = new RunWriter(dir, { role: 'reference', deviceId: 'ref', label: 'Reference' });
+    w.add('home', {
+      platform: 'ios',
+      width: 1920,
+      height: 1080,
+      hierarchy: {},
+      a11ySnapshot: home(),
+      screenshot: PNG,
+    });
+    w.finish();
+
+    assert(uniqueCheckpointName(dir, 'home') === 'home-2', 'a repeat is numbered');
+    assert(uniqueCheckpointName(dir, 'detail') === 'detail', 'an unused name is untouched');
+  });
+});
+
+parityMatrix.test('snapped screens pair across runs when the name matches', async () => {
+  withTempRoot((root) => {
+    // What a two-snap session leaves on disk: same names on both sides.
+    const write = (name: string, role: 'reference' | 'candidate', second: A11ySnapshotEntry[]) =>
+      writeRun(root, name, role, role === 'reference' ? 'ios' : 'tvos', [
+        ['home', home()],
+        ['detail', second],
+      ]);
+
+    const ref = write('reference', 'reference', [el(0, 'play-button', 'Play', 700)]);
+    // The target's second screen lost the Play button.
+    const target = write('tvOS', 'candidate', []);
+
+    const m = buildMatrix(ref, [{ label: 'tvOS', dir: target }]);
+    assert(m.rows.length === 2, `both snapped screens are rows, got ${m.rows.length}`);
+    assert(m.rows[0].passed, 'the first screen matches');
+    assert(!m.rows[1].passed, 'the second does not');
+    assert(
+      m.shared.some((s) => s.kind === 'missing' && s.subject === 'play-button'),
+      'and the dropped control is named',
+    );
   });
 });

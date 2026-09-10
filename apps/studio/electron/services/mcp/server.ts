@@ -19,7 +19,7 @@ import { scaffoldFlow } from "../cases/pomBridge";
 import { createReportDir, writeReport } from "../report/reportService";
 import { recordExpectation, startSession } from "../report/testSession";
 import { listDevices } from "../conductor/conductorService";
-import { getParityRun, startParityRun } from "../parity/parityService";
+import { getParityRun, resetLiveSession, snapParity, startParityRun } from "../parity/parityService";
 import { findPath, type SceneGraphIndex } from "../scenegraph/graph";
 import {
   currentApp,
@@ -187,6 +187,61 @@ export function createMcpServer(): McpServer {
         runId: started.runId,
         note: "poll get_parity_run until phase is done or failed",
       });
+    },
+  );
+
+  server.tool(
+    "snap_parity",
+    "Compare what every device is showing RIGHT NOW, with no flow. Captures the current screen on the reference and on each target, diffs them, and returns the grid. Use when the reference is already on the screen you care about — navigate the devices yourself (or with mirrored input), then snap. Repeated snaps accumulate into one session, a row per screen.",
+    {
+      name: z.string().describe('What to call this screen in the grid, e.g. "home" or "detail".'),
+      referenceDeviceId: z.string().describe("Device showing the build being ported FROM."),
+      referenceLabel: z.string().optional(),
+      targets: z
+        .array(z.object({ label: z.string(), deviceId: z.string() }))
+        .min(1)
+        .describe("The builds to compare against — one entry per device."),
+      reset: z
+        .boolean()
+        .optional()
+        .describe("Start a fresh session instead of appending to the current one."),
+    },
+    async ({ name, referenceDeviceId, referenceLabel, targets, reset }) => {
+      const devices = await listDevices();
+      const missing = [referenceDeviceId, ...targets.map((t) => t.deviceId)].filter(
+        (id) => !devices.some((d) => d.id === id),
+      );
+      if (missing.length) return text({ error: `not connected: ${missing.join(", ")}` });
+
+      const result = await snapParity({
+        name,
+        referenceDeviceId,
+        referenceLabel: referenceLabel ?? "Reference",
+        targets: targets.map((t) => ({
+          label: t.label,
+          deviceId: t.deviceId,
+          platform: devices.find((d) => d.id === t.deviceId)?.platform ?? ("ios" as const),
+        })),
+        reset,
+      });
+      return text({
+        captured_as: result.name,
+        passed: result.matrix.passed,
+        summary: result.matrix.summary,
+        rows: result.matrix.rows,
+        universal: result.matrix.shared.filter((f) => f.universal),
+        per_target: result.matrix.shared.filter((f) => !f.universal),
+      });
+    },
+  );
+
+  server.tool(
+    "reset_parity_session",
+    "Throw away the screens captured by snap_parity and start a new session. Use when moving on to a different part of the app.",
+    {},
+    async () => {
+      resetLiveSession();
+      return text({ reset: true });
     },
   );
 

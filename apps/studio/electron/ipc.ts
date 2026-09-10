@@ -47,6 +47,8 @@ import type {
   ParityProgress,
   ParityRunRequest,
   ParityRunStarted,
+  ParitySnapRequest,
+  ParitySnapResult,
 } from "../app/lib/types";
 import {
   getAgentStatus,
@@ -136,6 +138,8 @@ import {
   cancelParityRun,
   getParityRun,
   rediffParityRun,
+  resetLiveSession,
+  snapParity,
   startParityRun,
 } from "./services/parity/parityService";
 import { loadFlowCatalog } from "./services/flow/catalog";
@@ -211,6 +215,8 @@ export function registerIpcHandlers(): void {
   handle<{ referenceDir: string; targetDirs: string[] }, ParityMatrix>("parity_rediff", (a) =>
     rediffParityRun(a.referenceDir, a.targetDirs),
   );
+  handle<ParitySnapRequest, ParitySnapResult>("parity_snap", (a) => snapParity(a));
+  handle<void, void>("parity_reset_live", () => resetLiveSession());
 
   // ── Project / files ──
   handle<{ root?: string }, ProjectInfo>("project_open", (a) => openProject(a?.root));

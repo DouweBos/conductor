@@ -134,6 +134,7 @@ The pixel ratio is reported alongside as corroborating evidence.
 | `parity compare <flow>`  | Walk the same flow against the candidate build, diff it against `--reference <dir>`, and exit non-zero on a blocking difference.     |
 | `parity diff <ref> <cand>` | Diff two recorded runs already on disk — no device needed. Use it to re-tune thresholds without re-driving the app.                |
 | `parity matrix <ref> <dir...>` | Diff one reference against many recorded runs, as a checkpoint × target grid.                                                  |
+| `parity snap <name>`     | Compare what every device is showing right now — no flow. The reference is `--device`, targets are `--target`; snaps append to one session. |
 | `checkpoint <name>`      | Capture one checkpoint ad hoc into `--run <dir>`, for journeys driven command-by-command rather than from a flow.                    |
 
 Findings are **blocking** (`missing`, `text`, `value`, `focus`,
