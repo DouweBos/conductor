@@ -4,6 +4,13 @@ import { listen } from "../lib/events";
 import {
   acceptConvergeTarget,
   addCampaignGoal,
+  capturePlanProposal,
+  clearPlan as clearPlanIpc,
+  getPlan,
+  planFromGraph as planFromGraphIpc,
+  planWithAgent as planWithAgentIpc,
+  removePlanProposal,
+  setPlanDeepLink,
   getCampaign,
   refreshCampaignReference,
   removeCampaignGoal,
@@ -36,6 +43,7 @@ import type {
   ParityProgress,
   ParityTarget,
   ParityTargetProgress,
+  PlanProgress,
 } from "../lib/types";
 import { setStreamedDevices } from "./deviceStore";
 
@@ -69,6 +77,8 @@ interface ParityState {
   /** Every Helix loop the main process knows about — one per goal, newest last. */
   converges: ConvergeProgress[];
   campaign: CampaignProgress | null;
+  /** Proposed screens, not yet goals. */
+  plan: PlanProgress | null;
   convergeOptions: {
     strict: boolean;
     autoApprove: boolean;
@@ -108,6 +118,7 @@ const store = create<ParityState>(() => ({
   progress: null,
   converges: [],
   campaign: null,
+  plan: null,
   convergeOptions: {
     strict: false,
     autoApprove: true,
@@ -141,6 +152,7 @@ export const useConverges = () => store((s) => s.converges);
 export const useConverge = () => store((s) => s.converges[s.converges.length - 1] ?? null);
 export const useParityRoute = () => store((s) => s.route);
 export const useCampaign = () => store((s) => s.campaign);
+export const usePlan = () => store((s) => s.plan);
 
 /** Queue the screen just captured as a goal, with its frozen reference and route. */
 /**
@@ -197,6 +209,61 @@ export async function haltCampaign(): Promise<void> {
 export async function refreshGoal(id: string): Promise<void> {
   store.setState({ error: null });
   await refreshCampaignReference(id).catch((err: unknown) => store.setState({ error: String(err) }));
+}
+
+// ── Plan ─────────────────────────────────────────────────────────────────────
+
+function withPlan(p: Promise<PlanProgress>): Promise<void> {
+  return p.then((plan) => store.setState({ plan })).catch((err: unknown) => store.setState({ error: String(err) }));
+}
+
+/** Propose goals from the scene graph recorded while the reference was explored. */
+export function planFromGraph(app?: string): Promise<void> {
+  store.setState({ error: null });
+  return withPlan(planFromGraphIpc(app));
+}
+
+/** Propose goals by having an agent read the reference's source. */
+export function planWithAgent(sourceDir: string, app?: string): Promise<void> {
+  store.setState({ error: null });
+  return withPlan(planWithAgentIpc(sourceDir, app));
+}
+
+export function removeProposal(id: string): Promise<void> {
+  return withPlan(removePlanProposal(id));
+}
+
+export function setProposalDeepLink(id: string, deepLink: string): Promise<void> {
+  return withPlan(setPlanDeepLink(id, deepLink));
+}
+
+export function clearPlan(): Promise<void> {
+  return withPlan(clearPlanIpc());
+}
+
+/**
+ * Drive the reference to the proposed screen, capture it, and queue it as a goal
+ * against the targets in the workspace.
+ */
+export async function captureProposal(id: string): Promise<void> {
+  const s = store.getState();
+  if (!s.referenceDeviceId) {
+    store.setState({ error: "pick a reference device first" });
+    return;
+  }
+  if (!s.targets.length) {
+    store.setState({ error: "add at least one target build before capturing a goal" });
+    return;
+  }
+  store.setState({ error: null });
+  await withPlan(
+    capturePlanProposal({
+      id,
+      referenceDeviceId: s.referenceDeviceId,
+      referenceLabel: s.referenceLabel,
+      targets: s.targets,
+    }),
+  );
 }
 export const useReferenceAppId = () => store((s) => s.referenceAppId);
 export const useParityConfig = () => store((s) => s.config);
@@ -556,6 +623,10 @@ export function initParityStore(): () => void {
     if (converges) store.setState({ converges });
   });
   void getCampaign().then((campaign) => store.setState({ campaign })).catch(() => {});
+  void getPlan().then((plan) => store.setState({ plan })).catch(() => {});
+  const offPlan = listen<PlanProgress>("parity_plan", (plan) => {
+    store.setState({ plan, error: plan.error ?? null });
+  });
   const offCampaign = listen<CampaignProgress>("parity_campaign", (campaign) => {
     store.setState({ campaign, error: campaign.error ?? null });
   });
@@ -569,5 +640,6 @@ export function initParityStore(): () => void {
     offProgress();
     offConverge();
     offCampaign();
+    offPlan();
   };
 }

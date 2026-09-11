@@ -57,6 +57,7 @@ import type {
   CampaignProgress,
   ParityGoal,
   ParityTarget,
+  PlanProgress,
   Route,
   GoalTargetStatus,
   InteractionStep,
@@ -157,6 +158,15 @@ import {
   stopCampaign,
 } from "./services/parity/campaignService";
 import { deleteRecipe, loadParityConfig, putRecipe } from "./services/parity/config";
+import {
+  captureProposal,
+  clearPlan,
+  getPlan,
+  planFromSceneGraph,
+  planWithAgent,
+  removeProposal,
+  setProposalDeepLink,
+} from "./services/parity/planService";
 import { readMemory, remember } from "./services/parity/memory";
 import {
   acceptTarget,
@@ -292,6 +302,18 @@ export function registerIpcHandlers(): void {
   handle<void, void>("campaign_stop", () => stopCampaign());
   handle<{ id: string }, ParityGoal>("campaign_refresh_reference", (a) => refreshGoalReference(a.id));
   handle<void, void>("parity_reset_live", () => resetLiveSession());
+  handle<void, PlanProgress>("plan_get", () => getPlan());
+  handle<{ app?: string } | undefined, PlanProgress>("plan_from_graph", (a) => planFromSceneGraph(a?.app));
+  handle<{ sourceDir: string; app?: string }, PlanProgress>("plan_with_agent", (a) => planWithAgent(a));
+  handle<{ id: string }, PlanProgress>("plan_remove", (a) => removeProposal(a.id));
+  handle<{ id: string; deepLink: string }, PlanProgress>("plan_set_deeplink", (a) =>
+    setProposalDeepLink(a.id, a.deepLink),
+  );
+  handle<
+    { id: string; referenceDeviceId: string; referenceLabel: string; targets: ParityTarget[] },
+    PlanProgress
+  >("plan_capture", (a) => captureProposal(a));
+  handle<void, PlanProgress>("plan_clear", () => clearPlan());
 
   // ── Project / files ──
   handle<{ root?: string }, ProjectInfo>("project_open", (a) => openProject(a?.root));

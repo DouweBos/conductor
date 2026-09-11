@@ -279,13 +279,13 @@ export async function stopCampaign(): Promise<void> {
 
 // ── Reference drift ──────────────────────────────────────────────────────────
 
-async function cli(): Promise<{ bin: string; prefix: string[]; env: NodeJS.ProcessEnv }> {
+export async function cli(): Promise<{ bin: string; prefix: string[]; env: NodeJS.ProcessEnv }> {
   const resolved = await resolveConductor();
   if (!resolved) throw new Error("Bundled conductor CLI is missing.");
   return { bin: resolved.bin, prefix: resolved.prefixArgs, env: resolved.env };
 }
 
-function runCli(bin: string, args: string[], env: NodeJS.ProcessEnv): Promise<{ code: number; output: string }> {
+export function runCli(bin: string, args: string[], env: NodeJS.ProcessEnv): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
     const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], env });
     let output = "";

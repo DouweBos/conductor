@@ -516,3 +516,131 @@ parity.test("a path with a text selector is not replayable", () => {
   });
   assert(!r.replayable && r.unreplayable.length === 1, "flagged, not silently wrong");
 });
+
+// ── Planner ──────────────────────────────────────────────────────────────────
+import {
+  buildPlannerBrief,
+  mergeProposals,
+  parsePlannerAnswer,
+  proposeFromSceneGraph,
+  rootsOf,
+} from "../electron/services/parity/planDecision";
+import type { SceneGraph } from "../app/lib/types";
+
+const graph = (): SceneGraph => ({
+  version: 2,
+  app: { appId: "com.example.tv", appName: "Example", platform: "tvos", key: "tvos-com.example.tv" },
+  nodes: [
+    { id: "screen-1", label: "Splash", signature: "a" },
+    { id: "screen-2", label: "Home", signature: "b" },
+    { id: "screen-3", label: "Detail", signature: "c" },
+    { id: "screen-4", label: "Settings", signature: "d" },
+    { id: "screen-5", label: "Player", signature: "e" },
+  ],
+  edges: [
+    { from: "screen-1", to: "screen-2", action: "launchApp: com.example.tv" },
+    { from: "screen-2", to: "screen-3", action: "pressKey: Remote Select" },
+    { from: "screen-2", to: "screen-4", action: "tapOn: point 0.9,0.05" },
+    { from: "screen-3", to: "screen-5", action: "pressKey: Remote Select" },
+    // Player is also reachable through a text selector — which the graph
+    // proposes but cannot replay blind.
+    { from: "screen-4", to: "screen-5", action: 'tapOn: "Resume"' },
+  ],
+});
+
+parity.test("the launch edge names where a walk starts", () => {
+  const r = rootsOf(graph());
+  assertEqual(r.ids, ["screen-2"], "the launched screen is the root, not the splash it came from");
+  assertEqual(r.appId, "com.example.tv", "and the launch names the app");
+});
+
+parity.test("with no launch recorded, screens nothing leads to are the roots", () => {
+  const g = graph();
+  g.edges = g.edges.filter((e) => !e.action.startsWith("launchApp"));
+  assertEqual(rootsOf(g).ids, ["screen-1", "screen-2"], "the splash and the home it launched into both have no way in");
+});
+
+parity.test("the graph proposes every screen, shallowest first, with a replayable route", () => {
+  const proposals = proposeFromSceneGraph(graph());
+  assertEqual(
+    proposals.map((p) => p.name),
+    ["Home", "Detail", "Settings", "Player", "Splash"],
+    "entry screen first, then one step out, then two; the unreachable splash last",
+  );
+  const home = proposals[0];
+  assertEqual(home.route?.appId, "com.example.tv", "the entry screen's route is the launch itself");
+  assertEqual(home.route?.steps.length, 0, "with no steps");
+  const player = proposals.find((p) => p.name === "Player")!;
+  assertEqual(player.route?.steps.length, 2, "the shortest path through Detail is chosen");
+  assert(!player.unreplayable, "and it avoids the text-selector edge");
+  const splash = proposals.find((p) => p.name === "Splash")!;
+  assert(!splash.route, "a screen no root reaches has no route");
+  assert(splash.rationale?.includes("not reached") === true, "and says so");
+  assert(proposals.every((p) => p.source === "scene-graph"), "all attributed to the graph");
+});
+
+parity.test("the planner's JSON answer is read from its last fence, deduped by name", () => {
+  const text = [
+    "Looking at the router...",
+    "```json",
+    '{ "screens": [ { "name": "Home" } ] }',
+    "```",
+    "Actually, here is the full list:",
+    "```json",
+    '{ "screens": [',
+    '  { "name": "Home", "rationale": "entry", "deepLink": "example://home" },',
+    '  { "name": "home", "rationale": "duplicate" },',
+    '  { "name": "Search", "rationale": "new" },',
+    '  { "name": "" }',
+    "] }",
+    "```",
+  ].join("\n");
+  const answer = parsePlannerAnswer(text, "com.example.tv");
+  assert(!answer.error, "no error");
+  assertEqual(answer.proposals.map((p) => p.name), ["Home", "Search"], "the last fence, without duplicates or blanks");
+  assertEqual(answer.proposals[0].route, { appId: "com.example.tv", deepLink: "example://home", steps: [] }, "a deep link becomes a route");
+  assert(!answer.proposals[1].route, "no deep link, no route");
+  assert(answer.proposals.every((p) => p.source === "agent"), "attributed to the agent");
+});
+
+parity.test("a planner that answers in prose is reported, not guessed", () => {
+  const answer = parsePlannerAnswer("The app has a Home screen and a Detail screen.");
+  assertEqual(answer.proposals, [], "nothing proposed");
+  assert(answer.error?.includes("no JSON") === true, "and the reason is named");
+  const wrongShape = parsePlannerAnswer('{ "pages": [] }');
+  assert(wrongShape.error?.includes("screens") === true, "a JSON answer without the list is named too");
+});
+
+parity.test("re-planning merges by name and keeps what a person already did", () => {
+  const fromGraph = proposeFromSceneGraph(graph());
+  const queued = fromGraph.map((p) => (p.name === "Home" ? { ...p, goalId: "goal-1" } : p));
+  const fromAgent = parsePlannerAnswer(
+    '```json\n{ "screens": [ { "name": "home", "rationale": "entry", "deepLink": "example://home" }, { "name": "Search", "rationale": "new" } ] }\n```',
+    "com.example.tv",
+  ).proposals;
+  const merged = mergeProposals(queued, fromAgent);
+  assertEqual(merged.length, fromGraph.length + 1, "one new screen; the rest paired by name");
+  const home = merged.find((p) => p.name === "Home")!;
+  assertEqual(home.id, "graph:screen-2", "the existing entry keeps its identity");
+  assertEqual(home.goalId, "goal-1", "and the goal it became");
+  assertEqual(home.route?.deepLink, "example://home", "a deep link beats a replayed route");
+  assertEqual(home.source, "scene-graph", "the graph still owns it");
+  assert(home.rationale?.includes("entry") === true, "the agent's rationale is kept alongside");
+  assertEqual(merged[merged.length - 1].name, "Search", "new screens append at the end");
+  // Running the same plan again changes nothing.
+  assertEqual(mergeProposals(merged, fromGraph).length, merged.length, "idempotent");
+});
+
+parity.test("the planner brief names the source, the known screens, and demands JSON", () => {
+  const brief = buildPlannerBrief({
+    sourceDir: "/repo/apps/tv",
+    appId: "com.example.tv",
+    platform: "tvos",
+    known: [{ name: "Home", route: "launch com.example.tv" }],
+  });
+  assert(brief.includes("/repo/apps/tv"), "where to read");
+  assert(brief.includes("com.example.tv"), "which app");
+  assert(brief.includes("- Home (launch com.example.tv)"), "what is already known");
+  assert(brief.includes('"screens"'), "the shape of the answer");
+  assert(/Do not modify files/.test(brief), "and that it is read-only");
+});

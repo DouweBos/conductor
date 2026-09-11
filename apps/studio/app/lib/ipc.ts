@@ -55,6 +55,7 @@ import type {
   CampaignProgress,
   GoalTargetStatus,
   ParityGoal,
+  PlanProgress,
   ParityTarget,
   Route,
   InteractionStep,
@@ -179,6 +180,20 @@ export const runCampaign = (opts: {
 export const stopCampaign = () => invoke<void>("campaign_stop");
 export const refreshCampaignReference = (id: string) =>
   invoke<ParityGoal>("campaign_refresh_reference", { id });
+export const getPlan = () => invoke<PlanProgress>("plan_get");
+export const planFromGraph = (app?: string) => invoke<PlanProgress>("plan_from_graph", { app });
+export const planWithAgent = (sourceDir: string, app?: string) =>
+  invoke<PlanProgress>("plan_with_agent", { sourceDir, app });
+export const removePlanProposal = (id: string) => invoke<PlanProgress>("plan_remove", { id });
+export const setPlanDeepLink = (id: string, deepLink: string) =>
+  invoke<PlanProgress>("plan_set_deeplink", { id, deepLink });
+export const capturePlanProposal = (input: {
+  id: string;
+  referenceDeviceId: string;
+  referenceLabel: string;
+  targets: ParityTarget[];
+}) => invoke<PlanProgress>("plan_capture", input);
+export const clearPlan = () => invoke<PlanProgress>("plan_clear");
 
 // ── Flow running ──
 export const getMaestroStatus = () => invoke<MaestroStatus>("maestro_status");

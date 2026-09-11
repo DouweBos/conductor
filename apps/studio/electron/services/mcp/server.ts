@@ -22,6 +22,7 @@ import { listDevices } from "../conductor/conductorService";
 import { getRecipe } from "../parity/config";
 import { readMemory, remember } from "../parity/memory";
 import { getParityRun, resetLiveSession, snapParity, startParityRun } from "../parity/parityService";
+import { listProposals, planFromSceneGraph } from "../parity/planService";
 import { findPath, type SceneGraphIndex } from "../scenegraph/graph";
 import {
   currentApp,
@@ -268,6 +269,23 @@ export function createMcpServer(): McpServer {
       const [memory, recipe] = await Promise.all([readMemory(target), getRecipe(target)]);
       return text({ target, recipe: recipe ?? null, notes: memory.entries });
     },
+  );
+
+  server.tool(
+    "propose_parity_goals",
+    "Propose the screens a port should be held to, from the scene graph recorded while the reference app was explored: every screen seen, shallowest first, each with the route that led there. The proposals land in Studio's plan for a person to turn into goals. Use when asked which screens to check, or where to start a port.",
+    { app: appArg },
+    async ({ app }) => {
+      const progress = await planFromSceneGraph(app);
+      return text({ error: progress.error ?? null, proposals: progress.plan.proposals });
+    },
+  );
+
+  server.tool(
+    "get_parity_plan",
+    "Read the plan: proposed screens, their routes, and which have already become goals. A proposal with a goalId is queued; one with an error could not be captured, and says why.",
+    {},
+    async () => text({ proposals: await listProposals() }),
   );
 
   server.tool(

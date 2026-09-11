@@ -789,6 +789,43 @@ against new. If it moved, the goal is held to the new reference and accepted
 targets go back for **recheck**: not wrong, but accepted against a screen that
 no longer exists.
 
+#### A fleet, not a device list
+
+A goal records what it needs — a platform and, on Android, a form factor — not
+a UDID. `campaign.json` is committed to the project and device ids are
+per-machine; a goal that remembered a UDID would only run on the laptop that
+queued it. When the queue runs, every goal with something left to do is given
+devices from what is booted and free, preferring the one it used last time, and
+**as many goals converge at once as there are free devices**. A goal whose
+device is busy or absent waits and says what it is waiting for. The reference
+device is found the same way when a goal is refreshed.
+
+### Plan — which screens, in what order
+
+Helix runs against "a sequence of checkpoints"; someone has to write it. The
+**Plan** panel proposes it from two sources. **From the scene graph** lists
+every screen Studio recorded while the reference was explored, shallowest
+first — the entry screen before what it leads to — each with the route that led
+there, and names the steps it could not replay blind. **Ask the agent** points
+a planner agent at the reference's source: it reads the router and the screens
+directory and answers with the screens it finds and the deep links the router
+defines. Both merge by name into `.conductor/parity/plan.json`, and re-planning
+never shuffles what a person has already looked at.
+
+A proposal is not a goal until **Capture as goal**: the reference device is
+driven along the route, the screen is captured as a frozen reference, and a
+campaign goal is queued against the targets in the workspace. A route that
+cannot get there fails loudly rather than capturing the wrong screen. Agents
+reach the same planner through `propose_parity_goals` and `get_parity_plan`.
+
+### A design as the reference
+
+Nothing ships the screen yet? `conductor parity spec` writes a reference run
+from an element list — the same vocabulary the diff reads — so a design is what
+the targets are held to. A spec's platform is `design`; roles relax against any
+real target, and the pixel diff is meaningless without a real screenshot, so
+pair it with `--ignore pixel`.
+
 ### Interaction parity
 
 A screen-level diff can't answer "press Down three times — does focus land on
@@ -802,7 +839,8 @@ route and diffs every screen; findings say which step.
 
 The agent drives the same machinery through MCP: `snap_parity` and
 `reset_parity_session` for the live path, `start_parity_run` and
-`get_parity_run` for the flow path. An agent-run comparison and a human pressing
+`get_parity_run` for the flow path, `propose_parity_goals` and
+`get_parity_plan` for the planner. An agent-run comparison and a human pressing
 **Capture** are held to exactly the same verdict, because both go through the
 same CLI. The agent is told to reach for `snap_parity` first and not to write a
 flow just to reach one screen. The agent is told to read

@@ -48,6 +48,7 @@ import {
   useParityTargets,
   useConverges,
   useCampaign,
+  usePlan,
   addLastSnapToCampaign,
   useConvergeOptions,
   useConvergeRunning,
@@ -63,6 +64,7 @@ import {
   setRecordingInteraction,
 } from "../../stores/parityStore";
 import { CampaignPanel } from "./CampaignPanel";
+import { PlanPanel } from "./PlanPanel";
 import { ConvergePanel } from "./ConvergePanel";
 import { RecipeEditor } from "./RecipeEditor";
 import { ParityResults } from "./ParityResults";
@@ -113,6 +115,7 @@ export function ParityWorkspace() {
   const snapping = useParitySnapping();
   const converges = useConverges();
   const campaign = useCampaign();
+  const plan = usePlan();
   const converging = useConvergeRunning();
   const convergeOptions = useConvergeOptions();
   const route = useParityRoute();
@@ -530,6 +533,11 @@ export function ParityWorkspace() {
           />
         </div>
       </Panel>
+
+      <PlanPanel
+        plan={plan}
+        canCapture={Boolean(reference.deviceId) && targets.length > 0 && !running && !converging}
+      />
 
       <CampaignPanel campaign={campaign} />
 
