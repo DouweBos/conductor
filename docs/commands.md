@@ -150,6 +150,19 @@ For React Native projects.
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `metro stop`   | Stop the Metro bundler process listening on `--port <n>` (default 8081). Uses `lsof` + `SIGTERM`, escalates to `SIGKILL` after 2s. |
 | `metro reload` | Reload the JS bundle without restarting the native process. `Page.reload` over CDP, falls back to `POST /reload`.                  |
+| `metro use`    | Point an app at a specific Metro: `metro use <port\|host:port> [<appId>]`, or `metro use --reset` to undo. iOS/tvOS simulators.    |
+
+`metro use` writes `RCT_jsLocation` into the app's simulator preferences, which
+`RCTBundleURLProvider` reads before falling back to the `RCT_METRO_PORT` baked
+into React-Core at pod-install time. Reach for it when a build asks for the
+wrong port — a git worktree running its own Metro, or a pod install from a shell
+missing `RCT_METRO_PORT` — since it needs no recompile and survives reinstalls.
+Relaunch the app to apply. The app id defaults to the current session's, and the
+command warns when no packager answers at the given location, because React
+Native ignores a stored location that is not live.
+
+Android has no equivalent preference; map the port instead with
+`adb -s <serial> reverse tcp:8081 tcp:<metro-port>`.
 
 ---
 

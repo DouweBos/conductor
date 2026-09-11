@@ -136,7 +136,7 @@ import { stopDevice, HELP as stopDeviceHelp } from './commands/stop-device.js';
 import { deleteDevice, HELP as deleteDeviceHelp } from './commands/delete-device.js';
 import { logs, HELP as logsHelp } from './commands/logs.js';
 import { memory, HELP as memoryHelp } from './commands/memory.js';
-import { metroStop, metroReload, HELP as metroHelp } from './commands/metro.js';
+import { metroStop, metroReload, metroUse, HELP as metroHelp } from './commands/metro.js';
 import {
   clipboardRead,
   clipboardWrite,
@@ -315,6 +315,7 @@ async function main(): Promise<void> {
       'report',
       'timeline',
       'baselines',
+      'reset',
     ],
     string: [
       'device',
@@ -1464,8 +1465,17 @@ async function main(): Promise<void> {
         exitCode = await metroStop(opts, { port });
       } else if (sub === 'reload') {
         exitCode = await metroReload(opts, metroSession, { port, targetIndex });
+      } else if (sub === 'use') {
+        exitCode = await metroUse(opts, metroSession, {
+          location: rest[1],
+          appId: rest[2],
+          reset: argv['reset'] as boolean,
+        });
       } else {
-        console.error('Usage: conductor metro <stop|reload> [--port N] [--target N]');
+        console.error(
+          'Usage: conductor metro <stop|reload|use> [--port N] [--target N]\n' +
+            '       conductor metro use <port|host:port> [<appId>] [--reset]'
+        );
         exitCode = 1;
       }
       break;

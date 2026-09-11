@@ -54,6 +54,21 @@ running indefinitely.
 |---|---|
 | `conductor metro reload [--port N] [--target N]` | Reload the JS bundle without restarting native |
 | `conductor metro stop [--port N]` | Stop the Metro bundler on a port (default 8081) |
+| `conductor metro use <port\|host:port> [<appId>]` | Point the app at a specific Metro (iOS/tvOS simulators) |
+| `conductor metro use --reset [<appId>]` | Drop that override, back to the compiled-in port |
+
+An app asks for the Metro port compiled into React-Core from `RCT_METRO_PORT` at
+pod-install time, so a build can end up asking for a port nothing is serving —
+typically a git worktree whose Metro runs elsewhere, or a pod install from a
+shell that lacked the env var. Symptom: the app never loads a bundle (or keeps
+running a stale one) while `conductor metro reload` works fine against the port
+you expect. `metro use` overrides it via the `RCT_jsLocation` preference, so no
+recompile is needed and the setting survives reinstalls. **Relaunch the app**
+afterwards — it is read when the bridge starts. The app id defaults to the
+current session's.
+
+Android has no such preference; map the port with
+`adb -s <serial> reverse tcp:8081 tcp:<metro-port>` instead.
 
 ## Tips
 
