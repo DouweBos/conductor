@@ -18,7 +18,12 @@ import {
   A11ySnapshotEntry,
 } from '../drivers/a11y.js';
 
-export type CapturePlatform = 'ios' | 'android' | 'web' | 'tvos' | 'vega' | 'roku';
+/**
+ * Where a capture came from. `design` is not a driver: it marks a reference
+ * authored from a spec or a design export rather than captured from a running
+ * app, so the diff relaxes roles against it the way it does across stacks.
+ */
+export type CapturePlatform = 'ios' | 'android' | 'web' | 'tvos' | 'vega' | 'roku' | 'design';
 
 export interface ScreenCapture {
   platform: CapturePlatform;

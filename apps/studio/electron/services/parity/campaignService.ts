@@ -14,6 +14,7 @@ import path from "node:path";
 
 import type {
   CampaignProgress,
+  DeviceNeed,
   InteractionStep,
   ParityCampaign,
   ParityGoal,
@@ -23,25 +24,28 @@ import type {
 } from "../../../app/lib/types";
 import { broadcastToRenderers } from "../../broadcast";
 import { appState } from "../../state";
+import { listDevices } from "../conductor/conductorService";
 import { resolveConductor } from "../maestro/maestroService";
 import {
   applyConvergence,
   applyDrift,
   applyNoDrift,
-  nextGoal,
   runnableTargets,
 } from "./campaignPlan";
 import { cancelConvergence, startConvergence, waitForConvergenceSettled } from "./convergeService";
+import { assignDevices } from "./fleet";
 import { replayRoute, sendStep } from "./recipes";
 
 interface RunState {
   running: boolean;
-  currentGoalId?: string;
+  /** goal id → convergence id, for everything in flight. */
+  active: Map<string, string>;
+  waiting: Array<{ goalId: string; needs: string[] }>;
   stop: boolean;
   error?: string;
 }
 
-const run: RunState = { running: false, stop: false };
+const run: RunState = { running: false, active: new Map(), waiting: [], stop: false };
 
 function campaignPath(): string {
   const root = appState.projectRoot ?? process.cwd();
@@ -66,7 +70,8 @@ async function publish(): Promise<CampaignProgress> {
   const progress: CampaignProgress = {
     campaign: await load(),
     running: run.running,
-    currentGoalId: run.currentGoalId,
+    activeGoalIds: [...run.active.keys()],
+    waiting: run.waiting,
     error: run.error,
   };
   broadcastToRenderers("parity_campaign", progress);
@@ -96,12 +101,15 @@ export async function addGoal(input: {
   targets: ParityTarget[];
 }): Promise<ParityGoal> {
   const campaign = await load();
+  const refDevice = (await listDevices().catch(() => [])).find((d) => d.id === input.referenceDeviceId);
   const goal: ParityGoal = {
     id: randomUUID(),
     checkpoint: input.checkpoint,
     referenceDir: path.resolve(input.referenceDir),
     referenceLabel: input.referenceLabel,
     referenceDeviceId: input.referenceDeviceId,
+    referencePlatform: refDevice?.platform,
+    referenceFormFactor: refDevice?.formFactor,
     referenceCapturedAt: Date.now(),
     route: input.route,
     interaction: input.interaction?.length ? input.interaction : undefined,
@@ -148,11 +156,29 @@ export async function setGoalTargetStatus(
 
 // ── Running ──────────────────────────────────────────────────────────────────
 
+/** What a goal's runnable targets need from the fleet. */
+function needsFor(goal: ParityGoal, labels: Set<string>): DeviceNeed[] {
+  return goal.targets
+    .filter((t) => labels.has(t.label))
+    .map((t) => ({
+      label: t.label,
+      platform: t.platform,
+      formFactor: t.formFactor,
+      preferredDeviceId: t.deviceId,
+    }));
+}
+
 /**
- * Work the queue: for each goal with anything runnable, converge only those
- * targets, fold the result back, move on. Review is not waited for — a goal
- * whose targets all reached review is finished as far as the campaign is
- * concerned, and a human catches up on reviews when they like.
+ * Work the queue with the whole fleet.
+ *
+ * Every pass looks at what is booted and free, seats as many runnable goals as
+ * it can — never two on one device — and waits for any of them to settle
+ * before looking again. A goal whose devices are all busy waits its turn; one
+ * whose devices are absent is reported as waiting with what it needs, so an
+ * empty-looking run is never silent about why. Review is not waited for; a
+ * goal whose targets all reached review is finished as far as the queue is
+ * concerned. Goals bind to platforms, not UDIDs, so a campaign queued on one
+ * machine runs on another.
  */
 export async function runCampaign(opts: {
   strict?: boolean;
@@ -164,43 +190,82 @@ export async function runCampaign(opts: {
   run.running = true;
   run.stop = false;
   run.error = undefined;
+  run.active.clear();
+  run.waiting = [];
   await publish();
 
   void (async () => {
+    const inFlight = new Map<string, Promise<void>>();
     try {
       for (;;) {
         if (run.stop) break;
         const campaign = await load();
-        const goal = nextGoal(campaign.goals);
-        if (!goal) break;
+        const devices = await listDevices().catch(() => []);
+        const taken = new Set<string>();
+        for (const goalId of run.active.keys()) {
+          const g = campaign.goals.find((x) => x.id === goalId);
+          for (const t of g?.targets ?? []) taken.add(t.deviceId);
+        }
 
-        const labels = new Set(runnableTargets(goal));
-        const targets = goal.targets.filter((t) => labels.has(t.label));
-        run.currentGoalId = goal.id;
-        await updateGoal(goal.id, (g) => ({
-          ...g,
-          status: { ...g.status, ...Object.fromEntries(targets.map((t) => [t.label, "converging" as const])) },
-        }));
+        run.waiting = [];
+        for (const goal of campaign.goals) {
+          if (run.active.has(goal.id)) continue;
+          const labels = new Set(runnableTargets(goal));
+          if (labels.size === 0) continue;
 
-        await startConvergence({
-          checkpoint: goal.checkpoint,
-          referenceDir: goal.referenceDir,
-          referenceLabel: goal.referenceLabel,
-          targets,
-          route: goal.route,
-          interaction: goal.interaction,
-          holdAgentForReview: false,
-          ...opts,
-        });
-        const settled = await waitForConvergenceSettled();
-        if (settled) await updateGoal(goal.id, (g) => applyConvergence(g, settled));
+          const assignment = assignDevices(needsFor(goal, labels), devices, taken);
+          if (assignment.unmet.length) {
+            run.waiting.push({ goalId: goal.id, needs: assignment.unmet });
+            continue;
+          }
+
+          const targets = goal.targets
+            .filter((t) => labels.has(t.label))
+            .map((t) => ({ ...t, deviceId: assignment.assigned[t.label] }));
+          for (const t of targets) taken.add(t.deviceId);
+
+          await updateGoal(goal.id, (g) => ({
+            ...g,
+            // Remember which device each target landed on, as next time's preference.
+            targets: g.targets.map((t) => {
+              const seated = targets.find((x) => x.label === t.label);
+              return seated ? { ...t, deviceId: seated.deviceId } : t;
+            }),
+            status: { ...g.status, ...Object.fromEntries(targets.map((t) => [t.label, "converging" as const])) },
+          }));
+
+          const { goalId: convergenceId } = await startConvergence({
+            checkpoint: goal.checkpoint,
+            referenceDir: goal.referenceDir,
+            referenceLabel: goal.referenceLabel,
+            targets,
+            route: goal.route,
+            interaction: goal.interaction,
+            holdAgentForReview: false,
+            ...opts,
+          });
+          run.active.set(goal.id, convergenceId);
+          inFlight.set(
+            goal.id,
+            waitForConvergenceSettled(convergenceId).then(async (settled) => {
+              if (settled) await updateGoal(goal.id, (g) => applyConvergence(g, settled));
+              run.active.delete(goal.id);
+              inFlight.delete(goal.id);
+            }),
+          );
+        }
+        await publish();
+
+        if (inFlight.size === 0) break; // nothing runnable, or everything is waiting on absent devices
+        await Promise.race(inFlight.values());
         if (run.stop) break;
       }
+      await Promise.all(inFlight.values());
     } catch (err) {
       run.error = err instanceof Error ? err.message : String(err);
     } finally {
       run.running = false;
-      run.currentGoalId = undefined;
+      run.active.clear();
       await publish();
     }
   })();
@@ -250,8 +315,21 @@ export async function refreshGoalReference(id: string): Promise<ParityGoal> {
   const root = appState.projectRoot ?? process.cwd();
   const newDir = path.join(root, ".conductor", "parity", `reference-${goal.id.slice(0, 8)}-${Date.now()}`);
 
+  // The reference device is found again by platform: the UDID remembered when
+  // the goal was queued belongs to whichever machine queued it.
+  let referenceDeviceId = goal.referenceDeviceId;
+  if (goal.referencePlatform) {
+    const devices = await listDevices().catch(() => []);
+    const a = assignDevices(
+      [{ label: "reference", platform: goal.referencePlatform, formFactor: goal.referenceFormFactor, preferredDeviceId: goal.referenceDeviceId }],
+      devices,
+    );
+    if (a.unmet.length) throw new Error(`no device to refresh the reference on — ${a.unmet[0]}`);
+    referenceDeviceId = a.assigned.reference;
+  }
+
   if (goal.route && (goal.route.steps.length || goal.route.appId || goal.route.deepLink)) {
-    const r = await replayRoute(goal.referenceDeviceId, goal.route);
+    const r = await replayRoute(referenceDeviceId, goal.route);
     if (!r.ok) throw new Error(`could not re-navigate the reference: ${r.output}`);
   }
 
@@ -264,7 +342,7 @@ export async function refreshGoalReference(id: string): Promise<ParityGoal> {
       "--run",
       newDir,
       "--device",
-      goal.referenceDeviceId,
+      referenceDeviceId,
       "--label",
       goal.referenceLabel,
       "--role",
@@ -275,11 +353,11 @@ export async function refreshGoalReference(id: string): Promise<ParityGoal> {
   if (captured.code !== 0) throw new Error(`could not capture the reference: ${captured.output.trim()}`);
 
   for (const st of goal.interaction ?? []) {
-    const sent = await sendStep(goal.referenceDeviceId, st.input);
+    const sent = await sendStep(referenceDeviceId, st.input);
     if (!sent.ok) throw new Error(`could not replay the interaction on the reference: ${sent.output}`);
     const c = await runCli(
       bin,
-      [...prefix, "checkpoint", st.checkpoint, "--run", newDir, "--device", goal.referenceDeviceId, "--label", goal.referenceLabel, "--role", "reference"],
+      [...prefix, "checkpoint", st.checkpoint, "--run", newDir, "--device", referenceDeviceId, "--label", goal.referenceLabel, "--role", "reference"],
       env,
     );
     if (c.code !== 0) throw new Error(`could not capture "${st.checkpoint}": ${c.output.trim()}`);
@@ -312,6 +390,6 @@ export async function refreshGoalReference(id: string): Promise<ParityGoal> {
       })
     : applyNoDrift(goal, newDir);
 
-  await updateGoal(id, () => next);
-  return next;
+  await updateGoal(id, () => ({ ...next, referenceDeviceId }));
+  return { ...next, referenceDeviceId };
 }

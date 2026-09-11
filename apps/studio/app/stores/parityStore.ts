@@ -66,8 +66,8 @@ interface ParityState {
   referenceLabel: string;
   targets: ParityTarget[];
   progress: ParityProgress | null;
-  /** The Helix loop, when one is running. */
-  converge: ConvergeProgress | null;
+  /** Every Helix loop the main process knows about — one per goal, newest last. */
+  converges: ConvergeProgress[];
   campaign: CampaignProgress | null;
   convergeOptions: {
     strict: boolean;
@@ -106,7 +106,7 @@ const store = create<ParityState>(() => ({
   referenceLabel: "Reference",
   targets: [],
   progress: null,
-  converge: null,
+  converges: [],
   campaign: null,
   convergeOptions: {
     strict: false,
@@ -136,7 +136,9 @@ export const useParityTargets = () => store((s) => s.targets);
 export const useParityProgress = () => store((s) => s.progress);
 export const useParityStarting = () => store((s) => s.starting);
 export const useParityError = () => store((s) => s.error);
-export const useConverge = () => store((s) => s.converge);
+export const useConverges = () => store((s) => s.converges);
+/** The most recent loop — what a single-screen session is looking at. */
+export const useConverge = () => store((s) => s.converges[s.converges.length - 1] ?? null);
 export const useParityRoute = () => store((s) => s.route);
 export const useCampaign = () => store((s) => s.campaign);
 
@@ -256,7 +258,7 @@ export async function removeRecipe(label: string): Promise<void> {
     store.setState({ error: String(err) });
   }
 }
-export const useConvergeRunning = () => store((s) => s.converge?.running === true);
+export const useConvergeRunning = () => store((s) => s.converges.some((c) => c.running));
 
 export const useParityMatrix = (): ParityMatrix | null =>
   store((s) => s.progress?.matrix ?? null);
@@ -391,15 +393,15 @@ export async function stopConvergence(): Promise<void> {
   }
 }
 
-export async function acceptConverged(label: string): Promise<void> {
-  await acceptConvergeTarget(label).catch((err: unknown) => {
+export async function acceptConverged(label: string, goalId?: string): Promise<void> {
+  await acceptConvergeTarget(label, goalId).catch((err: unknown) => {
     store.setState({ error: String(err) });
   });
 }
 
 /** The diff passed; a person looked and says no. The note goes to the agent. */
-export async function rejectConverged(label: string, note: string): Promise<void> {
-  await rejectConvergeTarget(label, note).catch((err: unknown) => {
+export async function rejectConverged(label: string, note: string, goalId?: string): Promise<void> {
+  await rejectConvergeTarget(label, note, goalId).catch((err: unknown) => {
     store.setState({ error: String(err) });
   });
 }
@@ -550,8 +552,8 @@ export function initParityStore(): () => void {
   void getParityState().then((progress) => {
     if (progress) store.setState({ progress });
   });
-  void getConvergeState().then((converge) => {
-    if (converge) store.setState({ converge });
+  void getConvergeState().then((converges) => {
+    if (converges) store.setState({ converges });
   });
   void getCampaign().then((campaign) => store.setState({ campaign })).catch(() => {});
   const offCampaign = listen<CampaignProgress>("parity_campaign", (campaign) => {
@@ -560,8 +562,8 @@ export function initParityStore(): () => void {
   const offProgress = listen<ParityProgress>("parity_progress", (progress) => {
     store.setState({ progress, error: progress.error ?? null });
   });
-  const offConverge = listen<ConvergeProgress>("parity_converge", (converge) => {
-    store.setState({ converge });
+  const offConverge = listen<ConvergeProgress[]>("parity_converge", (converges) => {
+    store.setState({ converges });
   });
   return () => {
     offProgress();

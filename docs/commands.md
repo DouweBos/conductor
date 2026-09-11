@@ -135,6 +135,7 @@ The pixel ratio is reported alongside as corroborating evidence.
 | `parity diff <ref> <cand>` | Diff two recorded runs already on disk — no device needed. Use it to re-tune thresholds without re-driving the app.                |
 | `parity matrix <ref> <dir...>` | Diff one reference against many recorded runs, as a checkpoint × target grid.                                                  |
 | `parity snap <name>`     | Compare what every device is showing right now — no flow. The reference is `--device`, targets are `--target`; snaps append to one session. |
+| `parity spec <name>`     | Write a reference run from a hand-authored or design-exported element list (`--spec <json>`, optional `--screenshot`), so a design is what targets are held to. No device. |
 | `checkpoint <name>`      | Capture one checkpoint ad hoc into `--run <dir>`, for journeys driven command-by-command rather than from a flow.                    |
 
 Findings are **blocking** (`missing`, `text`, `value`, `focus`,

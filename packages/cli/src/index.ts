@@ -75,6 +75,7 @@ import {
   ParityFlags,
   HELP as parityHelp,
 } from './commands/parity.js';
+import { paritySpec, HELP as paritySpecHelp } from './commands/parity-spec.js';
 import { inspect, HELP as inspectHelp } from './commands/inspect.js';
 import { focused, HELP as focusedHelp } from './commands/focused.js';
 import { runFlow, HELP as runFlowHelp } from './commands/run-flow.js';
@@ -236,7 +237,7 @@ const COMMAND_HELP: Record<string, string> = {
   'take-screenshot': screenshotHelp,
   'capture-ui': captureUIHelp,
   checkpoint: checkpointHelp,
-  parity: parityHelp,
+  parity: parityHelp + '\n' + paritySpecHelp,
   inspect: inspectHelp,
   focused: focusedHelp,
   'run-flow': runFlowHelp,
@@ -367,6 +368,8 @@ async function main(): Promise<void> {
       'label',
       'target',
       'role',
+      'spec',
+      'screenshot',
       'json-report',
       'html',
       'ignore',
@@ -469,7 +472,9 @@ async function main(): Promise<void> {
     // `daemon-stop --all` stops every daemon — no device needed
     ...(command === 'daemon-stop' && argv['all'] ? ['daemon-stop'] : []),
     // `parity diff` compares two runs already on disk; only record/compare drive a device.
-    ...(command === 'parity' && (rest[0] === 'diff' || rest[0] === 'matrix') ? ['parity'] : []),
+    ...(command === 'parity' && (rest[0] === 'diff' || rest[0] === 'matrix' || rest[0] === 'spec')
+      ? ['parity']
+      : []),
   ]);
 
   if (!NO_DEVICE_COMMANDS.has(command) && !COMMAND_HELP[command]) {
@@ -1164,11 +1169,18 @@ async function main(): Promise<void> {
         exitCode = await parityDiff(rest[1] ?? '', rest[2] ?? '', opts, flags);
       } else if (sub === 'snap') {
         exitCode = await paritySnap(rest[1] ?? '', opts, sessionName, flags);
+      } else if (sub === 'spec') {
+        exitCode = await paritySpec(rest[1] ?? '', opts, {
+          out: argv['out'] as string | undefined,
+          spec: argv['spec'] as string | undefined,
+          screenshot: argv['screenshot'] as string | undefined,
+          label: argv['label'] as string | undefined,
+        });
       } else if (sub === 'matrix') {
         exitCode = await parityMatrix(rest[1] ?? '', rest.slice(2).map(String), opts, flags);
       } else {
         console.error(
-          `parity: unknown subcommand "${sub || '(none)'}". Expected record, compare, snap, diff, or matrix.`
+          `parity: unknown subcommand "${sub || '(none)'}". Expected record, compare, snap, spec, diff, or matrix.`
         );
         console.error(parityHelp);
         exitCode = 1;

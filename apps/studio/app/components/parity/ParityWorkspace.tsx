@@ -46,7 +46,7 @@ import {
   useParitySnapping,
   useParitySnaps,
   useParityTargets,
-  useConverge,
+  useConverges,
   useCampaign,
   addLastSnapToCampaign,
   useConvergeOptions,
@@ -111,7 +111,7 @@ export function ParityWorkspace() {
   const mirror = useParityMirror();
   const snaps = useParitySnaps();
   const snapping = useParitySnapping();
-  const converge = useConverge();
+  const converges = useConverges();
   const campaign = useCampaign();
   const converging = useConvergeRunning();
   const convergeOptions = useConvergeOptions();
@@ -533,7 +533,9 @@ export function ParityWorkspace() {
 
       <CampaignPanel campaign={campaign} />
 
-      <ConvergePanel converge={converge} />
+      {[...converges].reverse().map((c) => (
+        <ConvergePanel key={c.goalId} converge={c} />
+      ))}
 
       <ParityResults matrix={matrix} />
     </div>

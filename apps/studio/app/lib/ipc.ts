@@ -140,12 +140,13 @@ export const snapParity = (req: ParitySnapRequest) =>
 export const resetLiveParity = () => invoke<void>("parity_reset_live");
 export const startConverge = (req: ConvergeRequest) =>
   invoke<{ goalId: string }>("parity_converge_start", req);
-export const cancelConverge = () => invoke<void>("parity_converge_cancel");
-export const getConvergeState = () => invoke<ConvergeProgress | null>("parity_converge_state");
-export const acceptConvergeTarget = (label: string) =>
-  invoke<void>("parity_converge_accept", { label });
-export const rejectConvergeTarget = (label: string, note: string) =>
-  invoke<void>("parity_converge_reject", { label, note });
+export const cancelConverge = (goalId?: string) =>
+  invoke<void>("parity_converge_cancel", { goalId });
+export const getConvergeState = () => invoke<ConvergeProgress[]>("parity_converge_state");
+export const acceptConvergeTarget = (label: string, goalId?: string) =>
+  invoke<void>("parity_converge_accept", { label, goalId });
+export const rejectConvergeTarget = (label: string, note: string, goalId?: string) =>
+  invoke<void>("parity_converge_reject", { label, note, goalId });
 export const getParityConfig = () => invoke<ParityProjectConfig>("parity_config");
 export const putParityRecipe = (recipe: TargetRecipe) =>
   invoke<ParityProjectConfig>("parity_recipe_put", recipe);

@@ -72,6 +72,7 @@ meet, and it stops being reproducible once the old build is gone.
 | `conductor parity diff <ref-dir> <cand-dir>` | Diff two runs already on disk — no device, no app, instant |
 | `conductor parity matrix <ref-dir> <dir...>` | Diff one reference against **many** recorded runs, as a grid |
 | `conductor parity snap <name> --out <dir>` | Compare what every device is showing **right now** — no flow |
+| `conductor parity spec <name> --out <dir> --spec <json>` | Write a reference run from an element list — a **design** as the thing targets are held to, no device |
 | `conductor checkpoint <name> --run <dir>` | Capture one checkpoint ad hoc. Creates the run if the dir doesn't exist yet (`--label`, `--role`) — one attempt, one run, for a loop that re-measures each round |
 
 `parity diff` is the one to reach for while tuning thresholds: re-diffing costs
@@ -189,6 +190,33 @@ labour: `snap` compares what it is given, and none of those ways needs a flow.
 Reach for `snap` first when someone asks whether a screen matches. Use the flow
 path when the journey is worth scripting, or when the check has to be repeatable
 in CI.
+
+## No reference app: hold the targets to a design
+
+When the screen exists only as a design — nothing ships it yet — the reference
+is a **spec**: an element list in the vocabulary the diff already reads.
+`parity spec` writes it as a reference run so `matrix`, `snap` and Studio treat
+it exactly like a captured screen:
+
+```json
+{ "width": 1920, "height": 1080,
+  "elements": [
+    { "identifier": "hero.title", "role": "heading", "label": "Continue watching", "frame": { "x": 120, "y": 96, "w": 900, "h": 64 } },
+    { "identifier": "row.0.card.0", "role": "button", "label": "Severance", "focused": true, "frame": { "x": 120, "y": 200, "w": 400, "h": 225 } }
+  ] }
+```
+
+```bash
+conductor parity spec home --out .parity/design/home --spec home.json --screenshot home.png
+conductor parity matrix .parity/design/home .parity/tvos/home .parity/lightning/home --ignore pixel
+```
+
+A spec is an element list, **not** a picture: pixels are the weak instrument this
+whole tool argues against, and a design-as-screenshot would collapse the diff to
+them. Give every element an `identifier` the rebuilt apps also carry — identity is
+the only pairing signal that survives a port — and pass `--ignore pixel` unless
+you supplied a `--screenshot` that is worth comparing against. The spec's platform
+is `design`, so roles are relaxed automatically against any real target.
 
 ## One reference, many targets
 

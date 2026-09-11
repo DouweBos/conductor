@@ -582,6 +582,8 @@ export interface ParityTarget {
   label: string;
   deviceId: string;
   platform: Platform;
+  /** Android reports TVs and phones alike; this tells a goal which it needs. */
+  formFactor?: "tv" | "handset";
 }
 
 export interface ParityFinding {
@@ -986,8 +988,13 @@ export interface ParityGoal {
   checkpoint: string;
   referenceDir: string;
   referenceLabel: string;
-  /** Device the reference build runs on — needed to refresh the reference. */
+  /**
+   * Device the reference build ran on when queued — a preference, not a
+   * binding. Resolved again at run time by platform, see `DeviceNeed`.
+   */
   referenceDeviceId: string;
+  referencePlatform?: Platform;
+  referenceFormFactor?: "tv" | "handset";
   referenceCapturedAt: number;
   route?: Route;
   interaction?: InteractionStep[];
@@ -1009,8 +1016,10 @@ export interface ParityCampaign {
 export interface CampaignProgress {
   campaign: ParityCampaign;
   running: boolean;
-  /** Goal being converged right now, when running. */
-  currentGoalId?: string;
+  /** Goals being converged right now — several at once when the fleet allows. */
+  activeGoalIds: string[];
+  /** Goals waiting on a device that is busy or absent, with what they need. */
+  waiting: Array<{ goalId: string; needs: string[] }>;
   error?: string;
 }
 
@@ -1025,4 +1034,55 @@ export interface CampaignBurndown {
   recheck: number;
   stalled: number;
   pending: number;
+}
+
+// ── Fleet and planning ───────────────────────────────────────────────────────
+
+/**
+ * What a goal needs from a device, without naming one. `campaign.json` is
+ * committed to the project, and device UDIDs are per-machine: a goal that
+ * remembers a UDID is a goal that only runs on the laptop that queued it. A
+ * goal remembers the platform and resolves a device when it runs.
+ */
+export interface DeviceNeed {
+  label: string;
+  platform: Platform;
+  formFactor?: "tv" | "handset";
+  /** The device used last time — preferred when it is booted and free. */
+  preferredDeviceId?: string;
+}
+
+/** One screen the planner thinks the port should be held to. */
+export interface PlanProposal {
+  id: string;
+  name: string;
+  /** Why it is worth a goal, in the planner's words. */
+  rationale?: string;
+  /** Route from a fresh launch, where one is known. */
+  route?: Route;
+  /** Origin: the recorded scene graph, or the planner agent reading the source. */
+  source: "scene-graph" | "agent";
+  /** Steps the graph recorded but the replayer cannot reproduce (text selectors). */
+  unreplayable?: string[];
+  /** Set once the reference has been captured and a goal created from it. */
+  goalId?: string;
+  /** Why capture failed, when it did. */
+  error?: string;
+}
+
+export interface ParityPlan {
+  version: 1;
+  /** App the proposals were planned against. */
+  appId?: string;
+  proposals: PlanProposal[];
+  plannedAt?: number;
+}
+
+export interface PlanProgress {
+  plan: ParityPlan;
+  /** True while the planner agent is reading the source. */
+  planning: boolean;
+  /** Proposal being captured into a goal, when one is. */
+  capturingId?: string;
+  error?: string;
 }

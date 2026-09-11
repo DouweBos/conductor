@@ -65,3 +65,12 @@ grid a screen at a time. A repeated name is numbered for every device at once,
 so the screens still pair. Getting the targets onto the matching screen is the
 caller's to arrange (by hand, with an agent, or with mirrored input); `snap`
 compares what it is given.
+
+Parity no longer needs a reference *app* either. `parity spec <name> --out <dir>
+--spec <elements.json>` writes a reference run from a hand-authored or
+design-exported element list — label, role, identifier, frame, value, focus, the
+vocabulary the diff already reads — so a design can be the thing the rebuilt
+apps are held to before anything ships it. A spec is an element list, not a
+picture: keeping it structural keeps the comparison semantic. Its platform is
+`design`, so roles relax against any real target; pair it with `--ignore pixel`
+unless a `--screenshot` worth comparing against was supplied.

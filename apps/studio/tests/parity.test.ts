@@ -431,3 +431,88 @@ parity.test("cost is folded into the goal across convergence runs", () => {
   assertEqual(twice.spent?.rounds, 4, "a second run accumulates rather than replaces");
   assertEqual(burndown([twice]).spentUsd, 1.5, "and the burndown totals it");
 });
+
+// ── Fleet ────────────────────────────────────────────────────────────────────
+
+import { assignDevices } from "../electron/services/parity/fleet";
+import { actionToStep, routeFromPath } from "../electron/services/parity/sceneRoutes";
+
+const dev = (id: string, platform: DeviceInfo["platform"], over: Partial<DeviceInfo> = {}): DeviceInfo => ({
+  id, name: id, platform, state: "booted", ...over,
+});
+
+parity.test("a need is met by a booted, free device of its platform", () => {
+  const a = assignDevices(
+    [{ label: "tvOS", platform: "tvos" }, { label: "Web", platform: "web" }],
+    [dev("tv-1", "tvos"), dev("web-1", "web"), dev("tv-2", "tvos", { state: "shutdown" })],
+  );
+  assertEqual(a.assigned, { tvOS: "tv-1", Web: "web-1" }, "one each");
+  assertEqual(a.unmet, [], "nothing unmet");
+});
+
+parity.test("a reserved device is not offered, and a need it leaves is named", () => {
+  const a = assignDevices(
+    [{ label: "tvOS", platform: "tvos" }],
+    [dev("tv-1", "tvos", { reservedBy: "another agent" })],
+  );
+  assertEqual(a.assigned, {}, "nothing assigned");
+  assert(a.unmet[0].includes("tvOS") && a.unmet[0].includes("tvos"), `says what is missing: ${a.unmet[0]}`);
+});
+
+parity.test("the device used last time is preferred when it qualifies", () => {
+  const a = assignDevices(
+    [{ label: "tvOS", platform: "tvos", preferredDeviceId: "tv-2" }],
+    [dev("tv-1", "tvos"), dev("tv-2", "tvos")],
+  );
+  assertEqual(a.assigned.tvOS, "tv-2", "the remembered simulator");
+});
+
+parity.test("two needs never share a device, and Android form factor is honoured", () => {
+  const a = assignDevices(
+    [
+      { label: "Android TV", platform: "android", formFactor: "tv" },
+      { label: "Android", platform: "android", formFactor: "handset" },
+      { label: "Android 2", platform: "android", formFactor: "handset" },
+    ],
+    [dev("atv", "android", { formFactor: "tv" }), dev("phone", "android", { formFactor: "handset" })],
+    new Set(["something-else"]),
+  );
+  assertEqual(a.assigned, { "Android TV": "atv", Android: "phone" }, "each to its kind");
+  assertEqual(a.unmet.length, 1, "the third has no phone left");
+});
+
+// ── Routes from the scene graph ──────────────────────────────────────────────
+
+parity.test("recorded actions become replayable steps", () => {
+  assertEqual(actionToStep("tapOn: point 0.5,0.25").step, { kind: "tap", x: 0.5, y: 0.25 }, "tap");
+  assertEqual(actionToStep("pressKey: Remote Dpad Down").step, { kind: "key", key: "Remote Dpad Down" }, "key");
+  assertEqual(actionToStep("swipe 0.5,0.8 → 0.5,0.2").step, { kind: "swipe", x1: 0.5, y1: 0.8, x2: 0.5, y2: 0.2 }, "swipe");
+  assertEqual(actionToStep("launchApp: com.example.tv").appId, "com.example.tv", "launch becomes the app");
+});
+
+parity.test("a text selector cannot be replayed blind, and says so", () => {
+  const p = actionToStep('tapOn: "Login"');
+  assert(!p.step && (p.reason?.startsWith("not replayable") ?? false), "refused with a reason");
+});
+
+parity.test("a found path becomes a route, with the launch as its app", () => {
+  const r = routeFromPath({
+    nodeIds: ["a", "b", "c"],
+    cost: 2,
+    steps: [
+      { from: "a", to: "b", action: "launchApp: com.example.tv" },
+      { from: "b", to: "c", action: "pressKey: Remote Dpad Down" },
+    ],
+  });
+  assertEqual(r.route.appId, "com.example.tv", "app from the launch edge");
+  assertEqual(r.route.steps.length, 1, "one replayable step");
+  assert(r.replayable, "replayable");
+});
+
+parity.test("a path with a text selector is not replayable", () => {
+  const r = routeFromPath({
+    nodeIds: ["a", "b"], cost: 1,
+    steps: [{ from: "a", to: "b", action: 'tapOn: "Settings"' }],
+  });
+  assert(!r.replayable && r.unreplayable.length === 1, "flagged, not silently wrong");
+});

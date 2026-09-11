@@ -362,3 +362,63 @@ parityMatrix.test('snapped screens pair across runs when the name matches', asyn
     );
   });
 });
+
+// ── Spec references ──────────────────────────────────────────────────────────
+
+import { specToSnapshot, validateSpec } from '../src/commands/parity-spec.js';
+
+parityMatrix.test('a spec becomes an a11y snapshot the diff can read', async () => {
+  const snap = specToSnapshot({
+    width: 1920,
+    height: 1080,
+    elements: [
+      { identifier: 'browse-button', label: 'Browse', role: 'button', frame: { x: 100, y: 300, w: 400, h: 80 }, focused: true },
+      { label: 'Title', frame: { x: 100, y: 100, w: 600, h: 60 } },
+    ],
+  });
+  assert(snap.length === 2, 'one entry per element');
+  assert(snap[0].identifier === 'browse-button' && snap[0].state.focused, 'identity and focus carry');
+  assert(snap[1].role === '' && snap[1].label === 'Title', 'role is optional');
+});
+
+parityMatrix.test('a spec authored as a design pairs with a real target by identity and passes', async () => {
+  withTempRoot((root) => {
+    // The design says what the screen should hold; the tvOS build says what it does.
+    const spec = specToSnapshot({
+      width: 1920,
+      height: 1080,
+      elements: [
+        { identifier: 'continue-button', label: 'Continue Watching', role: 'button', frame: { x: 100, y: 200, w: 400, h: 80 }, focused: true },
+        { identifier: 'browse-button', label: 'Browse', role: 'button', frame: { x: 100, y: 300, w: 400, h: 80 } },
+      ],
+    });
+    const refDir = path.join(root, 'design');
+    const w = new RunWriter(refDir, { role: 'reference', deviceId: 'spec', label: 'Design' });
+    w.add('home', { platform: 'design', width: 1920, height: 1080, hierarchy: {}, a11ySnapshot: spec, screenshot: PNG });
+    w.finish();
+
+    const tvos = writeRun(root, 'tvOS', 'candidate', 'tvos', [
+      ['home', [el(0, 'continue-button', 'Continue Watching', 200, true), el(1, 'browse-button', 'Browse', 300)]],
+    ]);
+    const m = buildMatrix(refDir, [{ label: 'tvOS', dir: tvos }], { ignore: ['pixel'] });
+    assert(m.passed, `a build that matches its design passes, got ${JSON.stringify(m.shared)}`);
+    assert(m.targets[0].report.checkpoints[0].rolesRelaxed, 'roles are relaxed against a design, as across stacks');
+  });
+});
+
+parityMatrix.test('a malformed spec is refused before it can produce a nonsense diff', async () => {
+  for (const bad of [
+    { width: 0, height: 10, elements: [{ frame: { x: 0, y: 0, w: 1, h: 1 }, label: 'x' }] },
+    { width: 10, height: 10, elements: [] },
+    { width: 10, height: 10, elements: [{ frame: { x: 0, y: 0, w: 1, h: 1 } }] },
+    { width: 10, height: 10, elements: [{ label: 'x', frame: { x: 'a', y: 0, w: 1, h: 1 } }] },
+  ]) {
+    let threw = false;
+    try {
+      validateSpec(bad);
+    } catch {
+      threw = true;
+    }
+    assert(threw, `rejected: ${JSON.stringify(bad)}`);
+  }
+});

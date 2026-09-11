@@ -50,7 +50,7 @@ function Trend({ target }: { target: ConvergeTargetState }) {
   );
 }
 
-function TargetRow({ target }: { target: ConvergeTargetState }) {
+function TargetRow({ target, goalId }: { target: ConvergeTargetState; goalId: string }) {
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
   const latest = target.attempts[target.attempts.length - 1];
@@ -84,7 +84,7 @@ function TargetRow({ target }: { target: ConvergeTargetState }) {
         </span>
         {target.phase === "awaiting-review" && !target.accepted ? (
           <>
-            <Button size="sm" icon="check" onClick={() => void acceptConverged(target.label)}>
+            <Button size="sm" icon="check" onClick={() => void acceptConverged(target.label, goalId)}>
               Accept
             </Button>
             <Button
@@ -106,7 +106,7 @@ function TargetRow({ target }: { target: ConvergeTargetState }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!note.trim()) return;
-            void rejectConverged(target.label, note);
+            void rejectConverged(target.label, note, goalId);
             setNote("");
             setRejecting(false);
           }}
@@ -200,7 +200,7 @@ export function ConvergePanel({ converge }: { converge: ConvergeProgress | null 
       </p>
       <ul className={styles.targets}>
         {converge.targets.map((t) => (
-          <TargetRow key={t.label} target={t} />
+          <TargetRow key={t.label} target={t} goalId={converge.goalId} />
         ))}
       </ul>
     </Panel>

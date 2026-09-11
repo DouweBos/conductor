@@ -57,7 +57,17 @@ function summarise(campaign: CampaignProgress["campaign"]): {
   return { goals: campaign.goals.length, accepted, total, review, recheck, stuck, usd, ms };
 }
 
-function GoalRow({ goal, current, running }: { goal: ParityGoal; current: boolean; running: boolean }) {
+function GoalRow({
+  goal,
+  current,
+  waitingFor,
+  running,
+}: {
+  goal: ParityGoal;
+  current: boolean;
+  waitingFor: string[] | null;
+  running: boolean;
+}) {
   const [deepLink, setDeepLink] = useState(goal.route?.deepLink ?? "");
   const [editingLink, setEditingLink] = useState(false);
   const age = Math.round((Date.now() - goal.referenceCapturedAt) / 86_400_000);
@@ -75,6 +85,13 @@ function GoalRow({ goal, current, running }: { goal: ParityGoal; current: boolea
       <div className={styles.head}>
         <span className={styles.name}>{goal.checkpoint}</span>
         {current ? <StatusPill tone="running">converging</StatusPill> : null}
+        {waitingFor ? (
+          <span title={`Waiting for a device: ${waitingFor.join(", ")}`}>
+            <StatusPill tone="warning">
+              waiting for {waitingFor.length === 1 ? waitingFor[0] : `${waitingFor.length} devices`}
+            </StatusPill>
+          </span>
+        ) : null}
         <span className={styles.meta}>
           {routeText}
           {steps ? ` · ${steps}-step interaction` : ""}
@@ -152,6 +169,8 @@ function GoalRow({ goal, current, running }: { goal: ParityGoal; current: boolea
 export function CampaignPanel({ campaign }: { campaign: CampaignProgress | null }) {
   if (!campaign || campaign.campaign.goals.length === 0) return null;
   const s = summarise(campaign.campaign);
+  const active = campaign.activeGoalIds ?? [];
+  const waiting = new Map((campaign.waiting ?? []).map((w) => [w.goalId, w.needs]));
 
   return (
     <Panel
@@ -165,6 +184,7 @@ export function CampaignPanel({ campaign }: { campaign: CampaignProgress | null 
             {s.stuck ? ` · ${s.stuck} stuck` : ""}
             {s.ms ? ` · ${Math.round(s.ms / 60_000)} min` : ""}
             {s.usd ? ` · $${s.usd.toFixed(2)}` : ""}
+            {campaign.running && active.length > 1 ? ` · ${active.length} at once` : ""}
           </span>
           {campaign.running ? (
             <Button size="sm" variant="secondary" icon="stop" onClick={() => void haltCampaign()}>
@@ -174,7 +194,7 @@ export function CampaignPanel({ campaign }: { campaign: CampaignProgress | null 
             <Button
               size="sm"
               icon="play"
-              title="Work every goal with something left to do, in order"
+              title="Work every goal with something left to do — as many at once as there are free devices"
               onClick={() => void startCampaign()}
             >
               Run queue
@@ -193,7 +213,8 @@ export function CampaignPanel({ campaign }: { campaign: CampaignProgress | null 
           <GoalRow
             key={g.id}
             goal={g}
-            current={campaign.currentGoalId === g.id}
+            current={active.includes(g.id)}
+            waitingFor={waiting.get(g.id) ?? null}
             running={campaign.running}
           />
         ))}

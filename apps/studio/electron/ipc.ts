@@ -161,7 +161,7 @@ import { readMemory, remember } from "./services/parity/memory";
 import {
   acceptTarget,
   cancelConvergence,
-  getConvergence,
+  listConvergences,
   rejectTarget,
   startConvergence,
 } from "./services/parity/convergeService";
@@ -248,11 +248,15 @@ export function registerIpcHandlers(): void {
   );
   handle<ParitySnapRequest, ParitySnapResult>("parity_snap", (a) => snapParity(a));
   handle<ConvergeRequest, { goalId: string }>("parity_converge_start", (a) => startConvergence(a));
-  handle<void, void>("parity_converge_cancel", () => cancelConvergence());
-  handle<void, ConvergeProgress | null>("parity_converge_state", () => getConvergence());
-  handle<{ label: string }, void>("parity_converge_accept", (a) => acceptTarget(a.label));
-  handle<{ label: string; note: string }, void>("parity_converge_reject", (a) =>
-    rejectTarget(a.label, a.note),
+  handle<{ goalId?: string } | undefined, void>("parity_converge_cancel", (a) =>
+    cancelConvergence(a?.goalId),
+  );
+  handle<void, ConvergeProgress[]>("parity_converge_state", () => listConvergences());
+  handle<{ label: string; goalId?: string }, void>("parity_converge_accept", (a) =>
+    acceptTarget(a.label, a.goalId),
+  );
+  handle<{ label: string; note: string; goalId?: string }, void>("parity_converge_reject", (a) =>
+    rejectTarget(a.label, a.note, a.goalId),
   );
   handle<void, ParityProjectConfig>("parity_config", () => loadParityConfig());
   handle<TargetRecipe, ParityProjectConfig>("parity_recipe_put", (a) => putRecipe(a));
