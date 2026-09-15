@@ -50,13 +50,28 @@ private func ensureCoreSimLoaded() -> Bool {
     return coreSimOk
 }
 
+/// Xcode 27 moved SimulatorKit out of Developer/Library/PrivateFrameworks into
+/// the Xcode bundle's SharedFrameworks; probe both so 26 and 27 both work.
+private func simulatorKitPath() -> String? {
+    let dev = URL(fileURLWithPath: xcodeDevDir())
+    let candidates = [
+        dev.deletingLastPathComponent()
+            .appendingPathComponent("SharedFrameworks/SimulatorKit.framework/SimulatorKit"),
+        dev.appendingPathComponent("Library/PrivateFrameworks/SimulatorKit.framework/SimulatorKit"),
+    ].map(\.path)
+    return candidates.first { FileManager.default.fileExists(atPath: $0) }
+}
+
 /// Ensure SimulatorKit.framework is loaded (required for SimDeviceIOClient).
 @discardableResult
 private func ensureSimKitLoaded() -> Bool {
     if simKitLoaded { return simKitOk }
     simKitLoaded = true
     ensureCoreSimLoaded()
-    let p = xcodeDevDir() + "/Library/PrivateFrameworks/SimulatorKit.framework/SimulatorKit"
+    guard let p = simulatorKitPath() else {
+        NSLog("[SimKit] SimulatorKit.framework not found under %@", xcodeDevDir())
+        return false
+    }
     simKitOk = dlopen(p, RTLD_NOW | RTLD_GLOBAL) != nil
     if !simKitOk { NSLog("[SimKit] Failed to load SimulatorKit from %@", p) }
     return simKitOk

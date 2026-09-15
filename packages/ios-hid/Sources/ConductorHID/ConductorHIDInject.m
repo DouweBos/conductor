@@ -14,13 +14,15 @@
 // injection or reboots SpringBoard.
 
 #import <stdatomic.h>
+#import <malloc/malloc.h>
 #import <mach/mach_time.h>
 #import <objc/message.h>
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
 
 // IndigoHIDMessageForMouseNSEvent: point, prevMsg, 0x32, nsEventType, direction
-// → 320-byte static buffer. The 4 trailing `double` args land in d0–d3 and MUST
+// → a caller-owned message (Xcode 26: 320 bytes; Xcode 27: calloc'd 352 or 512
+// depending on prevMsg). The 4 trailing `double` args land in d0–d3 and MUST
 // be 1.0 or the built touch never registers with backboardd.
 typedef void* (*IndigoMouseFn)(CGPoint*, void*, int, int, int,
                                double, double, double, double);
@@ -63,7 +65,7 @@ static SHTouchState *_touchStateForUDID(const char *udid) {
 
 // IndigoHIDMessageForMouseNSEvent's internal throttle is ~16ms; use 17ms.
 #define INDIGO_MIN_INTERVAL_NS 17000000ULL
-#define SH_TOUCH_MSG_SIZE 320
+#define SH_TOUCH_MSG_LEGACY_SIZE 320  // pre-Xcode-27 static buffer
 #define SH_KEYBOARD_MSG_SIZE 192
 
 static void _ensureTimebase(mach_timebase_info_data_t *out) {
@@ -130,11 +132,19 @@ int32_t SHSendTouch(id client, void *fnPtr, const char *udid,
 
     ts->lastTouchTime = now;
 
-    void *copy = malloc(SH_TOUCH_MSG_SIZE);
-    void *owned = malloc(SH_TOUCH_MSG_SIZE);
-    if (!copy || !owned) { free(copy); free(owned); return -7; }
-    memcpy(copy, msg, SH_TOUCH_MSG_SIZE);
-    memcpy(owned, msg, SH_TOUCH_MSG_SIZE);
+    // Xcode 27 grew this message (320 -> 352/512) and heap-allocates it. Size the
+    // copies from the block itself; a short copy leaves a garbage tail that makes
+    // backboardd memmove past its stack buffer and take down SpringBoard.
+    size_t msgSize = malloc_size(msg);
+    BOOL msgOwned = msgSize != 0;
+    if (!msgOwned) msgSize = SH_TOUCH_MSG_LEGACY_SIZE;
+
+    void *copy = malloc(msgSize);
+    void *owned = malloc(msgSize);
+    if (!copy || !owned) { free(copy); free(owned); if (msgOwned) free(msg); return -7; }
+    memcpy(copy, msg, msgSize);
+    memcpy(owned, msg, msgSize);
+    if (msgOwned) free(msg);
 
     if (ts->lastIndigoMsg) free(ts->lastIndigoMsg);
     ts->lastIndigoMsg = owned;

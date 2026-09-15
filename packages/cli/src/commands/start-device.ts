@@ -25,6 +25,22 @@ import { sleep } from '../utils.js';
 import { VegaCli, VegaDevice } from '../drivers/vega/cli.js';
 import { describe as describeRoku, discoverRokuDevices } from '../drivers/roku/discovery.js';
 
+/**
+ * Show the simulator window. Xcode 27 replaced Simulator.app with DeviceHub.app,
+ * so fall back to the hub when Simulator.app is absent.
+ */
+function openSimulatorUI(): void {
+  const tryOpen = (args: string[], next?: () => void) => {
+    const p = spawn('open', args, { detached: true, stdio: 'ignore' });
+    p.on('error', () => next?.());
+    p.on('exit', (code) => {
+      if (code !== 0) next?.();
+    });
+    p.unref();
+  };
+  tryOpen(['-a', 'Simulator'], () => tryOpen(['-b', 'com.apple.dt.Devices']));
+}
+
 const IOS_BOOT_TIMEOUT_MS = 120_000;
 const ANDROID_BOOT_TIMEOUT_MS = 120_000;
 const POLL_MS = 1000;
@@ -294,8 +310,7 @@ async function startIOS(
     }
   }
 
-  // Open the Simulator.app so the window appears
-  spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
+  openSimulatorUI();
 
   const displayName = name ?? device.name;
   // Prewarm the driver so the first interaction command is not the
@@ -485,8 +500,7 @@ async function startTvOS(
     }
   }
 
-  // Open the Simulator.app so the window appears
-  spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
+  openSimulatorUI();
 
   const displayName = name ?? device.name;
   // Prewarm the driver so the first interaction command is not the

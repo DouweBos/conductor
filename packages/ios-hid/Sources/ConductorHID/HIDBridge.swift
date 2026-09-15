@@ -56,6 +56,7 @@ private func xcodeDevDir() -> String {
 
 private var coreSimLoaded = false, coreSimOk = false
 private var simKitLoaded = false, simKitOk = false
+private var simKitHandle: UnsafeMutableRawPointer?
 
 @discardableResult
 private func ensureCoreSimLoaded() -> Bool {
@@ -66,20 +67,31 @@ private func ensureCoreSimLoaded() -> Bool {
     return coreSimOk
 }
 
+/// Xcode 27 moved SimulatorKit out of Developer/Library/PrivateFrameworks into
+/// the Xcode bundle's SharedFrameworks; probe both so 26 and 27 both work.
+private func simulatorKitPath() -> String? {
+    let dev = URL(fileURLWithPath: xcodeDevDir())
+    let candidates = [
+        dev.deletingLastPathComponent()
+            .appendingPathComponent("SharedFrameworks/SimulatorKit.framework/SimulatorKit"),
+        dev.appendingPathComponent("Library/PrivateFrameworks/SimulatorKit.framework/SimulatorKit"),
+    ].map(\.path)
+    return candidates.first { FileManager.default.fileExists(atPath: $0) }
+}
+
 @discardableResult
 private func ensureSimKitLoaded() -> Bool {
     if simKitLoaded { return simKitOk }
     simKitLoaded = true
     ensureCoreSimLoaded()
-    let p = xcodeDevDir() + "/Library/PrivateFrameworks/SimulatorKit.framework/SimulatorKit"
-    simKitOk = dlopen(p, RTLD_NOW | RTLD_GLOBAL) != nil
+    guard let p = simulatorKitPath() else { return false }
+    simKitHandle = dlopen(p, RTLD_NOW | RTLD_GLOBAL)
+    simKitOk = simKitHandle != nil
     return simKitOk
 }
 
 private func loadIndigoSymbol(_ name: String) -> UnsafeMutableRawPointer? {
-    guard ensureSimKitLoaded() else { return nil }
-    let p = xcodeDevDir() + "/Library/PrivateFrameworks/SimulatorKit.framework/SimulatorKit"
-    guard let h = dlopen(p, RTLD_NOW | RTLD_GLOBAL) else { return nil }
+    guard ensureSimKitLoaded(), let h = simKitHandle else { return nil }
     return dlsym(h, name)
 }
 
