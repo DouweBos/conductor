@@ -65,8 +65,27 @@ export const ENUM_PARAMS: EnumParam[] = [
     command: 'set-orientation',
     param: '<orientation>',
     description: 'Device orientation',
-    // Source: VALID in commands/set-orientation.ts
-    values: [{ value: 'portrait' }, { value: 'landscape' }],
+    // Source: BASIC + IOS_ONLY in commands/set-orientation.ts
+    values: [
+      { value: 'portrait' },
+      { value: 'landscape' },
+      { value: 'portraitUpsideDown', description: 'iOS only' },
+      { value: 'landscapeLeft', description: 'iOS only' },
+      { value: 'landscapeRight', description: 'iOS only' },
+      { value: 'faceUp', description: 'iOS only' },
+      { value: 'faceDown', description: 'iOS only' },
+    ],
+  },
+  {
+    command: 'set-fold',
+    param: '<state>',
+    description: 'Hinge state of a foldable device, or an angle from 0 to 180',
+    // Source: FOLD_POSES in drivers/ios-fold.ts
+    values: [
+      { value: 'closed', description: '0\u00b0 — folded shut, cover display active' },
+      { value: 'book', description: '130\u00b0 — half open' },
+      { value: 'open', description: '180\u00b0 — open flat' },
+    ],
   },
   {
     command: 'start-device',

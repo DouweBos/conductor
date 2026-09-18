@@ -130,6 +130,8 @@ import {
 } from './commands/scroll-until-visible.js';
 import { setLocation, HELP as setLocationHelp } from './commands/set-location.js';
 import { setOrientation, HELP as setOrientationHelp } from './commands/set-orientation.js';
+import { getFold, setFold, HELP as foldHelp } from './commands/fold.js';
+import { getOrientation, HELP as getOrientationHelp } from './commands/get-orientation.js';
 import { setViewport, HELP as setViewportHelp } from './commands/set-viewport.js';
 import { startDevice, HELP as startDeviceHelp } from './commands/start-device.js';
 import { stopDevice, HELP as stopDeviceHelp } from './commands/stop-device.js';
@@ -222,6 +224,9 @@ const COMMAND_HELP: Record<string, string> = {
   travel: travelHelp,
   'record-video': recordVideoHelp,
   'set-orientation': setOrientationHelp,
+  'get-fold': foldHelp,
+  'set-fold': foldHelp,
+  'get-orientation': getOrientationHelp,
   'set-viewport': setViewportHelp,
   'take-screenshot': screenshotHelp,
   'capture-ui': captureUIHelp,
@@ -1024,6 +1029,22 @@ async function main(): Promise<void> {
       exitCode = await recordVideo(rest[0] ?? '', opts, sessionName, {
         out: argv['out'] as string | undefined,
       });
+      break;
+    }
+
+    case 'get-fold': {
+      exitCode = await getFold(opts, sessionName);
+      break;
+    }
+
+    case 'set-fold': {
+      const value = String(rest[0] ?? argv['fold'] ?? '');
+      exitCode = await setFold(value, opts, sessionName);
+      break;
+    }
+
+    case 'get-orientation': {
+      exitCode = await getOrientation(opts, sessionName);
       break;
     }
 

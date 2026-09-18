@@ -301,3 +301,32 @@ export async function listApps(deviceId: string): Promise<Array<{ id: string; na
     name: a.name ?? a.bundleIdentifier,
   }));
 }
+
+/** Orientations devicectl accepts; a superset of the driver's portrait/landscape. */
+export const DEVICECTL_ORIENTATIONS = [
+  'portrait',
+  'portraitUpsideDown',
+  'landscapeLeft',
+  'landscapeRight',
+  'faceUp',
+  'faceDown',
+] as const;
+
+export type DevicectlOrientation = (typeof DEVICECTL_ORIENTATIONS)[number];
+
+/**
+ * Read the device's current orientation. Works for simulators as well as
+ * physical devices — CoreDevice covers both — and needs no running test driver.
+ */
+export async function getOrientation(deviceId: string): Promise<string> {
+  const out = await devicectl(['device', 'orientation', 'get', '--device', deviceId]);
+  // Devices that track flat poses report "Non-flat Orientation" instead.
+  const match = out.match(/Current Device (?:Non-flat )?Orientation:\s*(\w+)/);
+  if (!match) throw new Error(`could not parse orientation from devicectl: ${out.trim()}`);
+  return match[1];
+}
+
+/** Set the device's orientation. */
+export async function setOrientation(deviceId: string, orientation: string): Promise<void> {
+  await devicectl(['device', 'orientation', 'set', '--device', deviceId, orientation]);
+}

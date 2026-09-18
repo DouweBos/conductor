@@ -359,6 +359,18 @@ export async function getHidBinaryPath(): Promise<string | null> {
 }
 
 /**
+ * Absolute path to the fold controller dylib (`ios-fold/conductor-fold.dylib`),
+ * built by `packages/ios-fold/tools/build-fold.sh`. Injected into a foldable
+ * simulator's locationd to drive the hinge. Returns null if it hasn't been built.
+ */
+export async function getFoldDylibPath(): Promise<string | null> {
+  const dir = await getDriversDir().catch(() => null);
+  if (!dir) return null;
+  const p = path.join(dir, 'ios-fold', 'conductor-fold.dylib');
+  return fs.existsSync(p) ? p : null;
+}
+
+/**
  * Absolute path to the host-side Simulator video capture binary
  * (`ios-capture/conductor-capture`), built by
  * `packages/ios-capture/tools/build-capture.sh`. Captures the framebuffer via

@@ -1,4 +1,4 @@
-.PHONY: build build-cli build-ios-driver build-ios-inproc build-ios-capture build-tvos-driver build-android-driver package-cli package-driver-sources package-drivers-tarball
+.PHONY: build build-cli build-ios-driver build-ios-inproc build-ios-capture build-ios-fold build-tvos-driver build-android-driver package-cli package-driver-sources package-drivers-tarball
 
 DRIVERS_TARBALL_DIR = dist-drivers
 
@@ -9,7 +9,7 @@ IOS_BUILD_PRODUCTS = $(IOS_DERIVED)/Build/Products/Debug-iphonesimulator
 TVOS_DERIVED   = packages/ios-driver/derived-data-tvos
 TVOS_BUILD_PRODUCTS = $(TVOS_DERIVED)/Build/Products/Debug-appletvsimulator
 
-build: build-ios-driver build-ios-inproc build-ios-capture build-tvos-driver build-android-driver package-cli build-cli
+build: build-ios-driver build-ios-inproc build-ios-capture build-ios-fold build-tvos-driver build-android-driver package-cli build-cli
 
 build-cli:
 	cd packages/cli && pnpm build
@@ -21,6 +21,11 @@ build-ios-inproc:
 # Host-side Simulator video capture binary → $(CLI_DRIVERS)/ios-capture/conductor-capture
 build-ios-capture:
 	packages/ios-capture/tools/build-capture.sh
+
+# Fold controller for foldable simulators, injected into the device's locationd
+# → $(CLI_DRIVERS)/ios-fold/conductor-fold.dylib
+build-ios-fold:
+	packages/ios-fold/tools/build-fold.sh
 
 build-ios-driver:
 	xcodebuild build-for-testing \
@@ -70,4 +75,4 @@ package-driver-sources:
 
 package-drivers-tarball: package-driver-sources
 	mkdir -p $(DRIVERS_TARBALL_DIR)
-	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc ios-capture tvos ios-driver-src
+	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc ios-capture ios-fold tvos ios-driver-src

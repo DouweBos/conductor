@@ -27,9 +27,35 @@ conductor list-apps          # installed app ids / package names (--json adds ap
 | `conductor stop-device [<name-or-id>] [--all]`                        | Shut down device(s)                                                        |
 | `conductor delete-device <name-or-id> [--all]`                        | Delete simulator(s)/AVD(s)/web session(s)                                  |
 | `conductor set-location --lat <n> --lng <n>`                          | Set GPS coordinates                                                        |
-| `conductor set-orientation <portrait\|landscape>`                     | Set orientation                                                            |
+| `conductor set-orientation <portrait\|landscape\|portraitUpsideDown\|landscapeLeft\|landscapeRight\|faceUp\|faceDown>` | Set orientation (the last five are iOS only)                               |
+| `conductor get-orientation`                                           | Print the current orientation (iOS only)                                   |
+| `conductor set-fold <closed\|book\|open\|0-180>`                     | Fold/unfold a foldable device, or set an exact hinge angle (iPhone Duo)    |
+| `conductor get-fold`                                                  | Print the current hinge angle and pose                                     |
 | `conductor set-viewport [<w> <h>] [--preset mobile\|tablet\|desktop]` | Resize web viewport (web only)                                             |
 | `conductor install-web [--check] [browser]`                           | Install a Playwright browser (chromium/firefox/webkit); `--check` = status |
+
+### Foldable devices (iPhone Duo)
+
+`set-fold` drives the hinge the same way Device Hub's slider does, so the device
+really folds: SpringBoard swaps between the cover and inner displays, and
+`devicectl device motion hinge-angle` reports the new angle. `take-screenshot`
+captures whichever display is active; to grab a specific panel directly, use
+`xcrun simctl io <device> screenshot --display <1|3>` (1 = cover, 3 = inner).
+
+Angles are in degrees, 0 (shut) to 180 (flat). `closed`/`book`/`open` map to
+0/130/180. Named poses always swap the display; an arbitrary mid-way angle sets
+the hinge but may leave the cover display active, because the system decides
+when to swap on its own transition logic.
+
+The first `set-fold` after a device boots takes a few seconds: it injects a
+controller into the simulator's locationd (restarting it), because Apple ships
+no fold setter in `simctl` or `devicectl`. The current angle is restored
+afterwards, so injecting doesn't change the pose. Subsequent calls are instant. This is
+iOS-simulator only.
+
+`set-orientation` works on foldables too, but by the same route: they accept
+`devicectl`'s setter and ignore it, so the command verifies the result and
+rotates through the injected controller when needed.
 
 ### Attach to an existing browser (CDP)
 
