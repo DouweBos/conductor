@@ -342,6 +342,8 @@ export interface DeviceDisplay {
   /** Display class as the device names it: integrated, carPlay, tvOut, ... */
   kind: string;
   integrated: boolean;
+  /** Pixels per point on this panel. Panels on one device can differ. */
+  pointScale: number;
 }
 
 /**
@@ -358,6 +360,7 @@ export async function listDisplays(deviceId: string): Promise<DeviceDisplay[]> {
         name?: string;
         active?: boolean;
         primary?: boolean;
+        pointScale?: number;
         type?: Record<string, unknown>;
       }>;
     };
@@ -375,6 +378,7 @@ export async function listDisplays(deviceId: string): Promise<DeviceDisplay[]> {
         primary: d.primary === true,
         kind,
         integrated: kind === 'integrated',
+        pointScale: typeof d.pointScale === 'number' && d.pointScale > 0 ? d.pointScale : 1,
       };
     });
 }

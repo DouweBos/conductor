@@ -55,6 +55,22 @@ export interface ScreenshotSelectorFlags {
   display?: string;
 }
 
+export interface Capture {
+  buffer: Buffer;
+  /** True when the image came from a panel other than the driver's own screen. */
+  redirected: boolean;
+  /**
+   * Pixels per point of the captured panel, when we know it. Only set for a
+   * redirected capture, where `deviceInfo()` describes the wrong panel.
+   */
+  scale?: number;
+  /**
+   * False when the captured panel is powered off. The view hierarchy always
+   * describes the live panel, so cropping against a dark one is meaningless.
+   */
+  live?: boolean;
+}
+
 /**
  * Grab the screen, pointing at the right panel on a multi-display device.
  *
@@ -67,7 +83,7 @@ export async function captureScreen(
   driver: AnyDriver,
   opts: { fullPage?: boolean },
   displayOverride?: string
-): Promise<{ buffer: Buffer; redirected: boolean }> {
+): Promise<Capture> {
   if (!(driver instanceof IOSDriver)) {
     if (displayOverride) {
       throw new Error('--display is iOS-only; other platforms expose a single screen');
@@ -93,7 +109,8 @@ export async function captureScreen(
   const primary = displays.find((d) => d.primary);
   // Nothing to redirect: the driver already captures the primary panel.
   if (choice.displayId === null || (primary && choice.displayId === primary.displayId)) {
-    return { buffer: await driver.screenshot(opts), redirected: false };
+    const live = choice.displayId === null || primary?.active !== false;
+    return { buffer: await driver.screenshot(opts), redirected: false, live };
   }
 
   const file = path.join(os.tmpdir(), `conductor-shot-${Date.now()}.png`);
@@ -107,7 +124,13 @@ export async function captureScreen(
       String(choice.displayId),
       file,
     ]);
-    return { buffer: await fs.readFile(file), redirected: true };
+    const panel = displays.find((d) => d.displayId === choice.displayId);
+    return {
+      buffer: await fs.readFile(file),
+      redirected: true,
+      scale: panel?.pointScale,
+      live: panel?.active,
+    };
   } catch (err) {
     throw new Error(
       `could not capture display ${choice.displayId}: ${err instanceof Error ? err.message : String(err)}`
@@ -115,6 +138,49 @@ export async function captureScreen(
   } finally {
     await fs.unlink(file).catch(() => {});
   }
+}
+
+/**
+ * The size of the coordinate space the view hierarchy reports, in its own
+ * units, for an iOS capture.
+ *
+ * `deviceInfo()` describes `XCUIScreen.main`, which is the wrong panel for a
+ * redirected capture: on an unfolded foldable the hierarchy is in the inner
+ * panel's points while deviceInfo still reports the cover's. Fall back to the
+ * captured image divided by that panel's own scale, which is exact.
+ */
+export function iosHierarchySize(
+  capture: Pick<Capture, 'redirected' | 'scale'>,
+  png: { width: number; height: number },
+  deviceInfo: { widthPoints: number; heightPoints: number }
+): { width: number; height: number } {
+  if (capture.redirected && capture.scale) {
+    return { width: png.width / capture.scale, height: png.height / capture.scale };
+  }
+  return { width: deviceInfo.widthPoints, height: deviceInfo.heightPoints };
+}
+
+/**
+ * Map element bounds onto screenshot pixels. The margin is in the same logical
+ * units as the bounds (points on iOS, pixels on Android/Web — what `inspect`
+ * prints), so it scales alongside them.
+ */
+export function cropRect(
+  bounds: { x: number; y: number; width: number; height: number },
+  hierarchy: { width: number; height: number },
+  png: { width: number; height: number },
+  margin: number
+): { x: number; y: number; width: number; height: number } {
+  const scaleX = hierarchy.width > 0 ? png.width / hierarchy.width : 1;
+  const scaleY = hierarchy.height > 0 ? png.height / hierarchy.height : 1;
+  const marginX = margin * scaleX;
+  const marginY = margin * scaleY;
+  return {
+    x: Math.round(bounds.x * scaleX - marginX),
+    y: Math.round(bounds.y * scaleY - marginY),
+    width: Math.round(bounds.width * scaleX + marginX * 2),
+    height: Math.round(bounds.height * scaleY + marginY * 2),
+  };
 }
 
 export async function screenshot(
@@ -158,14 +224,19 @@ export async function screenshot(
   const margin = flags.margin ?? DEFAULT_MARGIN_PX;
 
   const result = await runDirect(async (driver) => {
-    const { buffer: buf, redirected } = await captureScreen(driver, { fullPage }, flags.display);
+    const {
+      buffer: buf,
+      redirected,
+      scale,
+      live,
+    } = await captureScreen(driver, { fullPage }, flags.display);
     let out = buf;
 
-    if (sel && redirected) {
+    if (sel && live === false) {
       throw new Error(
-        'cropping to an element is not supported on this display yet — the panel is ' +
-          'rotated relative to the accessibility coordinate space. Re-run with ' +
-          '--display cover, or fold the device, to crop against the main panel.'
+        `cannot crop to ${label} on this display: it is powered off, and the view ` +
+          'hierarchy describes whichever panel is live. Drop --display to capture ' +
+          'the live panel, or fold the device so this one takes over.'
       );
     }
 
@@ -178,10 +249,16 @@ export async function screenshot(
         // around the foreground app + status bars and has frame=.zero, so
         // reading scale from it would always collapse to 1× and crop the
         // wrong region on retina/4K screens. Use deviceInfo, which reports
-        // both points (AX space) and pixels (screenshot space).
-        const info = await driver.deviceInfo();
-        hierarchyW = info.widthPoints;
-        hierarchyH = info.heightPoints;
+        // both points (AX space) and pixels (screenshot space) — except for a
+        // redirected capture, where deviceInfo describes XCUIScreen.main and
+        // not the panel we captured, so derive the points from its own scale.
+        const size = iosHierarchySize(
+          { redirected, scale },
+          readPngDimensions(buf),
+          await driver.deviceInfo()
+        );
+        hierarchyW = size.width;
+        hierarchyH = size.height;
         el = await waitForIOSElement(
           (o) => driver.viewHierarchy(false, [], { cache: o?.cached }).then((x) => x.axElement),
           sel,
@@ -211,26 +288,25 @@ export async function screenshot(
       }
 
       const { width: pngW, height: pngH } = readPngDimensions(buf);
-      const scaleX = hierarchyW > 0 ? pngW / hierarchyW : 1;
-      const scaleY = hierarchyH > 0 ? pngH / hierarchyH : 1;
+      const rect = cropRect(
+        el.bounds,
+        { width: hierarchyW, height: hierarchyH },
+        { width: pngW, height: pngH },
+        margin
+      );
 
-      // Margin is in the same logical units as the bounds (points on iOS,
-      // pixels on Android/Web — same units the `inspect` command prints),
-      // so scale it into screenshot pixels alongside the bounds.
-      const marginX = margin * scaleX;
-      const marginY = margin * scaleY;
-      const rectX = Math.round(el.bounds.x * scaleX - marginX);
-      const rectY = Math.round(el.bounds.y * scaleY - marginY);
-      const rectW = Math.round(el.bounds.width * scaleX + marginX * 2);
-      const rectH = Math.round(el.bounds.height * scaleY + marginY * 2);
-
-      if (rectX + rectW <= 0 || rectY + rectH <= 0 || rectX >= pngW || rectY >= pngH) {
+      if (
+        rect.x + rect.width <= 0 ||
+        rect.y + rect.height <= 0 ||
+        rect.x >= pngW ||
+        rect.y >= pngH
+      ) {
         throw new Error(
-          `element ${label} bounds [${rectX},${rectY} ${rectW}x${rectH}] are outside the screenshot (${pngW}x${pngH})`
+          `element ${label} bounds [${rect.x},${rect.y} ${rect.width}x${rect.height}] are outside the screenshot (${pngW}x${pngH})`
         );
       }
 
-      out = cropPng(buf, { x: rectX, y: rectY, width: rectW, height: rectH });
+      out = cropPng(buf, rect);
     }
 
     await fs.writeFile(resolvedPath, out);

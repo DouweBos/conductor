@@ -6,7 +6,7 @@
  */
 import { TestSuite, assert } from './runner.js';
 import { pickCaptureDisplay } from '../src/drivers/ios-displays.js';
-import { captureScreen } from '../src/commands/screenshot.js';
+import { captureScreen, cropRect, iosHierarchySize } from '../src/commands/screenshot.js';
 import type { DeviceDisplay } from '../src/drivers/devicectl.js';
 
 export const displaysSuite = new TestSuite('display selection');
@@ -18,6 +18,7 @@ const display = (over: Partial<DeviceDisplay>): DeviceDisplay => ({
   primary: false,
   kind: 'integrated',
   integrated: true,
+  pointScale: 3,
   ...over,
 });
 
@@ -106,4 +107,46 @@ displaysSuite.test('--display is refused on platforms with a single screen', asy
   const { buffer, redirected } = await captureScreen(fakeAndroid, {});
   assert(buffer.toString() === 'android', 'driver screenshot is passed through');
   assert(redirected === false, 'nothing was redirected');
+});
+
+displaysSuite.test('a redirected capture crops against the panel it captured', async () => {
+  // The Duo unfolded: deviceInfo still describes the 466x678pt cover, while the
+  // hierarchy and the image are the 951x669pt inner panel. Trusting deviceInfo
+  // overshot every crop by 1.43x.
+  const png = { width: 2853, height: 2007 };
+  const cover = { widthPoints: 466, heightPoints: 678 };
+
+  const inner = iosHierarchySize({ redirected: true, scale: 3 }, png, cover);
+  assert(
+    inner.width === 951 && inner.height === 669,
+    `inner panel points: ${JSON.stringify(inner)}`
+  );
+
+  const bounds = { x: 48, y: 32, width: 855, height: 40 };
+  const rect = cropRect(bounds, inner, png, 0);
+  assert(rect.x === 144 && rect.y === 96, `bounds scale by pointScale: ${JSON.stringify(rect)}`);
+  assert(rect.width === 2565 && rect.height === 120, `size scales too: ${JSON.stringify(rect)}`);
+  assert(rect.x + rect.width <= png.width, 'crop stays inside the image');
+});
+
+displaysSuite.test('a non-redirected capture still trusts deviceInfo', async () => {
+  const size = iosHierarchySize(
+    { redirected: false },
+    { width: 1398, height: 2034 },
+    {
+      widthPoints: 466,
+      heightPoints: 678,
+    }
+  );
+  assert(size.width === 466 && size.height === 678, 'driver path is unchanged');
+});
+
+displaysSuite.test('the margin scales with the bounds, not with pixels', async () => {
+  const rect = cropRect(
+    { x: 100, y: 100, width: 50, height: 50 },
+    { width: 951, height: 669 },
+    { width: 2853, height: 2007 },
+    8
+  );
+  assert(rect.x === 276 && rect.width === 198, `8pt margin becomes 24px: ${JSON.stringify(rect)}`);
 });

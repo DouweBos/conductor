@@ -45,10 +45,10 @@ Pass `--display cover` or `--display inner` to pin it to one panel, or a display
 id for anything else the device has attached (CarPlay, an external screen). An
 unknown value lists that device's displays with their ids.
 
-Cropping a screenshot to an element (`take-screenshot <element>`) only works
-against the main panel: the inner panel's framebuffer is rotated relative to the
-accessibility coordinate space, so conductor refuses the crop there instead of
-returning the wrong region. Fold the device or pass `--display cover` to crop.
+Cropping to an element (`take-screenshot <element>`) works on either panel. The
+one thing it cannot do is crop against a panel that is powered off — the view
+hierarchy always describes the live one — so combining a selector with a
+`--display` that points at the dark panel is an error rather than a wrong crop.
 
 Angles are in degrees, 0 (shut) to 180 (flat). `closed`/`book`/`open` map to
 0/130/180. Named poses always swap the display; an arbitrary mid-way angle sets
