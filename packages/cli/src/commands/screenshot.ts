@@ -34,6 +34,8 @@ import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../
 import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 import { cropPng, readPngDimensions } from '../png-crop.js';
 
+const exec = promisify(execFile);
+
 const DEFAULT_MARGIN_PX = 8;
 
 export interface ScreenshotSelectorFlags {
@@ -53,8 +55,6 @@ export interface ScreenshotSelectorFlags {
   display?: string;
 }
 
-const exec = promisify(execFile);
-
 /**
  * Grab the screen, pointing at the right panel on a multi-display device.
  *
@@ -63,20 +63,28 @@ const exec = promisify(execFile);
  * unfolded. When the device reports more than one integrated panel we capture
  * the live one through simctl instead. Ordinary devices keep the driver path.
  */
-async function captureScreen(
+export async function captureScreen(
   driver: AnyDriver,
   opts: { fullPage?: boolean },
   displayOverride?: string
-): Promise<Buffer> {
-  const deviceId = driver instanceof IOSDriver ? driver.deviceId : undefined;
-  if (!deviceId || (!displayOverride && !(driver instanceof IOSDriver))) {
-    return await driver.screenshot(opts);
+): Promise<{ buffer: Buffer; redirected: boolean }> {
+  if (!(driver instanceof IOSDriver)) {
+    if (displayOverride) {
+      throw new Error('--display is iOS-only; other platforms expose a single screen');
+    }
+    return { buffer: await driver.screenshot(opts), redirected: false };
+  }
+
+  const deviceId = driver.deviceId;
+  if (!deviceId) {
+    if (displayOverride) throw new Error('--display needs a device to query for its displays');
+    return { buffer: await driver.screenshot(opts), redirected: false };
   }
 
   const displays = await listDisplays(deviceId).catch(() => []);
   if (!displays.length) {
     if (displayOverride) throw new Error("could not read this device's displays");
-    return await driver.screenshot(opts);
+    return { buffer: await driver.screenshot(opts), redirected: false };
   }
 
   const choice = pickCaptureDisplay(displays, displayOverride);
@@ -85,7 +93,7 @@ async function captureScreen(
   const primary = displays.find((d) => d.primary);
   // Nothing to redirect: the driver already captures the primary panel.
   if (choice.displayId === null || (primary && choice.displayId === primary.displayId)) {
-    return await driver.screenshot(opts);
+    return { buffer: await driver.screenshot(opts), redirected: false };
   }
 
   const file = path.join(os.tmpdir(), `conductor-shot-${Date.now()}.png`);
@@ -99,7 +107,11 @@ async function captureScreen(
       String(choice.displayId),
       file,
     ]);
-    return await fs.readFile(file);
+    return { buffer: await fs.readFile(file), redirected: true };
+  } catch (err) {
+    throw new Error(
+      `could not capture display ${choice.displayId}: ${err instanceof Error ? err.message : String(err)}`
+    );
   } finally {
     await fs.unlink(file).catch(() => {});
   }
@@ -146,8 +158,16 @@ export async function screenshot(
   const margin = flags.margin ?? DEFAULT_MARGIN_PX;
 
   const result = await runDirect(async (driver) => {
-    const buf = await captureScreen(driver, { fullPage }, flags.display);
+    const { buffer: buf, redirected } = await captureScreen(driver, { fullPage }, flags.display);
     let out = buf;
+
+    if (sel && redirected) {
+      throw new Error(
+        'cropping to an element is not supported on this display yet — the panel is ' +
+          'rotated relative to the accessibility coordinate space. Re-run with ' +
+          '--display cover, or fold the device, to crop against the main panel.'
+      );
+    }
 
     if (sel) {
       let el;

@@ -6,6 +6,7 @@
  */
 import { TestSuite, assert } from './runner.js';
 import { pickCaptureDisplay } from '../src/drivers/ios-displays.js';
+import { captureScreen } from '../src/commands/screenshot.js';
 import type { DeviceDisplay } from '../src/drivers/devicectl.js';
 
 export const displaysSuite = new TestSuite('display selection');
@@ -87,4 +88,22 @@ displaysSuite.test('an unknown display reports what the device actually offers',
 displaysSuite.test('CarPlay being attached does not steal the default', async () => {
   // Both the phone screen and CarPlay are live; a screenshot means the phone.
   assert(pickCaptureDisplay(withCarPlay).displayId === 1, 'defaults to the live integrated panel');
+});
+
+displaysSuite.test('--display is refused on platforms with a single screen', async () => {
+  // Android and web drivers have no display concept; silently returning the
+  // default screen would make the flag look like it worked.
+  const fakeAndroid = { screenshot: async () => Buffer.from('android') } as never;
+  let message = '';
+  try {
+    await captureScreen(fakeAndroid, {}, 'inner');
+  } catch (err) {
+    message = err instanceof Error ? err.message : String(err);
+  }
+  assert(message.includes('iOS-only'), `should refuse the flag: ${message}`);
+
+  // Without the flag the same driver still screenshots normally.
+  const { buffer, redirected } = await captureScreen(fakeAndroid, {});
+  assert(buffer.toString() === 'android', 'driver screenshot is passed through');
+  assert(redirected === false, 'nothing was redirected');
 });
