@@ -39,8 +39,11 @@ conductor list-apps          # installed app ids / package names (--json adds ap
 `set-fold` drives the hinge the same way Device Hub's slider does, so the device
 really folds: SpringBoard swaps between the cover and inner displays, and
 `devicectl device motion hinge-angle` reports the new angle. `take-screenshot`
-captures whichever display is active; to grab a specific panel directly, use
-`xcrun simctl io <device> screenshot --display <1|3>` (1 = cover, 3 = inner).
+follows the fold automatically — it captures whichever panel is live, so an
+unfolded device gives you the inner screen rather than the powered-off cover.
+Pass `--display cover` or `--display inner` to pin it to one panel, or a display
+id for anything else the device has attached (CarPlay, an external screen). An
+unknown value lists that device's displays with their ids.
 
 Angles are in degrees, 0 (shut) to 180 (flat). `closed`/`book`/`open` map to
 0/130/180. Named poses always swap the display; an arbitrary mid-way angle sets

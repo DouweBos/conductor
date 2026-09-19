@@ -77,6 +77,17 @@ export const ENUM_PARAMS: EnumParam[] = [
     ],
   },
   {
+    command: 'take-screenshot',
+    param: '--display',
+    description: 'Which display to capture (default: whichever panel is live)',
+    // Source: ROLE_ALIASES in drivers/ios-displays.ts. Any display id the
+    // device reports is also accepted, so the list is not exhaustive.
+    values: [
+      { value: 'cover', description: 'Foldable outer panel (XCUIScreen.main)' },
+      { value: 'inner', description: 'Foldable inner panel, live when unfolded' },
+    ],
+  },
+  {
     command: 'set-fold',
     param: '<state>',
     description: 'Hinge state of a foldable device, or an angle from 0 to 180',

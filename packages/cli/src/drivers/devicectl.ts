@@ -330,3 +330,51 @@ export async function getOrientation(deviceId: string): Promise<string> {
 export async function setOrientation(deviceId: string, orientation: string): Promise<void> {
   await devicectl(['device', 'orientation', 'set', '--device', deviceId, orientation]);
 }
+
+/** One of the device's displays, as reported by `devicectl device info displays`. */
+export interface DeviceDisplay {
+  displayId: number;
+  name: string;
+  /** Whether the system is currently driving this panel. */
+  active: boolean;
+  /** The panel `XCUIScreen.main` refers to — the cover display on a foldable. */
+  primary: boolean;
+  /** Display class as the device names it: integrated, carPlay, tvOut, ... */
+  kind: string;
+  integrated: boolean;
+}
+
+/**
+ * List the device's displays. Foldables report two integrated panels and flag
+ * which one is live, which is the only reliable way to know where to point a
+ * screenshot: the swap follows the system's own transition logic, not the
+ * hinge angle.
+ */
+export async function listDisplays(deviceId: string): Promise<DeviceDisplay[]> {
+  const parsed = await devicectlJson<{
+    result?: {
+      displays?: Array<{
+        displayId?: number;
+        name?: string;
+        active?: boolean;
+        primary?: boolean;
+        type?: Record<string, unknown>;
+      }>;
+    };
+  }>(['device', 'info', 'displays', '--device', deviceId], 15000);
+
+  return (parsed.result?.displays ?? [])
+    .filter((d) => typeof d.displayId === 'number')
+    .map((d) => {
+      // `type` is a single-key object, e.g. { integrated: {} } or { carPlay: {} }.
+      const kind = Object.keys(d.type ?? {})[0] ?? '';
+      return {
+        displayId: d.displayId as number,
+        name: d.name ?? '',
+        active: d.active === true,
+        primary: d.primary === true,
+        kind,
+        integrated: kind === 'integrated',
+      };
+    });
+}

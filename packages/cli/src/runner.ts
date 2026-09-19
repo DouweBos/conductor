@@ -127,7 +127,7 @@ export interface RunResult {
 
 // ── Driver management ─────────────────────────────────────────────────────────
 
-type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver;
+export type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver;
 
 /** Strip the `vega:` prefix to recover the bare Vega selector. */
 function vegaSerial(deviceId: string): string {

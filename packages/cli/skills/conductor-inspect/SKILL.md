@@ -17,7 +17,7 @@ here. Always observe before you act, and confirm after.
 | `conductor inspect [--dump]` | Print the UI hierarchy (`--dump` = raw driver output) |
 | `conductor inspect --at <x,y> [--tappable]` | Topmost view at a screen point |
 | `conductor focused [--poll [ms]]` | Metadata of the focused element. `--poll` watches changes — only with a bounded use, then stop it |
-| `conductor take-screenshot [<element>] [--output <path>] [--full-page]` | Screenshot; crop to a matched element; `--full-page` (web) |
+| `conductor take-screenshot [<element>] [--output <path>] [--full-page] [--display <panel>]` | Screenshot; crop to a matched element; `--full-page` (web); `--display cover\|inner\|<id>` picks a display (default: whichever panel is live) |
 
 `capture-ui` is the workhorse: it returns the screen as structured data **and**
 gives each element a ref like `@e3` that `conductor tap-on @e3` taps by cached

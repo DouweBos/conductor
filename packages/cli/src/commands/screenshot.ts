@@ -1,5 +1,7 @@
-export const HELP = `  take-screenshot [<element>] [--output <path>] [--full-page]
+export const HELP = `  take-screenshot [<element>] [--output <path>] [--full-page] [--display <panel>]
                                        Take screenshot (--full-page: web only, capture entire scrollable page)
+    --display <cover|inner|id>        Which display to capture (default: whichever panel
+                                       is live). An unknown value lists the device's displays
     <element>                         Crop to the element matched by text (positional)
     --id <id>                         Crop to the element matched by accessibility id
     --text <text>                     Crop to the element matched by text only (not id)
@@ -15,9 +17,14 @@ export const HELP = `  take-screenshot [<element>] [--output <path>] [--full-pag
     --right-of <text>                 Match element right of the given reference`;
 
 import path from 'path';
+import os from 'os';
 import fs from 'fs/promises';
-import { runDirect } from '../runner.js';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { runDirect, type AnyDriver } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
+import { listDisplays } from '../drivers/devicectl.js';
+import { pickCaptureDisplay } from '../drivers/ios-displays.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
@@ -42,6 +49,60 @@ export interface ScreenshotSelectorFlags {
   above?: string;
   leftOf?: string;
   rightOf?: string;
+  /** Panel to capture on a multi-display device: cover, inner, or a display id. */
+  display?: string;
+}
+
+const exec = promisify(execFile);
+
+/**
+ * Grab the screen, pointing at the right panel on a multi-display device.
+ *
+ * The driver always screenshots `XCUIScreen.main`, which on a foldable is the
+ * cover panel — powered off, and so a black image, whenever the device is
+ * unfolded. When the device reports more than one integrated panel we capture
+ * the live one through simctl instead. Ordinary devices keep the driver path.
+ */
+async function captureScreen(
+  driver: AnyDriver,
+  opts: { fullPage?: boolean },
+  displayOverride?: string
+): Promise<Buffer> {
+  const deviceId = driver instanceof IOSDriver ? driver.deviceId : undefined;
+  if (!deviceId || (!displayOverride && !(driver instanceof IOSDriver))) {
+    return await driver.screenshot(opts);
+  }
+
+  const displays = await listDisplays(deviceId).catch(() => []);
+  if (!displays.length) {
+    if (displayOverride) throw new Error("could not read this device's displays");
+    return await driver.screenshot(opts);
+  }
+
+  const choice = pickCaptureDisplay(displays, displayOverride);
+  if (choice.error) throw new Error(choice.error);
+
+  const primary = displays.find((d) => d.primary);
+  // Nothing to redirect: the driver already captures the primary panel.
+  if (choice.displayId === null || (primary && choice.displayId === primary.displayId)) {
+    return await driver.screenshot(opts);
+  }
+
+  const file = path.join(os.tmpdir(), `conductor-shot-${Date.now()}.png`);
+  try {
+    await exec('xcrun', [
+      'simctl',
+      'io',
+      deviceId,
+      'screenshot',
+      '--display',
+      String(choice.displayId),
+      file,
+    ]);
+    return await fs.readFile(file);
+  } finally {
+    await fs.unlink(file).catch(() => {});
+  }
 }
 
 export async function screenshot(
@@ -85,7 +146,7 @@ export async function screenshot(
   const margin = flags.margin ?? DEFAULT_MARGIN_PX;
 
   const result = await runDirect(async (driver) => {
-    const buf = await driver.screenshot({ fullPage });
+    const buf = await captureScreen(driver, { fullPage }, flags.display);
     let out = buf;
 
     if (sel) {

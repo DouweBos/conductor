@@ -1102,6 +1102,7 @@ async function main(): Promise<void> {
         above: argv['above'] as string | undefined,
         leftOf: argv['left-of'] as string | undefined,
         rightOf: argv['right-of'] as string | undefined,
+        display: argv['display'] !== undefined ? String(argv['display']) : undefined,
       });
       break;
     }
