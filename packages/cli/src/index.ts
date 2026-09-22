@@ -535,6 +535,7 @@ async function main(): Promise<void> {
         osVersion: argv['os-version'] as string | undefined,
         avd: argv['avd'] as string | undefined,
         name: argv['name'] as string | undefined,
+        deviceName: argv['device-name'] as string | undefined,
         deviceType: argv['device-type'] as string | undefined,
         systemImage: argv['system-image'] as string | undefined,
         browser: argv['browser'] as string | undefined,

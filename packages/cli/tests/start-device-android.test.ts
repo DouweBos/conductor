@@ -5,6 +5,9 @@ import {
   pickSystemImage,
   buildAvdmanagerCreateArgs,
   raiseAvdConfigRam,
+  parseAdbEmulatorSerials,
+  parseEmuAvdName,
+  simMatches,
 } from '../src/commands/start-device.js';
 
 export const startDeviceAndroid = new TestSuite('start-device (Android AVD creation)');
@@ -130,4 +133,29 @@ startDeviceAndroid.test('raiseAvdConfigRam handles key=value spacing and updates
   assert(out.includes('hw.ramSize=4096'), `expected in-place update preserving spacing, got:\n${out}`);
   assert(out.startsWith('foo=bar\n'), 'ordering/other lines preserved');
   assert(out.includes('baz=qux'), 'trailing unrelated key preserved');
+});
+
+startDeviceAndroid.test('parseAdbEmulatorSerials keeps ready emulators only', async () => {
+  const stdout = [
+    'List of devices attached',
+    'emulator-5554\tdevice',
+    'emulator-5556\toffline',
+    '1234567890\tdevice',
+    '',
+  ].join('\n');
+  const serials = parseAdbEmulatorSerials(stdout);
+  assert(serials.length === 1, `expected 1 serial, got ${JSON.stringify(serials)}`);
+  assert(serials[0] === 'emulator-5554', `unexpected serial: ${serials[0]}`);
+});
+
+startDeviceAndroid.test('parseEmuAvdName skips the trailing OK', async () => {
+  assert(parseEmuAvdName('plex_tv_local\nOK\n') === 'plex_tv_local', 'should read the AVD name');
+  assert(parseEmuAvdName('OK\n') === undefined, 'no name means undefined');
+});
+
+startDeviceAndroid.test('simMatches prefers --device-name over --device-type', async () => {
+  assert(simMatches('plex tv local', 'Plex TV Local', 'Apple TV 4K'), 'device-name wins, case-insensitively');
+  assert(!simMatches('Apple TV 4K', 'Plex TV Local', 'Apple TV 4K'), 'device-type must not rescue a name miss');
+  assert(simMatches('Apple TV 4K', undefined, 'Apple TV 4K'), 'device-type still matches on its own');
+  assert(simMatches('anything', undefined, undefined), 'no filter matches everything');
 });

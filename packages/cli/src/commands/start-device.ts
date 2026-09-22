@@ -2,6 +2,8 @@ export const HELP = `  start-device
     --platform <ios|android|tvos|web|vega|roku> Boot a simulator/emulator, start the web driver (Playwright), attach a Vega VVD, or check a Roku device
     --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
     --avd <name>                      Android AVD name (default: first available; created if missing + --device-type)
+    --device-name <name>              Boot the existing device with this name (iOS/tvOS sim name,
+                                      Android AVD, Vega serial, Roku host). Alias for --avd on Android
     --name <name>                     Set a custom name on the device after creation (iOS/tvOS/web)
     --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K") or
                                       Android device profile (e.g. "pixel_7"); creates if needed
@@ -91,6 +93,28 @@ async function listRuntimes(): Promise<SimRuntime[]> {
   if (!result.success) throw new Error(`xcrun simctl list runtimes failed: ${result.stderr}`);
   const parsed = JSON.parse(result.stdout) as { runtimes: SimRuntime[] };
   return parsed.runtimes;
+}
+
+/**
+ * Which existing simulator a run targets. --device-name selects by the sim's
+ * current name and wins over --device-type, which matches the stock model name.
+ */
+export function simMatches(simName: string, deviceName?: string, deviceType?: string): boolean {
+  const wanted = deviceName ?? deviceType;
+  return wanted === undefined || simName.toLowerCase() === wanted.toLowerCase();
+}
+
+/** Names of simulators a --device-name could have matched, for a not-found error. */
+function availableSimNames(
+  devices: Record<string, SimDevice[]>,
+  runtimeIncludes?: string
+): string[] {
+  const out = new Set<string>();
+  for (const [runtime, sims] of Object.entries(devices)) {
+    if (runtimeIncludes && !runtime.includes(runtimeIncludes)) continue;
+    for (const sim of sims) if (sim.isAvailable) out.add(sim.name);
+  }
+  return [...out].sort();
 }
 
 function runtimeVersionNumber(version: string): number {
@@ -191,7 +215,8 @@ async function startIOS(
   osVersion: string | undefined,
   opts: OutputOptions,
   name?: string,
-  deviceType?: string
+  deviceType?: string,
+  deviceName?: string
 ): Promise<number> {
   let devices: Record<string, SimDevice[]>;
   try {
@@ -205,11 +230,14 @@ async function startIOS(
   // Note: --device-type matches against sim.name, so renamed simulators won't match their
   // original device type. This is a simctl limitation — device entries don't expose a stable
   // deviceTypeIdentifier. A renamed sim will be skipped, potentially creating a duplicate.
+  // --device-name exists precisely to target such a sim.
   const candidates: { runtime: string; device: SimDevice }[] = [];
   for (const [runtime, sims] of Object.entries(devices)) {
+    // Without this, --platform ios can pick a tvOS/watchOS sim.
+    if (!runtime.includes('iOS')) continue;
     if (osVersion && !runtime.includes(osVersion)) continue;
     for (const sim of sims) {
-      if (deviceType && sim.name.toLowerCase() !== deviceType.toLowerCase()) continue;
+      if (!simMatches(sim.name, deviceName, deviceType)) continue;
       if (sim.isAvailable && sim.state !== 'Booted') {
         candidates.push({ runtime, device: sim });
       }
@@ -236,6 +264,16 @@ async function startIOS(
   }
 
   if (candidates.length === 0) {
+    // --device-name names an existing sim, so there is nothing to create from it alone.
+    if (deviceName && !deviceType) {
+      printError(
+        `No iOS simulator named "${deviceName}". Available: ` +
+          `${availableSimNames(devices, 'iOS').join(', ')}. Pass --device-type to create it.`,
+        opts
+      );
+      return 1;
+    }
+
     // If a device type was requested, try to create the simulator
     if (deviceType) {
       console.log(`No existing simulator found for "${deviceType}". Creating one...`);
@@ -256,9 +294,12 @@ async function startIOS(
         return 1;
       }
 
-      if (name) {
+      // A --device-name that matched nothing becomes the new sim's name, so the
+      // same command finds it next time.
+      const rename = name ?? deviceName;
+      if (rename) {
         try {
-          await renameIOSSimulator(udid, name);
+          await renameIOSSimulator(udid, rename);
         } catch (e) {
           printError(e instanceof Error ? e.message : String(e), opts);
           return 1;
@@ -267,7 +308,7 @@ async function startIOS(
 
       spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
 
-      const displayName = name ?? deviceType;
+      const displayName = rename ?? deviceType;
       // Prewarm the driver so the first interaction command is not the
       // one that pays the XCTest runner startup cost.
       await prewarmDriver(udid);
@@ -383,7 +424,8 @@ async function startTvOS(
   osVersion: string | undefined,
   opts: OutputOptions,
   name?: string,
-  deviceType?: string
+  deviceType?: string,
+  deviceName?: string
 ): Promise<number> {
   let devices: Record<string, SimDevice[]>;
   try {
@@ -399,7 +441,7 @@ async function startTvOS(
     if (!runtime.includes('tvOS')) continue;
     if (osVersion && !runtime.includes(osVersion)) continue;
     for (const sim of sims) {
-      if (deviceType && sim.name.toLowerCase() !== deviceType.toLowerCase()) continue;
+      if (!simMatches(sim.name, deviceName, deviceType)) continue;
       if (sim.isAvailable && sim.state !== 'Booted') {
         candidates.push({ runtime, device: sim });
       }
@@ -426,6 +468,16 @@ async function startTvOS(
   }
 
   if (candidates.length === 0) {
+    // --device-name names an existing sim, so there is nothing to create from it alone.
+    if (deviceName && !deviceType) {
+      printError(
+        `No tvOS simulator named "${deviceName}". Available: ` +
+          `${availableSimNames(devices, 'tvOS').join(', ')}. Pass --device-type to create it.`,
+        opts
+      );
+      return 1;
+    }
+
     // If a device type was requested, try to create the simulator
     if (deviceType) {
       console.log(`No existing tvOS simulator found for "${deviceType}". Creating one...`);
@@ -446,9 +498,12 @@ async function startTvOS(
         return 1;
       }
 
-      if (name) {
+      // A --device-name that matched nothing becomes the new sim's name, so the
+      // same command finds it next time.
+      const rename = name ?? deviceName;
+      if (rename) {
         try {
-          await renameIOSSimulator(udid, name);
+          await renameIOSSimulator(udid, rename);
         } catch (e) {
           printError(e instanceof Error ? e.message : String(e), opts);
           return 1;
@@ -457,7 +512,7 @@ async function startTvOS(
 
       spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
 
-      const displayName = name ?? deviceType;
+      const displayName = rename ?? deviceType;
       // Prewarm the driver so the first interaction command is not the
       // one that pays the XCTest runner startup cost.
       await prewarmDriver(udid);
@@ -525,6 +580,46 @@ async function listAVDs(): Promise<string[]> {
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
+}
+
+/** Serials of every attached emulator, e.g. ["emulator-5554"]. */
+async function listEmulatorSerials(): Promise<string[]> {
+  const result = await spawnCommand(resolveAndroidTool('adb'), ['devices'], {
+    env: androidSpawnEnv(),
+  });
+  if (!result.success) return [];
+  return parseAdbEmulatorSerials(result.stdout);
+}
+
+/** Pull the ready emulator serials out of `adb devices` output. */
+export function parseAdbEmulatorSerials(stdout: string): string[] {
+  return stdout
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/))
+    .filter(([id, state]) => id?.startsWith('emulator-') && state === 'device')
+    .map(([id]) => id);
+}
+
+/** `adb emu avd name` answers with the AVD name then "OK". */
+export function parseEmuAvdName(stdout: string): string | undefined {
+  return stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l && l !== 'OK');
+}
+
+/** The serial running the given AVD, if it is already up. */
+async function findRunningEmulator(avdName: string): Promise<string | undefined> {
+  for (const serial of await listEmulatorSerials()) {
+    const result = await spawnCommand(
+      resolveAndroidTool('adb'),
+      ['-s', serial, 'emu', 'avd', 'name'],
+      { env: androidSpawnEnv() }
+    );
+    if (result.success && parseEmuAvdName(result.stdout) === avdName) return serial;
+  }
+  return undefined;
 }
 
 /** Pick the Android system-image arch tag based on the host CPU. */
@@ -732,43 +827,60 @@ async function createAndroidAVD(
   }
 }
 
-async function waitForAndroidBoot(avdName: string): Promise<string> {
+/**
+ * Wait for the emulator running `avdName` specifically — matching on the AVD name
+ * rather than "whichever device showed up", so a concurrent boot can't be mistaken
+ * for ours.
+ */
+async function waitForAndroidBoot(avdName: string, logPath: string): Promise<string> {
   const deadline = Date.now() + ANDROID_BOOT_TIMEOUT_MS;
-  const connectedBefore = new Set<string>();
-
-  // Snapshot currently connected devices so we can identify the new one
-  const before = await spawnCommand(resolveAndroidTool('adb'), ['devices'], {
-    env: androidSpawnEnv(),
-  });
-  for (const line of before.stdout.split('\n').slice(1)) {
-    const id = line.trim().split(/\s+/)[0];
-    if (id) connectedBefore.add(id);
-  }
 
   while (Date.now() < deadline) {
     await sleep(POLL_MS);
-    const result = await spawnCommand(resolveAndroidTool('adb'), ['devices'], {
-      env: androidSpawnEnv(),
-    });
-    if (!result.success) continue;
-    for (const line of result.stdout.split('\n').slice(1)) {
-      const parts = line.trim().split(/\s+/);
-      const id = parts[0];
-      const status = parts[1];
-      if (id && status === 'device' && !connectedBefore.has(id)) {
-        // Check boot completed
-        const boot = await spawnCommand(
-          resolveAndroidTool('adb'),
-          ['-s', id, 'shell', 'getprop', 'sys.boot_completed'],
-          { env: androidSpawnEnv() }
-        );
-        if (boot.stdout.trim() === '1') return id;
-      }
+    const serial = await findRunningEmulator(avdName);
+    if (serial) {
+      const boot = await spawnCommand(
+        resolveAndroidTool('adb'),
+        ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'],
+        { env: androidSpawnEnv() }
+      );
+      if (boot.stdout.trim() === '1') return serial;
     }
   }
   throw new Error(
-    `Android emulator (${avdName}) did not appear within ${ANDROID_BOOT_TIMEOUT_MS / 1000}s`
+    `Android emulator (${avdName}) did not appear within ${ANDROID_BOOT_TIMEOUT_MS / 1000}s.\n` +
+      tailLog(logPath)
   );
+}
+
+function emulatorLogPath(avdName: string): string {
+  return path.join(os.homedir(), '.conductor', 'logs', `emulator-${avdName}.log`);
+}
+
+/** Open the emulator log for the detached child. Logging is best-effort. */
+function openEmulatorLog(logPath: string): number | undefined {
+  try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    return fs.openSync(logPath, 'w');
+  } catch {
+    return undefined;
+  }
+}
+
+/** Last few lines of the emulator log, so a boot failure reports its own cause. */
+function tailLog(logPath: string, lines = 15): string {
+  let tail = '';
+  try {
+    tail = fs
+      .readFileSync(logPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .slice(-lines)
+      .join('\n');
+  } catch {
+    // No log yet — the emulator never wrote anything.
+  }
+  return tail ? `Emulator output (${logPath}):\n${tail}` : `Emulator log: ${logPath}`;
 }
 
 async function startAndroid(
@@ -777,8 +889,18 @@ async function startAndroid(
   deviceType?: string,
   osVersion?: string,
   systemImage?: string,
-  memory?: number
+  memory?: number,
+  deviceName?: string
 ): Promise<number> {
+  if (avdName && deviceName && avdName !== deviceName) {
+    printError(
+      `--avd "${avdName}" and --device-name "${deviceName}" name different AVDs. Pass one.`,
+      opts
+    );
+    return 1;
+  }
+  avdName = avdName ?? deviceName;
+
   let avds: string[];
   try {
     avds = await listAVDs();
@@ -825,18 +947,29 @@ async function startAndroid(
     return 1;
   }
 
+  // Booting an AVD that is already up just makes the second emulator exit, which
+  // used to show up as a full boot timeout.
+  const running = await findRunningEmulator(target);
+  if (running) {
+    printSuccess(`Emulator already running: ${target} (${running})`, opts);
+    return 0;
+  }
+
   console.log(`Launching emulator: ${target}...`);
 
+  const logPath = emulatorLogPath(target);
+  const log = openEmulatorLog(logPath);
   const proc = spawn(
     resolveAndroidTool('emulator'),
     ['-avd', target, '-netdelay', 'none', '-netspeed', 'full'],
-    { detached: true, stdio: 'ignore', env: androidSpawnEnv() }
+    { detached: true, stdio: ['ignore', log ?? 'ignore', log ?? 'ignore'], env: androidSpawnEnv() }
   );
   proc.unref();
+  if (log !== undefined) fs.closeSync(log);
 
   let deviceId: string;
   try {
-    deviceId = await waitForAndroidBoot(target);
+    deviceId = await waitForAndroidBoot(target, logPath);
   } catch (e) {
     printError(e instanceof Error ? e.message : String(e), opts);
     return 1;
@@ -1023,6 +1156,7 @@ export async function startDevice(
     osVersion?: string;
     avd?: string;
     name?: string;
+    deviceName?: string;
     deviceType?: string;
     systemImage?: string;
     browser?: string;
@@ -1036,9 +1170,9 @@ export async function startDevice(
 
   switch (platform.toLowerCase()) {
     case 'ios':
-      return startIOS(flags.osVersion, opts, flags.name, flags.deviceType);
+      return startIOS(flags.osVersion, opts, flags.name, flags.deviceType, flags.deviceName);
     case 'tvos':
-      return startTvOS(flags.osVersion, opts, flags.name, flags.deviceType);
+      return startTvOS(flags.osVersion, opts, flags.name, flags.deviceType, flags.deviceName);
     case 'android':
       return startAndroid(
         flags.avd,
@@ -1046,14 +1180,16 @@ export async function startDevice(
         flags.deviceType,
         flags.osVersion,
         flags.systemImage,
-        flags.memory
+        flags.memory,
+        flags.deviceName
       );
     case 'web':
       return startWebDriver(opts, flags.browser, flags.name);
     case 'vega':
-      return startVega(opts, flags.name);
+      // Vega and Roku already select by name, so --device-name is the same knob.
+      return startVega(opts, flags.deviceName ?? flags.name);
     case 'roku':
-      return startRoku(opts, flags.name);
+      return startRoku(opts, flags.deviceName ?? flags.name);
     default:
       printError(
         `Unknown platform "${platform}". Use ios, android, tvos, web, vega, or roku.`,

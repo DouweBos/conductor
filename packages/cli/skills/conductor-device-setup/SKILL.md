@@ -23,6 +23,7 @@ conductor list-apps          # installed app ids / package names (--json adds ap
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `conductor start-device --platform <ios\|android\|tvos\|web\|vega\|roku>` | Boot a simulator/emulator, start the web driver, attach to a Vega VVD, or check a Roku device |
 | `conductor start-device --os-version <n> --device-type <name>`        | Pick OS version + device type (creates if needed)                          |
+| `conductor start-device --device-name <name>`                          | Boot the existing device with that name (iOS/tvOS sim name, Android AVD, Vega serial, Roku host) |
 | `conductor start-device --platform android --avd <name> --device-type <profile> --memory <mb>` | Create an Android AVD with a RAM floor (default 4096MB; only raises, creation-time only) |
 | `conductor stop-device [<name-or-id>] [--all]`                        | Shut down device(s)                                                        |
 | `conductor delete-device <name-or-id> [--all]`                        | Delete simulator(s)/AVD(s)/web session(s)                                  |
@@ -219,5 +220,6 @@ doesn't.
 ## Tips
 
 - `--device <id>` / `--device-name <name>` targets a device; `--platform` scopes by platform.
+  On `start-device` the device isn't booted yet, so `--device-name` selects which one to boot.
 - Add `--json` for machine-readable output.
 - `conductor <command> --help` for exact flags.
