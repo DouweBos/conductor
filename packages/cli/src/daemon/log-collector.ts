@@ -94,7 +94,8 @@ export class LogCollector {
       this.platform === 'ios' ||
       this.platform === 'tvos' ||
       this.platform === 'android' ||
-      this.platform === 'vega'
+      this.platform === 'vega' ||
+      this.platform === 'macos'
     ) {
       this.startMetroAutoDiscovery();
     }

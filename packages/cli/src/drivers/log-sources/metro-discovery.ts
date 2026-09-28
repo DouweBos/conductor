@@ -5,10 +5,10 @@
  *
  * The flow:
  *   1. From a device ID (simulator UDID / emulator serial), find which Metro
- *      port the device is connected to via `lsof` (iOS/tvOS) or
- *      `adb reverse` (Android). No scanning / probing required.
+ *      port the device is connected to via `lsof` (iOS/tvOS, and macOS on the
+ *      session app's pid) or `adb reverse` (Android). No scanning / probing required.
  *   2. From the same device ID, resolve the human-readable display name
- *      (`xcrun simctl list` / `adb getprop`).
+ *      (`xcrun simctl list` / `adb getprop` / the Mac's computer name).
  *   3. Query Metro's /json and filter targets whose `deviceName` matches.
  *
  * Matching by `deviceName` handles the case where multiple devices share a
@@ -19,6 +19,8 @@ import { spawn } from 'child_process';
 import { fetchTargets, MetroTarget } from './metro.js';
 import { resolveAndroidTool } from '../../android/sdk.js';
 import { VegaCli } from '../vega/cli.js';
+import { macAppPid } from '../macos.js';
+import { getSession } from '../../session.js';
 
 // Standard Metro dev-server ports to probe for the Vega VVD, which — unlike
 // iOS/Android — exposes no host-visible socket mapping we can read.
@@ -69,7 +71,20 @@ export async function discoverMetroPortForDevice(
   if (platform === 'vega') {
     return discoverMetroPortVega(deviceId);
   }
+  if (platform === 'macos') {
+    return discoverMetroPortMac(deviceId);
+  }
   return null;
+}
+
+/**
+ * The Mac is one host shared with every simulator, so only the session app's
+ * own sockets count — never any process that happens to talk to Metro.
+ */
+async function discoverMetroPortMac(deviceId: string): Promise<number | null> {
+  const appId = (await getSession(deviceId).catch(() => undefined))?.appId;
+  const pid = appId ? await macAppPid(appId) : undefined;
+  return pid === undefined ? null : metroPortForPids([pid]);
 }
 
 /**
@@ -117,7 +132,11 @@ async function discoverMetroPortAndroid(deviceId: string): Promise<number | null
 }
 
 async function discoverMetroPortIOS(deviceId: string): Promise<number | null> {
-  const pids = await getSimAppPIDs(deviceId);
+  return metroPortForPids(await getSimAppPIDs(deviceId));
+}
+
+/** The verified Metro port any of these host processes holds a loopback socket to. */
+async function metroPortForPids(pids: number[]): Promise<number | null> {
   if (pids.length === 0) return null;
 
   const ports = new Set<number>();
@@ -189,6 +208,7 @@ async function getSimAppPIDs(deviceId: string): Promise<number[]> {
  *
  * iOS/tvOS: the simulator's name from `xcrun simctl list devices`.
  * Android: `ro.product.model` via adb.
+ * macOS: the computer name — react-native-macos reports `NSHost.localizedName`.
  */
 export async function getDeviceDisplayName(
   platform: string,
@@ -220,6 +240,13 @@ export async function getDeviceDisplayName(
       ]);
       const name = output.trim();
       return name || null;
+    } catch {
+      return null;
+    }
+  }
+  if (platform === 'macos') {
+    try {
+      return (await spawnCapture('scutil', ['--get', 'ComputerName'])).trim() || null;
     } catch {
       return null;
     }

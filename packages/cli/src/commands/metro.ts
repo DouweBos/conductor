@@ -4,6 +4,9 @@ export const HELP = `  metro stop [--port N]                Stop the Metro bundl
   metro use --reset [<appId>]           Drop the override, back to the compiled-in port`;
 
 import { spawn } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 import { cdpCall, resolveMetroPort } from '../drivers/metro-cdp.js';
 import { detectPlatform, detectDeviceKind } from '../drivers/bootstrap.js';
@@ -166,8 +169,33 @@ async function isPackagerRunning(location: string): Promise<boolean> {
 }
 
 /**
+ * The `defaults` domain a Mac app reads. A sandboxed app reads the plist in its
+ * container, which `defaults <bundleId>` doesn't reach, so name that file.
+ */
+export function macDefaultsDomain(appId: string, home = os.homedir()): string {
+  const container = path.join(
+    home,
+    'Library',
+    'Containers',
+    appId,
+    'Data',
+    'Library',
+    'Preferences'
+  );
+  return fs.existsSync(container) ? path.join(container, appId) : appId;
+}
+
+/** `defaults` on the simulator (iOS/tvOS) or the host (macOS). */
+function defaultsCommand(platform: string, deviceId: string, args: string[]): [string, string[]] {
+  return platform === 'macos'
+    ? ['defaults', args]
+    : ['xcrun', ['simctl', 'spawn', deviceId, 'defaults', ...args]];
+}
+
+/**
  * Point a React Native app at a specific Metro by writing RCTBundleURLProvider's
- * `RCT_jsLocation` default into the app's preferences on a simulator.
+ * `RCT_jsLocation` default into the app's preferences on a simulator, or on the
+ * host for react-native-macos.
  *
  * The port an app asks for is compiled into React-Core from `RCT_METRO_PORT` at
  * pod-install time, so a build made against the wrong port (a git worktree with
@@ -188,16 +216,17 @@ export async function metroUse(
   }
 
   const platform = await detectPlatform(deviceId).catch(() => undefined);
-  if (platform !== 'ios' && platform !== 'tvos') {
+  if (platform !== 'ios' && platform !== 'tvos' && platform !== 'macos') {
     printError(
-      `metro use: only iOS/tvOS simulators are supported (device is ${platform ?? 'unknown'}).\n` +
+      `metro use: only iOS/tvOS simulators and macOS are supported (device is ${platform ?? 'unknown'}).\n` +
         'On Android, map the port instead: adb -s <serial> reverse tcp:8081 tcp:<metro-port>',
       opts
     );
     return 1;
   }
 
-  const kind = await detectDeviceKind(deviceId).catch(() => undefined);
+  const kind =
+    platform === 'macos' ? undefined : await detectDeviceKind(deviceId).catch(() => undefined);
   if (kind === 'physical') {
     printError(
       'metro use: physical devices read their packager host from the bundled ip.txt, ' +
@@ -216,15 +245,8 @@ export async function metroUse(
   if (useOpts.reset) {
     // `defaults delete` exits non-zero when the key was never written, which is
     // the same end state the caller asked for.
-    await spawnCommand('xcrun', [
-      'simctl',
-      'spawn',
-      deviceId,
-      'defaults',
-      'delete',
-      appId,
-      JS_LOCATION_KEY,
-    ]);
+    const domain = platform === 'macos' ? macDefaultsDomain(appId) : appId;
+    await spawnCommand(...defaultsCommand(platform, deviceId, ['delete', domain, JS_LOCATION_KEY]));
 
     if (opts.json) printData({ appId, deviceId, location: null, reset: true }, opts);
     else printSuccess(`Cleared Metro override for "${appId}" — relaunch the app to apply`, opts);
@@ -246,16 +268,10 @@ export async function metroUse(
 
   const running = await isPackagerRunning(location);
 
-  const result = await spawnCommand('xcrun', [
-    'simctl',
-    'spawn',
-    deviceId,
-    'defaults',
-    'write',
-    appId,
-    JS_LOCATION_KEY,
-    location,
-  ]);
+  const domain = platform === 'macos' ? macDefaultsDomain(appId) : appId;
+  const result = await spawnCommand(
+    ...defaultsCommand(platform, deviceId, ['write', domain, JS_LOCATION_KEY, location])
+  );
 
   if (!result.success) {
     printError(

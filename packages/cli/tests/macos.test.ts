@@ -3,7 +3,10 @@
  * device ID, the background driver's capture routes, and the guarantee that no
  * simulator-only path runs against the host Mac.
  */
+import fs from 'fs';
 import http from 'http';
+import os from 'os';
+import path from 'path';
 import type { AddressInfo } from 'net';
 import { TestSuite, assert } from './runner.js';
 import { detectPlatform } from '../src/drivers/bootstrap.js';
@@ -14,6 +17,7 @@ import {
   parseMacModifiers,
 } from '../src/drivers/macos.js';
 import { macCpuArgs } from '../src/commands/profile.js';
+import { macDefaultsDomain } from '../src/commands/metro.js';
 import { macViewportFlagError } from '../src/commands/set-viewport.js';
 import { parseWindowArgs } from '../src/commands/window.js';
 
@@ -172,4 +176,19 @@ macos.test('profile cpu attaches xctrace by pid with no --device', async () => {
   assert(args[args.indexOf('--attach') + 1] === '4321', 'attaches by pid');
   assert(args[args.indexOf('--time-limit') + 1] === '5s', 'time limit');
   assert(args[args.indexOf('--output') + 1] === '/tmp/cpu.trace', 'output');
+});
+
+macos.test("metro use writes a sandboxed app's container defaults", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'conductor-home-'));
+  try {
+    assert(macDefaultsDomain('com.example.plain', home) === 'com.example.plain', 'unsandboxed');
+    const prefs = path.join(home, 'Library/Containers/com.example.boxed/Data/Library/Preferences');
+    fs.mkdirSync(prefs, { recursive: true });
+    assert(
+      macDefaultsDomain('com.example.boxed', home) === path.join(prefs, 'com.example.boxed'),
+      'sandboxed apps read their container plist'
+    );
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });
