@@ -41,6 +41,9 @@ module.exports = {
   afterPack: "./scripts/electron-after-pack.cjs",
   mac: {
     category: "public.app-category.developer-tools",
+    // Icon Composer bundle: light/dark/tinted on macOS 26+; actool (Xcode 26)
+    // derives the legacy .icns from it for older macOS.
+    icon: "build/icon.icon",
     target: [
       { target: "dmg", arch: ["arm64"] },
       { target: "zip", arch: ["arm64"] }, // zip is required for the electron-updater feed
