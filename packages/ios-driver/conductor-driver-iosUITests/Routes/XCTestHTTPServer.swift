@@ -22,6 +22,14 @@ enum Route: String, CaseIterable {
     case launchApp
     case terminateApp
     case restoreFocus
+    #if os(macOS)
+    case rightClick
+    case hover
+    case scroll
+    case drag
+    case menu
+    case target
+    #endif
 
     func toHTTPRoute() -> HTTPRoute {
         return HTTPRoute(rawValue)

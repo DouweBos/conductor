@@ -43,8 +43,16 @@ struct QueryElementHandler: HTTPHandler {
         }
 
         do {
+            #if os(macOS)
+            // Frames go out window-relative, matching the hierarchy and screenshot.
+            let screen = MacScreen.current()
+            let app = screen.app ?? XCUIApplication(bundleIdentifier: RunningApp.homeBundleId)
+            let origin = screen.frame.origin
+            #else
             let app = RunningApp.getForegroundApp()
-                ?? XCUIApplication(bundleIdentifier: RunningApp.springboardBundleId)
+                ?? XCUIApplication(bundleIdentifier: RunningApp.homeBundleId)
+            let origin = CGPoint.zero
+            #endif
             let predicate = Self.buildPredicate(key: requestBody.selectorKey, value: value)
             let query = app.descendants(matching: .any).matching(predicate)
 
@@ -63,7 +71,7 @@ struct QueryElementHandler: HTTPHandler {
                 let response = QueryElementResponse(
                     found: true,
                     matchCount: 1,
-                    node: Self.axElement(from: snapshot)
+                    node: Self.axElement(from: snapshot, origin: origin)
                 )
                 return HTTPResponse(statusCode: .ok, body: try JSONEncoder().encode(response))
             }
@@ -101,12 +109,20 @@ struct QueryElementHandler: HTTPHandler {
         }
     }
 
+    private static func hasFocus(_ snapshot: XCUIElementSnapshot) -> Bool {
+        #if os(macOS)
+        return false
+        #else
+        return snapshot.hasFocus
+        #endif
+    }
+
     /// Builds a shallow `AXElement` (no children) from an element snapshot —
     /// the caller only needs this node's frame and attributes to act on it.
-    private static func axElement(from snapshot: XCUIElementSnapshot) -> AXElement {
+    private static func axElement(from snapshot: XCUIElementSnapshot, origin: CGPoint) -> AXElement {
         let frame: AXFrame = [
-            "X": Double(snapshot.frame.minX),
-            "Y": Double(snapshot.frame.minY),
+            "X": Double(snapshot.frame.minX - origin.x),
+            "Y": Double(snapshot.frame.minY - origin.y),
             "Width": Double(snapshot.frame.width),
             "Height": Double(snapshot.frame.height),
         ]
@@ -120,7 +136,8 @@ struct QueryElementHandler: HTTPHandler {
             enabled: snapshot.isEnabled,
             placeholderValue: snapshot.placeholderValue,
             selected: snapshot.isSelected,
-            hasFocus: snapshot.hasFocus,
+            // macOS snapshots have no focus attribute; keyboard focus isn't exposed there.
+            hasFocus: Self.hasFocus(snapshot),
             children: nil
         )
     }

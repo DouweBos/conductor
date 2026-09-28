@@ -1,3 +1,4 @@
+#if !os(macOS)
 import XCTest
 import ConductorDriverLib
 
@@ -64,3 +65,4 @@ final class SystemPermissionHelper {
         }
     }
 }
+#endif

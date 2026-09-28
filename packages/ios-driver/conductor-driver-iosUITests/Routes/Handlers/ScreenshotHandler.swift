@@ -12,8 +12,15 @@ struct ScreenshotHandler: HTTPHandler {
     func handleRequest(_ request: FlyingFox.HTTPRequest) async throws -> FlyingFox.HTTPResponse {
         let compressed = request.query["compressed"] == "true"
         
+        #if os(macOS)
+        let png = MacScreen.current().screenshotPNG()
+        let image = compressed
+            ? NSBitmapImageRep(data: png)?.representation(using: .jpeg, properties: [.compressionFactor: 0.5])
+            : png
+        #else
         let fullScreenshot = XCUIScreen.main.screenshot()
         let image = compressed ? fullScreenshot.image.jpegData(compressionQuality: 0.5) : fullScreenshot.pngRepresentation
+        #endif
         
         guard let image = image else {
             return AppError(type: .precondition, message: "incorrect request body received for screenshot request").httpResponse

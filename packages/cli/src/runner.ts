@@ -4,6 +4,7 @@ import { getSession } from './session.js';
 import { parseFlowString, executeFlow } from './drivers/flow-runner.js';
 import { log } from './verbose.js';
 import { IOSDriver } from './drivers/ios.js';
+import { MacDriver } from './drivers/macos.js';
 import { AndroidDriver } from './drivers/android.js';
 import { WebDriver } from './drivers/web.js';
 import { VegaDriver } from './drivers/vega.js';
@@ -19,6 +20,7 @@ import {
   webBrowserName,
   generateWebSessionId,
   isUnqualifiedWebId,
+  macosSetupHint,
 } from './drivers/bootstrap.js';
 import {
   startDaemon,
@@ -214,6 +216,30 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
       );
     }
     driver = tvosDriver;
+  } else if (platform === 'macos') {
+    if (!(await isPortOpen(port))) {
+      log(`macOS driver not running — starting daemon...`);
+      await startDaemon(deviceId);
+      await waitForPort(port).catch((err: Error) => {
+        throw new Error(`${err.message}\n${macosSetupHint()}`);
+      });
+    }
+    const macDriver = new MacDriver(port);
+    if (!(await macDriver.isAlive())) {
+      throw new Error(
+        `macOS XCTest driver on port ${port} is not responding.\n` +
+          `Run: conductor daemon-start --device macos\n${macosSetupHint()}`
+      );
+    }
+    // The driver outlives CLI invocations; re-assert the session's app each time
+    // so a command never lands on the IDE the user happens to be typing in.
+    const status = await macDriver.status();
+    if (status.accessibility === false) {
+      throw new Error(`The macOS driver has no Accessibility permission yet.\n${macosSetupHint()}`);
+    }
+    const { appId } = await getSession(sessionName);
+    if (appId) await macDriver.setTarget(appId);
+    driver = macDriver;
   } else if (platform === 'web') {
     const browser = webBrowserName(deviceId);
     let webSession = deviceId;

@@ -110,6 +110,7 @@ export const ENUM_PARAMS: EnumParam[] = [
       { value: 'web' },
       { value: 'vega' },
       { value: 'roku' },
+      { value: 'macos' },
     ],
   },
   {
@@ -159,6 +160,7 @@ export const ENUM_PARAMS: EnumParam[] = [
       { value: 'web' },
       { value: 'vega' },
       { value: 'roku' },
+      { value: 'macos' },
     ],
   },
 ];

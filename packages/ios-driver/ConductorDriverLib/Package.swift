@@ -5,8 +5,9 @@ import PackageDescription
 let package = Package(
     name: "ConductorDriverLib",
     platforms: [
-        .iOS(.v14),
-        .tvOS(.v14)
+        .iOS(.v15),
+        .tvOS(.v15),
+        .macOS(.v13)
     ],
     products: [
         .library(

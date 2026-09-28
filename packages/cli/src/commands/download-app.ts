@@ -47,6 +47,14 @@ export async function downloadApp(
     return 1;
   }
 
+  if (platform === 'macos') {
+    printError(
+      'download-app is not needed on macOS — the app bundle is already on this Mac.',
+      opts
+    );
+    return 1;
+  }
+
   if (platform === 'ios' || platform === 'tvos') {
     // Get the .app bundle path from the simulator
     const getPath = await spawnCommand('xcrun', [

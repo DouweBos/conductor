@@ -17,6 +17,19 @@ struct TouchRouteHandler: HTTPHandler {
             return AppError(type: .precondition, message: "incorrect request body provided for tap route").httpResponse
         }
         
+        #if os(macOS)
+        let target = MacScreen.forInput().coordinate(CGPoint(x: Double(requestBody.x), y: Double(requestBody.y)))
+        XCUIElement.perform(withKeyModifiers: MacKeys.modifiers(requestBody.modifiers)) {
+            if let duration = requestBody.duration {
+                target.press(forDuration: duration)
+            } else if requestBody.count == 2 {
+                target.doubleClick()
+            } else {
+                target.click()
+            }
+        }
+        return HTTPResponse(statusCode: .ok)
+        #else
         let (width, height) = ScreenSizeHelper.physicalScreenSize()
         let point = ScreenSizeHelper.orientationAwarePoint(
             width: width,
@@ -46,5 +59,6 @@ struct TouchRouteHandler: HTTPHandler {
             NSLog("Error tapping: \(error)")
             return AppError(message: "Error tapping point: \(error.localizedDescription)").httpResponse
         }
+        #endif
     }
 }

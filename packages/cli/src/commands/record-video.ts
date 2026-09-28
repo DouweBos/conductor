@@ -54,7 +54,9 @@ async function start(
 
   let state: RecordingState | null = null;
   const result = await runDirect(async (driver) => {
-    if (driver instanceof IOSDriver) {
+    if (driver instanceof IOSDriver && driver.platform === 'macos') {
+      throw new Error('record-video is not supported on macOS yet — use take-screenshot');
+    } else if (driver instanceof IOSDriver) {
       const outPath = path.resolve(process.cwd(), flags.out ?? 'conductor-recording.mov');
       const proc = spawn(
         'xcrun',

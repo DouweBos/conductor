@@ -21,7 +21,7 @@ export interface CaptureBundle {
   version: 1;
   capturedAt: string;
   device: {
-    platform: 'ios' | 'android' | 'web' | 'tvos' | 'vega' | 'roku';
+    platform: 'ios' | 'android' | 'web' | 'tvos' | 'vega' | 'roku' | 'macos';
     deviceId: string;
     width: number;
     height: number;
@@ -73,7 +73,7 @@ export async function captureUI(
     let screenshotBuf: Buffer;
 
     if (driver instanceof IOSDriver) {
-      platform = driver.platform; // 'ios' | 'tvos'
+      platform = driver.platform; // 'ios' | 'tvos' | 'macos'
       const [info, vh, shot] = await Promise.all([
         driver.deviceInfo(),
         driver.viewHierarchy(false),

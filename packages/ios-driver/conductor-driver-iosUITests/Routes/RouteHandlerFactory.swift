@@ -44,6 +44,20 @@ class RouteHandlerFactory {
              return LaunchAppHandler()
         case .restoreFocus:
             return RestoreFocusHandler()
+        #if os(macOS)
+        case .rightClick:
+            return RightClickHandler()
+        case .hover:
+            return HoverHandler()
+        case .scroll:
+            return ScrollHandler()
+        case .drag:
+            return DragHandler()
+        case .menu:
+            return MenuHandler()
+        case .target:
+            return TargetHandler()
+        #endif
         }
     }
 }

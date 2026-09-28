@@ -13,10 +13,16 @@ struct IsScreenStaticHandler: HTTPHandler {
     
     func handleRequest(_ request: FlyingFox.HTTPRequest) async throws -> FlyingFox.HTTPResponse {
         do {
+            #if os(macOS)
+            let screen = MacScreen.current()
+            let hash1 = SHA256.hash(data: screen.screenshotPNG())
+            let hash2 = SHA256.hash(data: screen.screenshotPNG())
+            #else
             let screenshot1 = XCUIScreen.main.screenshot()
             let screenshot2 = XCUIScreen.main.screenshot()
             let hash1 = SHA256.hash(data: screenshot1.pngRepresentation)
             let hash2 = SHA256.hash(data: screenshot2.pngRepresentation)
+            #endif
             
             let isScreenStatic = hash1 == hash2
             

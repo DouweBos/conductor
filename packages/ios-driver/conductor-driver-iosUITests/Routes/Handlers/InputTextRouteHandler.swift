@@ -14,6 +14,10 @@ struct InputTextRouteHandler : HTTPHandler {
             return AppError(type: .precondition, message: "incorrect request body provided for input text").httpResponse
         }
 
+        #if os(macOS)
+        MacScreen.forInput().keyTarget.typeText(requestBody.text)
+        return HTTPResponse(statusCode: .ok)
+        #else
         do {
             let start = Date()
 
@@ -40,6 +44,7 @@ struct InputTextRouteHandler : HTTPHandler {
         } catch {
             return AppError(message: "Error inputting text: \(error.localizedDescription)").httpResponse
         }
+        #endif
     }
 
     /// True only when we are confident the input was dropped: non-empty text
@@ -67,7 +72,7 @@ struct InputTextRouteHandler : HTTPHandler {
 
     private func waitUntilKeyboardIsPresented() async {
         try? await TimeoutHelper.repeatUntil(timeout: 1, delta: 0.2) {
-            let app = RunningApp.getForegroundApp() ?? XCUIApplication(bundleIdentifier: RunningApp.springboardBundleId)
+            let app = RunningApp.getForegroundApp() ?? XCUIApplication(bundleIdentifier: RunningApp.homeBundleId)
 
             return app.keyboards.firstMatch.exists
         }

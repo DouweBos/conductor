@@ -1,5 +1,6 @@
 export const HELP = `  start-device
-    --platform <ios|android|tvos|web|vega|roku> Boot a simulator/emulator, start the web driver (Playwright), attach a Vega VVD, or check a Roku device
+    --platform <ios|android|tvos|web|vega|roku|macos> Boot a simulator/emulator, start the web driver (Playwright), attach a Vega VVD,
+                                      check a Roku device, or start the driver for this Mac
     --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
     --avd <name>                      Android AVD name (default: first available; created if missing + --device-type)
     --device-name <name>              Boot the existing device with this name (iOS/tvOS sim name,
@@ -21,7 +22,13 @@ import { spawnCommand, prewarmDriver } from '../runner.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { startDaemon, findRunningWebSession } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
-import { generateWebSessionId } from '../drivers/bootstrap.js';
+import {
+  generateWebSessionId,
+  macAutomationNeedsAuth,
+  macosForeground,
+  macosSetupHint,
+} from '../drivers/bootstrap.js';
+import { MACOS_DEVICE_ID } from '../drivers/macos.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { sleep } from '../utils.js';
 import { VegaCli, VegaDevice } from '../drivers/vega/cli.js';
@@ -1147,6 +1154,36 @@ async function startRoku(opts: OutputOptions, deviceName?: string): Promise<numb
   return 0;
 }
 
+// ── macOS ─────────────────────────────────────────────────────────────────────
+
+/**
+ * The Mac is the host, so there is nothing to boot — this only checks the
+ * one-time automation approvals and warms up the driver.
+ */
+async function startMacOS(opts: OutputOptions): Promise<number> {
+  if (process.platform !== 'darwin') {
+    printError('--platform macos drives the host Mac, so it only works on macOS.', opts);
+    return 1;
+  }
+  const foreground = macosForeground();
+  if (foreground && (await macAutomationNeedsAuth()) === true) {
+    process.stderr.write(
+      'note: macOS will ask for an admin password the first time the driver starts. ' +
+        'Run `automationmodetool enable-automationmode-without-authentication` once to skip it.\n'
+    );
+  }
+  await prewarmDriver(MACOS_DEVICE_ID);
+  printSuccess(
+    `macOS driver starting for this Mac (${MACOS_DEVICE_ID}). ` +
+      (foreground
+        ? 'The foreground driver drives your real mouse and keyboard — leave the Mac alone until commands finish.\n'
+        : 'It works in the background: your pointer and keyboard stay yours.\n') +
+      macosSetupHint(),
+    opts
+  );
+  return 0;
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function startDevice(
@@ -1164,7 +1201,7 @@ export async function startDevice(
   }
 ): Promise<number> {
   if (!platform) {
-    printError('start-device requires --platform ios|android|tvos|web|vega|roku', opts);
+    printError('start-device requires --platform ios|android|tvos|web|vega|roku|macos', opts);
     return 1;
   }
 
@@ -1190,9 +1227,11 @@ export async function startDevice(
       return startVega(opts, flags.deviceName ?? flags.name);
     case 'roku':
       return startRoku(opts, flags.deviceName ?? flags.name);
+    case 'macos':
+      return startMacOS(opts);
     default:
       printError(
-        `Unknown platform "${platform}". Use ios, android, tvos, web, vega, or roku.`,
+        `Unknown platform "${platform}". Use ios, android, tvos, web, vega, roku, or macos.`,
         opts
       );
       return 1;

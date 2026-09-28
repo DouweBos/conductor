@@ -1,4 +1,4 @@
-.PHONY: build build-cli build-ios-driver build-ios-inproc build-ios-capture build-ios-fold build-tvos-driver build-android-driver package-cli package-driver-sources package-drivers-tarball
+.PHONY: build build-cli build-ios-driver build-ios-inproc build-ios-capture build-ios-fold build-tvos-driver build-macos-driver build-macos-ax build-android-driver package-cli package-driver-sources package-drivers-tarball
 
 DRIVERS_TARBALL_DIR = dist-drivers
 
@@ -8,8 +8,10 @@ IOS_DERIVED    = packages/ios-driver/derived-data
 IOS_BUILD_PRODUCTS = $(IOS_DERIVED)/Build/Products/Debug-iphonesimulator
 TVOS_DERIVED   = packages/ios-driver/derived-data-tvos
 TVOS_BUILD_PRODUCTS = $(TVOS_DERIVED)/Build/Products/Debug-appletvsimulator
+MACOS_DERIVED  = packages/ios-driver/derived-data-macos
+MACOS_BUILD_PRODUCTS = $(MACOS_DERIVED)/Build/Products/Debug
 
-build: build-ios-driver build-ios-inproc build-ios-capture build-ios-fold build-tvos-driver build-android-driver package-cli build-cli
+build: build-ios-driver build-ios-inproc build-ios-capture build-ios-fold build-tvos-driver build-macos-driver build-macos-ax build-android-driver package-cli build-cli
 
 build-cli:
 	cd packages/cli && pnpm build
@@ -41,11 +43,24 @@ build-tvos-driver:
 		-destination "generic/platform=tvOS Simulator" \
 		-derivedDataPath $(CURDIR)/$(TVOS_DERIVED)
 
+# Ad-hoc signed ("Sign to Run Locally"), so the prebuilt runner works on any Mac
+# without a developer team.
+build-macos-driver:
+	xcodebuild build-for-testing \
+		-project packages/ios-driver/conductor-driver-ios.xcodeproj \
+		-scheme conductor-driver-macos \
+		-destination "generic/platform=macOS" \
+		-derivedDataPath $(CURDIR)/$(MACOS_DERIVED)
+
+# Background macOS driver (Accessibility) → $(CLI_DRIVERS)/macos-ax/ConductorAX.app
+build-macos-ax:
+	packages/macos-ax/tools/build-ax.sh
+
 build-android-driver:
 	cd packages/android-driver && ./gradlew :conductor-android:assembleDebug :conductor-android:assembleAndroidTest
 
-package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-android-driver package-driver-sources
-	mkdir -p $(CLI_DRIVERS)/android $(CLI_DRIVERS)/ios $(CLI_DRIVERS)/tvos
+package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-macos-driver build-android-driver package-driver-sources
+	mkdir -p $(CLI_DRIVERS)/android $(CLI_DRIVERS)/ios $(CLI_DRIVERS)/tvos $(CLI_DRIVERS)/macos
 	cp $(ANDROID_OUT)/debug/conductor-android-debug.apk \
 		$(CLI_DRIVERS)/android/conductor-app.apk
 	cp $(ANDROID_OUT)/androidTest/debug/conductor-android-debug-androidTest.apk \
@@ -60,6 +75,11 @@ package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-android-d
 	cd $(TVOS_BUILD_PRODUCTS) && zip -qr $(CURDIR)/$(CLI_DRIVERS)/tvos/conductor-driver-tvosUITests-Runner.zip conductor-driver-tvosUITests-Runner.app
 	cp $$(find $(TVOS_DERIVED)/Build/Products -name "*.xctestrun" | head -1) \
 		$(CLI_DRIVERS)/tvos/conductor-driver-tvos-config.xctestrun
+	packages/ios-driver/tools/brand-mac-runner.sh apps/studio/build/icon.icns $(MACOS_BUILD_PRODUCTS)/conductor-driver-macos.app $(MACOS_BUILD_PRODUCTS)/conductor-driver-macosUITests-Runner.app
+	cd $(MACOS_BUILD_PRODUCTS) && zip -qry $(CURDIR)/$(CLI_DRIVERS)/macos/conductor-driver-macos.zip conductor-driver-macos.app
+	cd $(MACOS_BUILD_PRODUCTS) && zip -qry $(CURDIR)/$(CLI_DRIVERS)/macos/conductor-driver-macosUITests-Runner.zip conductor-driver-macosUITests-Runner.app
+	cp $$(find $(MACOS_DERIVED)/Build/Products -name "*.xctestrun" | head -1) \
+		$(CLI_DRIVERS)/macos/conductor-driver-macos-config.xctestrun
 
 # Driver sources for physical devices. Real hardware only runs code signed for
 # the user's team, so the driver is compiled locally on first use rather than
@@ -69,7 +89,7 @@ package-driver-sources:
 	rm -rf $(IOS_DRIVER_SRC)
 	mkdir -p $(IOS_DRIVER_SRC)
 	cd packages/ios-driver && tar -cf - \
-		--exclude derived-data --exclude derived-data-tvos --exclude .DS_Store \
+		--exclude derived-data --exclude derived-data-tvos --exclude derived-data-macos --exclude .DS_Store \
 		--exclude .build --exclude xcuserdata \
 		conductor-driver-ios.xcodeproj conductor-driver-ios conductor-driver-iosUITests \
 		conductor-driver-iosTests ConductorDriverLib packages \
@@ -77,4 +97,4 @@ package-driver-sources:
 
 package-drivers-tarball: package-driver-sources
 	mkdir -p $(DRIVERS_TARBALL_DIR)
-	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc ios-capture ios-fold tvos ios-driver-src
+	cd $(CLI_DRIVERS) && tar -czf $(CURDIR)/$(DRIVERS_TARBALL_DIR)/drivers.tar.gz android ios ios-inproc ios-capture ios-fold tvos macos macos-ax ios-driver-src

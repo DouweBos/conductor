@@ -15,10 +15,14 @@ struct SetOrientationHandler: HTTPHandler {
             return AppError(type: .precondition, message: "incorrect request body provided for set orientation").httpResponse
         }
 
-        #if !os(tvOS)
+        #if os(macOS)
+        return AppError(type: .precondition, message: "Orientation is not supported on macOS").httpResponse
+        #else
+        #if os(iOS)
         XCUIDevice.shared.orientation = requestBody.orientation.uiDeviceOrientation
         #endif
         
         return HTTPResponse(statusCode: .ok)
+        #endif
     }
 }

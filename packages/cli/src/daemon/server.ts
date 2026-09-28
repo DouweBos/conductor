@@ -30,6 +30,8 @@ import {
   startIOSDriver,
   startAndroidDriver,
   startTvOSDriver,
+  startMacOSDriver,
+  stopMacOSDriver,
   stopIOSDriver,
   stopAndroidDriver,
   uninstallDriver,
@@ -107,7 +109,7 @@ function dlog(msg: string): void {
 // ── Driver lifecycle ──────────────────────────────────────────────────────────
 
 let driverPort = 1075;
-let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku' = 'ios';
+let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku' | 'macos' = 'ios';
 
 /**
  * Host the driver is reachable on. Simulators and every non-Apple platform use
@@ -238,7 +240,7 @@ async function ensureDriverRunning(): Promise<void> {
     alive = await probe.isAlive().catch(() => false);
     probe.close();
   } else {
-    // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive.
+    // 'ios', 'tvos', 'macos' and 'web' all use an HTTP server — port open = alive.
     // Physical devices answer on the LAN rather than the host's loopback.
     alive = await isPortOpen(driverPort, await driverHost());
   }
@@ -265,6 +267,8 @@ async function ensureDriverRunning(): Promise<void> {
       } else if (driverPlatform === 'tvos') {
         // Health-check restart — don't dismiss, to avoid disrupting user's app
         await startTvOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ false);
+      } else if (driverPlatform === 'macos') {
+        await startMacOSDriver(driverPort);
       } else if (driverPlatform === 'web') {
         await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl, cdpTargetId);
       } else {
@@ -385,6 +389,9 @@ async function main(): Promise<void> {
             await stopDeviceDriver(sessionName, 'ios');
           } else if (driverPlatform === 'ios') {
             await stopIOSDriver(sessionName);
+          } else if (driverPlatform === 'macos') {
+            // The runner drives the real mouse and keyboard; never leave it behind.
+            await stopMacOSDriver();
           } else {
             await stopAndroidDriver(sessionName, driverPort);
           }
@@ -570,7 +577,9 @@ async function main(): Promise<void> {
  * Bring up the driver process for a platform that has one. Sets `_driverStarted` /
  * `_driverStartError`. Extracted so the vega and roku paths can skip it entirely.
  */
-async function startDriverForPlatform(platform: 'ios' | 'android' | 'tvos' | 'web'): Promise<void> {
+async function startDriverForPlatform(
+  platform: 'ios' | 'android' | 'tvos' | 'web' | 'macos'
+): Promise<void> {
   let driverAlive: boolean;
   if (platform === 'android') {
     const probe = new AndroidDriver(sessionName, driverPort);
@@ -578,7 +587,7 @@ async function startDriverForPlatform(platform: 'ios' | 'android' | 'tvos' | 'we
     driverAlive = await probe.isAlive().catch(() => false);
     probe.close();
   } else {
-    // 'ios', 'tvos', and 'web' all use an HTTP server — port open = alive
+    // 'ios', 'tvos', 'macos' and 'web' all use an HTTP server — port open = alive
     driverAlive = await isPortOpen(driverPort, await driverHost());
   }
   if (driverAlive) {
@@ -614,6 +623,8 @@ async function startDriverForPlatform(platform: 'ios' | 'android' | 'tvos' | 'we
       // First install — the runner takes foreground; ask it to hand
       // focus back to whatever app the user had open.
       await startTvOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ true);
+    } else if (platform === 'macos') {
+      await startMacOSDriver(driverPort);
     } else if (platform === 'web') {
       await startWebServer(driverPort, webBrowserName(sessionName), dlog, cdpUrl, cdpTargetId);
     } else {

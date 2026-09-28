@@ -3,6 +3,7 @@
  *
  * Manages the underlying device driver processes:
  *   iOS:     xcodebuild test-without-building → XCTest HTTP server on port 1075
+ *   macOS:   the same XCTest server built as a macOS UI test runner, on port 6075
  *   Android: adb forward + adb shell am instrument → gRPC server on port 3763
  *
  * Driver binaries are bundled inside the npm package under drivers/android/ and
@@ -27,7 +28,7 @@ import {
 
 // ── Platform detection ────────────────────────────────────────────────────────
 
-export type Platform = 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku';
+export type Platform = 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku' | 'macos';
 
 /** Cache: deviceId → platform */
 const _platformCache = new Map<string, Platform>();
@@ -45,6 +46,12 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
   if (deviceId === 'vega' || deviceId.startsWith('vega:')) {
     _platformCache.set(deviceId, 'vega');
     return 'vega';
+  }
+
+  // The host Mac itself — there is only one, so it has a fixed ID.
+  if (deviceId === 'macos') {
+    _platformCache.set(deviceId, 'macos');
+    return 'macos';
   }
 
   // Roku: "roku:<host>" (e.g. "roku:192.168.1.100")
@@ -134,6 +141,7 @@ const TVOS_BASE_PORT = 2075;
 const ANDROID_BASE_PORT = 3763;
 const WEB_BASE_PORT = 4075;
 const VEGA_BASE_PORT = 5075;
+const MACOS_BASE_PORT = 6075;
 const INPUT_BASE_PORT = 7075;
 const STREAM_BASE_PORT = 8075;
 
@@ -148,6 +156,7 @@ interface PortState {
   nextAndroidPort: number;
   nextWebPort: number;
   nextVegaPort: number;
+  nextMacosPort?: number;
   /** Streaming-input WebSocket ports, keyed by deviceId — separate namespace from driver ports. */
   inputAssignments?: Record<string, number>;
   nextInputPort?: number;
@@ -214,6 +223,7 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
     if (state.nextTvosPort === undefined) state.nextTvosPort = TVOS_BASE_PORT;
     if (state.nextWebPort === undefined) state.nextWebPort = WEB_BASE_PORT;
     if (state.nextVegaPort === undefined) state.nextVegaPort = VEGA_BASE_PORT;
+    if (state.nextMacosPort === undefined) state.nextMacosPort = MACOS_BASE_PORT;
     let port: number;
     if (platform === 'ios') {
       port = state.nextIosPort++;
@@ -223,6 +233,8 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
       port = state.nextWebPort++;
     } else if (platform === 'vega') {
       port = state.nextVegaPort++;
+    } else if (platform === 'macos') {
+      port = state.nextMacosPort++;
     } else if (platform === 'roku') {
       // Roku is driven entirely over the network (ECP on the device's own port
       // 8060) — there is no host-side driver process, so no port to reserve.
@@ -862,6 +874,220 @@ export async function stopTvOSDriver(deviceId: string): Promise<void> {
   await spawnAndWait('xcrun', ['simctl', 'terminate', deviceId, TVOS_RUNNER_BUNDLE_ID]);
 }
 
+// ── macOS bootstrap ───────────────────────────────────────────────────────────
+
+const MACOS_RUNNER_APP = 'conductor-driver-macosUITests-Runner.app';
+const MACOS_STARTUP_TIMEOUT_MS = 120000;
+const MACOS_STARTUP_POLL_MS = 500;
+
+// __TESTROOT__ in the xctestrun resolves to this directory, so the xctestrun and
+// the Debug/ products folder both live here.
+const MACOS_DRIVER_CACHE = path.join(os.homedir(), '.conductor', 'macos-driver');
+
+/**
+ * Ensure the macOS driver files are extracted from the bundled zips into the
+ * cache dir. Re-extracts only when the bundled xctestrun has changed.
+ */
+export async function setupMacOSDriverCache(): Promise<void> {
+  const driversDir = await getDriversDir();
+  const bundledXctestrun = path.join(
+    driversDir,
+    'macos',
+    'conductor-driver-macos-config.xctestrun'
+  );
+  const bundledDriverZip = path.join(driversDir, 'macos', 'conductor-driver-macos.zip');
+  const bundledRunnerZip = path.join(
+    driversDir,
+    'macos',
+    'conductor-driver-macosUITests-Runner.zip'
+  );
+
+  if (
+    !fs.existsSync(bundledXctestrun) ||
+    !fs.existsSync(bundledDriverZip) ||
+    !fs.existsSync(bundledRunnerZip)
+  ) {
+    throw new Error(
+      `Conductor macOS driver files not found at ${path.join(driversDir, 'macos')}.\n` +
+        `Run 'make package-cli' from the repo root to build and bundle the drivers.`
+    );
+  }
+
+  const versionFile = path.join(MACOS_DRIVER_CACHE, '.version');
+  const xctestrunMtime = String(fs.statSync(bundledXctestrun).mtimeMs);
+
+  let cachedMtime = '';
+  try {
+    cachedMtime = fs.readFileSync(versionFile, 'utf-8').trim();
+  } catch {
+    /* first run */
+  }
+
+  const runnerApp = path.join(MACOS_DRIVER_CACHE, 'Debug', MACOS_RUNNER_APP);
+  if (cachedMtime === xctestrunMtime && fs.existsSync(runnerApp)) return;
+
+  log('Extracting macOS driver files to cache...');
+  fs.rmSync(MACOS_DRIVER_CACHE, { recursive: true, force: true });
+  fs.mkdirSync(MACOS_DRIVER_CACHE, { recursive: true });
+
+  fs.copyFileSync(
+    bundledXctestrun,
+    path.join(MACOS_DRIVER_CACHE, 'conductor-driver-macos-config.xctestrun')
+  );
+
+  const appsDir = path.join(MACOS_DRIVER_CACHE, 'Debug');
+  await spawnAndWait('unzip', ['-q', '-o', bundledDriverZip, '-d', appsDir]);
+  await spawnAndWait('unzip', ['-q', '-o', bundledRunnerZip, '-d', appsDir]);
+  // Gatekeeper refuses to launch a quarantined ad-hoc signed runner.
+  await spawnAndWait('xattr', ['-dr', 'com.apple.quarantine', appsDir]).catch(() => {});
+
+  fs.writeFileSync(versionFile, xctestrunMtime);
+  log('macOS driver cache ready');
+}
+
+/**
+ * Whether macOS will ask for an admin password before UI automation can start.
+ * Returns null when `automationmodetool` is unavailable (older macOS).
+ */
+export async function macAutomationNeedsAuth(): Promise<boolean | null> {
+  try {
+    const out = await spawnCapture('automationmodetool', []);
+    // "This device requires user authentication…" / "…does not require…"
+    return /\brequires user authentication/i.test(out) && !/does not require/i.test(out);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The XCUITest driver takes over the real pointer and keyboard, so it's opt-in.
+ * The default drives the app through Accessibility in the background.
+ */
+export function macosForeground(): boolean {
+  return process.env.CONDUCTOR_MACOS_FOREGROUND === '1';
+}
+
+/** One-time setup steps the active macOS driver needs, for error messages and docs. */
+export function macosSetupHint(): string {
+  if (!macosForeground()) {
+    return (
+      'The macOS driver needs two one-time approvals for ConductorAX in System Settings ▸\n' +
+      'Privacy & Security: Accessibility, and Screen & System Audio Recording (for screenshots).\n' +
+      'Restart the driver after granting (`conductor --device macos daemon-stop`). Both can reset\n' +
+      'after a conductor upgrade.'
+    );
+  }
+  return (
+    'macOS UI automation needs two one-time approvals:\n' +
+    '  1. Automation Mode: run `automationmodetool enable-automationmode-without-authentication`\n' +
+    '     (asks for an admin password once), or approve the password prompt when the driver starts.\n' +
+    '  2. Accessibility: allow conductor-driver-macosUITests-Runner in System Settings ▸\n' +
+    '     Privacy & Security ▸ Accessibility. The approval can reset after a conductor upgrade.'
+  );
+}
+
+const MACOS_AX_EXECUTABLE = path.join('ConductorAX.app', 'Contents', 'MacOS', 'conductor-ax');
+
+async function macosAxApp(): Promise<string> {
+  const app = path.join(await getDriversDir(), 'macos-ax', 'ConductorAX.app');
+  if (!fs.existsSync(app)) {
+    throw new Error(
+      `Conductor macOS driver not found at ${app}.\n` +
+        `Run 'packages/macos-ax/tools/build-ax.sh' (or 'make build-macos-ax') from the repo root.`
+    );
+  }
+  return app;
+}
+
+/**
+ * Start the macOS driver. By default that's ConductorAX, which works on the
+ * target app without moving the pointer or needing it in front; with
+ * CONDUCTOR_MACOS_FOREGROUND=1 it's the XCUITest runner, which drives the real
+ * mouse and keyboard.
+ */
+export async function startMacOSDriver(port = MACOS_BASE_PORT): Promise<void> {
+  if (await isPortOpen(port)) {
+    log(`macOS driver already running on port ${port}`);
+    return;
+  }
+
+  if (!macosForeground()) {
+    const app = await macosAxApp();
+    log(`Starting macOS background driver on port ${port}`);
+    // `open` makes ConductorAX its own responsible process, so the TCC grants
+    // attach to it rather than to the terminal that started conductor.
+    await spawnAndWait('open', ['-n', '-g', '-a', app, '--args', '--port', String(port)]);
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      await sleep(MACOS_STARTUP_POLL_MS);
+      if (await isPortOpen(port)) {
+        log(`macOS driver ready on port ${port}`);
+        return;
+      }
+    }
+    throw new Error(`macOS driver did not start on port ${port}.\n${macosSetupHint()}`);
+  }
+
+  log(`Starting macOS XCTest driver on port ${port}`);
+  await setupMacOSDriverCache();
+
+  if ((await macAutomationNeedsAuth()) === true) {
+    log(
+      'macOS will ask for an admin password to enable Automation Mode. Run ' +
+        '`automationmodetool enable-automationmode-without-authentication` once to skip it.'
+    );
+  }
+
+  const xctestrun = path.join(MACOS_DRIVER_CACHE, 'conductor-driver-macos-config.xctestrun');
+  await spawnAndWait('plutil', [
+    '-replace',
+    'conductor-driver-macosUITests.EnvironmentVariables.PORT',
+    '-string',
+    String(port),
+    xctestrun,
+  ]);
+
+  // The runner is a universal binary; pin the arch so xcodebuild doesn't see
+  // the native and Rosetta destinations as ambiguous.
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
+  const proc = spawn(
+    'xcodebuild',
+    [
+      'test-without-building',
+      '-xctestrun',
+      xctestrun,
+      '-destination',
+      `platform=macOS,arch=${arch}`,
+    ],
+    { detached: true, stdio: ['ignore', 'ignore', 'ignore'] }
+  );
+  proc.unref();
+
+  const deadline = Date.now() + MACOS_STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(MACOS_STARTUP_POLL_MS);
+    if (await isPortOpen(port)) {
+      log(`macOS driver ready on port ${port}`);
+      return;
+    }
+  }
+
+  throw new Error(
+    `macOS XCTest driver did not start within ${MACOS_STARTUP_TIMEOUT_MS / 1000}s on port ${port}.\n` +
+      macosSetupHint()
+  );
+}
+
+/** Stop whichever macOS driver is running; xcodebuild exits with its runner. */
+export async function stopMacOSDriver(): Promise<void> {
+  // Match full executable paths — a bare name would also hit any shell whose
+  // command line merely mentions it.
+  const runner = path.join(MACOS_DRIVER_CACHE, 'Debug', MACOS_RUNNER_APP, 'Contents', 'MacOS');
+  await spawnAndWait('pkill', ['-f', `^${runner}/`]).catch(() => {});
+  const ax = path.join(await getDriversDir().catch(() => ''), 'macos-ax', MACOS_AX_EXECUTABLE);
+  await spawnAndWait('pkill', ['-f', `^${ax}`]).catch(() => {});
+}
+
 // ── Physical device bootstrap ─────────────────────────────────────────────────
 
 const DEVICE_STARTUP_TIMEOUT_MS = 300000;
@@ -1310,9 +1536,10 @@ export async function stopWebDriver(port: number): Promise<void> {
  */
 export async function uninstallDriver(deviceId: string, platform: Platform): Promise<void> {
   log(`uninstallDriver: removing ${platform} driver from ${deviceId}`);
-  if (platform === 'web') {
+  if (platform === 'web' || platform === 'macos') {
     // Web has no persistent driver to uninstall — the browser is managed by the daemon.
-    // Stopping the web server is handled by the daemon cleanup.
+    // Stopping the web server is handled by the daemon cleanup. The macOS runner
+    // runs straight out of the driver cache, so there's nothing installed either.
     return;
   } else if (platform === 'ios') {
     await spawnAndWait('xcrun', [

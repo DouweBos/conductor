@@ -15,6 +15,9 @@ struct LaunchAppHandler: HTTPHandler {
             return AppError(type: .precondition, message: "incorrect request body provided").httpResponse
         }
         
+        #if os(macOS)
+        MacTarget.bundleId = requestBody.bundleId
+        #endif
         NSLog("[Start] Launching app with bundle ID: \(requestBody.bundleId)")
         XCUIApplication(bundleIdentifier: requestBody.bundleId).activate()
         NSLog("[Done] Launching app with bundle ID: \(requestBody.bundleId)")

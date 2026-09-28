@@ -11,6 +11,7 @@ import { VegaCli } from '../drivers/vega/cli.js';
 import { discoverRokuDevices } from '../drivers/roku/discovery.js';
 import { discoverCdpDevices } from '../drivers/cdp-discovery.js';
 import { listPhysicalDevices } from '../drivers/devicectl.js';
+import { MACOS_DEVICE_ID } from '../drivers/macos.js';
 
 export interface Device {
   id: string;
@@ -28,6 +29,18 @@ export interface Device {
 // Module-scoped because the discover function returns Device[]; bolting an
 // extra return field onto the public type would ripple beyond this fix.
 let listAvdsError: string | undefined;
+
+/** The host Mac as a device: always present, so it counts as booted only while in use. */
+async function hostMac(status: string): Promise<Device> {
+  const res = await spawnCommand('scutil', ['--get', 'ComputerName']);
+  const name = (res.success && res.stdout.trim()) || 'This Mac';
+  return { id: MACOS_DEVICE_ID, name, platform: 'macos', status };
+}
+
+async function macosDaemonRunning(): Promise<boolean> {
+  if (!listDaemonSessions().includes(MACOS_DEVICE_ID)) return false;
+  return (await daemonStatus(MACOS_DEVICE_ID)).running;
+}
 
 /**
  * Android TV identifies itself through `ro.build.characteristics` (or the
@@ -126,6 +139,13 @@ export async function discoverBootedDevices(): Promise<Device[]> {
     }
   }
 
+  // The host Mac is always on; list it as booted only while its driver daemon
+  // runs, like web sessions, so it doesn't turn every single-device setup into
+  // a device-picker prompt.
+  if (process.platform === 'darwin' && (await macosDaemonRunning())) {
+    devices.push(await hostMac('running'));
+  }
+
   // Physical iOS/tvOS devices: paired and reachable is the closest analogue to
   // a booted simulator — that's when conductor can actually drive them.
   for (const d of await listPhysicalDevices()) {
@@ -201,6 +221,10 @@ export async function discoverAvailableDevices(): Promise<Device[]> {
     } catch {
       // ignore parse errors
     }
+  }
+
+  if (process.platform === 'darwin' && !(await macosDaemonRunning())) {
+    devices.push(await hostMac('available'));
   }
 
   // Physical devices that aren't currently reachable — listed so users can see

@@ -99,7 +99,7 @@ export class IOSDriver {
     private readonly port = 1075,
     private readonly host = '127.0.0.1',
     readonly deviceId?: string,
-    readonly platform: 'ios' | 'tvos' = 'ios',
+    readonly platform: 'ios' | 'tvos' | 'macos' = 'ios',
     /**
      * Physical devices route app lifecycle through devicectl instead of simctl,
      * and can't offer the simulator-only conveniences (clipboard, location,
@@ -117,7 +117,7 @@ export class IOSDriver {
     );
   }
 
-  private request(
+  protected request(
     method: 'GET' | 'POST',
     path: string,
     body?: unknown
@@ -153,7 +153,7 @@ export class IOSDriver {
     });
   }
 
-  private async post(path: string, body: unknown): Promise<void> {
+  protected async post(path: string, body: unknown): Promise<void> {
     const { status, data } = await this.request('POST', `/${path}`, body);
     if (status < 200 || status >= 300) {
       throw new Error(
@@ -162,7 +162,7 @@ export class IOSDriver {
     }
   }
 
-  private async get<T>(path: string): Promise<T> {
+  protected async get<T>(path: string): Promise<T> {
     const { status, data } = await this.request('GET', `/${path}`);
     if (status < 200 || status >= 300) {
       throw new Error(
@@ -178,11 +178,11 @@ export class IOSDriver {
   }
 
   /** Drop the cached view hierarchy — call after any command that mutates the UI. */
-  private invalidateHierarchyCache(): void {
+  protected invalidateHierarchyCache(): void {
     this.hierarchyCache = null;
   }
 
-  private simctl(args: string[], childEnv?: Record<string, string>): Promise<void> {
+  protected simctl(args: string[], childEnv?: Record<string, string>): Promise<void> {
     const _id = this.requireDeviceId();
     return new Promise((resolve, reject) => {
       const proc = spawn('xcrun', ['simctl', ...args], {
@@ -214,7 +214,7 @@ export class IOSDriver {
     return env;
   }
 
-  private simctlCapture(args: string[]): Promise<string> {
+  protected simctlCapture(args: string[]): Promise<string> {
     this.requireDeviceId();
     return new Promise((resolve, reject) => {
       const proc = spawn('xcrun', ['simctl', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });

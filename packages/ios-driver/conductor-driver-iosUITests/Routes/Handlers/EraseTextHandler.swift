@@ -16,6 +16,11 @@ struct EraseTextHandler: HTTPHandler {
             return AppError(type: .precondition, message: "incorrect request body for erase text request").httpResponse
         }
         
+        #if os(macOS)
+        let deletes = String(repeating: XCUIKeyboardKey.delete.rawValue, count: requestBody.charactersToErase)
+        MacScreen.forInput().keyTarget.typeText(deletes)
+        return HTTPResponse(statusCode: .ok)
+        #else
         do {
             let start = Date()
             
@@ -32,11 +37,12 @@ struct EraseTextHandler: HTTPHandler {
             logger.error("Error erasing text of \(requestBody.charactersToErase) characters: \(error)")
             return AppError(message: "Failure in doing erase text, error: \(error.localizedDescription)").httpResponse
         }
+        #endif
     }
     
     private func waitUntilKeyboardIsPresented() async {
         try? await TimeoutHelper.repeatUntil(timeout: 1, delta: 0.2) {
-            let app = RunningApp.getForegroundApp() ?? XCUIApplication(bundleIdentifier: RunningApp.springboardBundleId)
+            let app = RunningApp.getForegroundApp() ?? XCUIApplication(bundleIdentifier: RunningApp.homeBundleId)
             
             return app.keyboards.firstMatch.exists
         }

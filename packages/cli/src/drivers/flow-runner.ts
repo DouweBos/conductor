@@ -8,6 +8,7 @@ import path from 'path';
 import vm from 'node:vm';
 import yaml from 'js-yaml';
 import { IOSDriver, AXElement } from './ios.js';
+import { MacDriver, parseMacKeyCombo } from './macos.js';
 import { AndroidDriver } from './android.js';
 import { WebDriver } from './web.js';
 import { VegaDriver } from './vega.js';
@@ -682,15 +683,17 @@ function getConductorObj(
   output: Record<string, unknown>
 ): Record<string, unknown> {
   const platform =
-    driver instanceof IOSDriver
-      ? 'ios'
-      : driver instanceof WebDriver
-        ? 'web'
-        : driver instanceof VegaDriver
-          ? 'vega'
-          : driver instanceof RokuDriver
-            ? 'roku'
-            : 'android';
+    driver instanceof MacDriver
+      ? 'macos'
+      : driver instanceof IOSDriver
+        ? 'ios'
+        : driver instanceof WebDriver
+          ? 'web'
+          : driver instanceof VegaDriver
+            ? 'vega'
+            : driver instanceof RokuDriver
+              ? 'roku'
+              : 'android';
   return {
     platform,
     copiedText: (output['__copiedText'] as string) ?? '',
@@ -1284,7 +1287,12 @@ async function executeCommandBody(
     // ── Keys ───────────────────────────────────────────────────────────────
     case 'pressKey': {
       const keyName = (val as string).toUpperCase();
-      if (driver instanceof IOSDriver) {
+      if (driver instanceof MacDriver) {
+        // Named keys and shortcuts alike: `Enter`, `cmd+s`, `cmd+shift+z`.
+        const combo = parseMacKeyCombo(val as string);
+        if (!combo) throw new Error(`pressKey: key "${val}" is not supported on macOS`);
+        await driver.pressKeyCombo(combo.key, combo.modifiers);
+      } else if (driver instanceof IOSDriver) {
         const tvosButton = driver.platform === 'tvos' ? TVOS_FLOW_BUTTONS[keyName] : undefined;
         // Home and Lock are hardware buttons on iOS, not software keys
         if (tvosButton) {
@@ -1327,7 +1335,9 @@ async function executeCommandBody(
     }
 
     case 'hideKeyboard': {
-      if (driver instanceof IOSDriver) {
+      if (driver instanceof MacDriver) {
+        // Macs have no on-screen keyboard, and Return would submit the field — noop
+      } else if (driver instanceof IOSDriver) {
         await driver.pressKey('return').catch(() => {
           /* noop if no keyboard */
         });

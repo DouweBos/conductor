@@ -175,6 +175,10 @@ export class LogCollector {
         // is the useful source for React Native apps anyway.
         if ((await detectDeviceKind(this.deviceId)) === 'physical') return;
         this.source = new IOSLogSource(this.deviceId, this.appId);
+      } else if (this.platform === 'macos') {
+        // Unfiltered, the whole Mac's debug log would drown the buffer.
+        if (!this.appId) return;
+        this.source = new IOSLogSource(this.deviceId, this.appId, /* host */ true);
       } else if (this.platform === 'android') {
         this.source = new AndroidLogSource(this.deviceId, this.appId);
       } else if (this.platform === 'vega') {

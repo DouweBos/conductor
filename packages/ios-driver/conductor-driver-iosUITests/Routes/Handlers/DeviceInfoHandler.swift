@@ -16,17 +16,22 @@ struct DeviceInfoHandler: HTTPHandler {
             let (width, height, orientation) = try ScreenSizeHelper.actualScreenSize()
             NSLog("Device orientation is \(String(orientation.rawValue))")
 
-            #if os(tvOS)
+            #if os(macOS)
+            let platform = "MACOS"
+            let scale = MacScreen.current().scale
+            #elseif os(tvOS)
             let platform = "TVOS"
+            let scale = UIScreen.main.scale
             #else
             let platform = "IOS"
+            let scale = UIScreen.main.scale
             #endif
 
             let deviceInfo = DeviceInfoResponse(
                 widthPoints: Int(width),
                 heightPoints: Int(height),
-                widthPixels: Int(CGFloat(width) * UIScreen.main.scale),
-                heightPixels: Int(CGFloat(height) * UIScreen.main.scale),
+                widthPixels: Int(CGFloat(width) * scale),
+                heightPixels: Int(CGFloat(height) * scale),
                 platform: platform
             )
 

@@ -32,6 +32,10 @@ struct RestoreFocusHandler: HTTPHandler {
     ]
 
     func handleRequest(_ request: FlyingFox.HTTPRequest) async throws -> HTTPResponse {
+        #if os(macOS)
+        let data = try JSONSerialization.data(withJSONObject: ["restoredBundleId": ""])
+        return HTTPResponse(statusCode: .ok, body: data)
+        #else
         let runnerBundleId = Bundle.main.bundleIdentifier ?? ""
         let runningApps = XCUIApplication.activeAppsInfo() ?? []
 
@@ -64,5 +68,6 @@ struct RestoreFocusHandler: HTTPHandler {
         let response: [String: Any] = ["restoredBundleId": restored ?? ""]
         let data = try JSONSerialization.data(withJSONObject: response)
         return HTTPResponse(statusCode: .ok, body: data)
+        #endif
     }
 }

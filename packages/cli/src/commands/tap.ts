@@ -6,7 +6,10 @@ export const HELP = `  tap-on [<element>]                   Tap element by text,
     --text <text>                     Match by text only (not id)
     --index <n>                       Pick the nth match (0-based)
     --long-press                      Hold instead of tap
-    --double-tap                      Double-tap the element
+    --double-tap                      Double-tap the element (a true double-click on macOS)
+    --right-click                     macOS: right-click (context menu) instead of clicking
+    --hover                           macOS: move the pointer over the element without clicking
+    --modifiers <cmd,shift,...>       macOS: hold these keys while clicking (e.g. cmd for ⌘-click)
     --repeat <n>                      Tap n times (default 1)
     --delay <ms>                      Delay between repeated taps (default 100)
     --optional                        Do not fail if element is not found
@@ -26,6 +29,7 @@ import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
 import { RokuDriver } from '../drivers/roku.js';
+import { MacDriver, parseMacModifiers } from '../drivers/macos.js';
 import { waitForIOSElement, waitForAndroidElement, waitForWebElement } from '../drivers/wait.js';
 import { makeIOSDirectResolver } from '../drivers/direct-ios-selector.js';
 import { isRefQuery, loadSnapshot, resolveRef } from '../snapshot-store.js';
@@ -45,6 +49,9 @@ export async function tap(
     delay?: number;
     longPress?: boolean;
     doubleTap?: boolean;
+    rightClick?: boolean;
+    hover?: boolean;
+    modifiers?: string;
     optional?: boolean;
     focused?: boolean;
     enabled?: boolean;
@@ -60,6 +67,16 @@ export async function tap(
     printError('tap-on requires <element>, --id <id>, or --at <x,y>', opts);
     return 1;
   }
+
+  const modifiers = flags.modifiers ? parseMacModifiers(flags.modifiers) : [];
+  if (!modifiers) {
+    printError(
+      `Unknown modifier in "${flags.modifiers}". Use cmd, shift, option, control, fn.`,
+      opts
+    );
+    return 1;
+  }
+  const macOnly = flags.rightClick || flags.hover || modifiers.length > 0;
 
   const repeat = flags.repeat && flags.repeat > 0 ? flags.repeat : 1;
   const delay = flags.delay ?? 100;
@@ -89,6 +106,9 @@ export async function tap(
         : `"${query}"`;
 
   const result = await runDirect(async (driver) => {
+    if (macOnly && !(driver instanceof MacDriver)) {
+      throw new Error('--right-click, --hover and --modifiers are macOS-only');
+    }
     if (driver instanceof IOSDriver && driver.platform === 'tvos') {
       throw new Error(
         'tap-on is not supported on tvOS — Apple TV uses focus-based navigation.\n' +
@@ -132,7 +152,16 @@ export async function tap(
 
     for (let i = 0; i < repeat; i++) {
       if (i > 0) await sleep(delay);
-      if (flags.longPress) {
+      if (driver instanceof MacDriver && flags.rightClick) {
+        await driver.rightClick(el.centerX, el.centerY, modifiers);
+      } else if (driver instanceof MacDriver && flags.hover) {
+        await driver.hover(el.centerX, el.centerY);
+      } else if (driver instanceof MacDriver && !flags.longPress) {
+        await driver.tap(el.centerX, el.centerY, undefined, {
+          modifiers,
+          count: flags.doubleTap ? 2 : 1,
+        });
+      } else if (flags.longPress) {
         if (driver instanceof AndroidDriver) {
           await driver.swipe(el.centerX, el.centerY, el.centerX, el.centerY, 1500);
         } else {
@@ -149,7 +178,15 @@ export async function tap(
     }
   }, sessionName);
 
-  const verb = flags.longPress ? 'long-press' : flags.doubleTap ? 'double-tap' : 'tap';
+  const verb = flags.rightClick
+    ? 'right-click'
+    : flags.hover
+      ? 'hover'
+      : flags.longPress
+        ? 'long-press'
+        : flags.doubleTap
+          ? 'double-tap'
+          : 'tap';
   if (result.success) {
     printSuccess(`${verb} ${label} — done`, opts);
     return 0;

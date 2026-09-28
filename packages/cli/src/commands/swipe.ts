@@ -2,7 +2,9 @@ export const HELP = `  swipe
     --direction <up|down|left|right>  Swipe direction (required unless --start/--end are provided)
     --start <x,y>                     Start coordinate (0–1 normalised or absolute px)
     --end <x,y>                       End coordinate (0–1 normalised or absolute px)
-    --duration <ms>                   Swipe duration in milliseconds (default: 500)`;
+    --duration <ms>                   Swipe duration in milliseconds (default: 500)
+    --drag                            macOS: press, drag and release instead of scrolling
+                                      (a plain swipe scrolls on macOS)`;
 
 import { runDirect } from '../runner.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
@@ -11,6 +13,7 @@ import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
 import { RokuDriver } from '../drivers/roku.js';
+import { MacDriver } from '../drivers/macos.js';
 import { Direction, swipeCoords } from '../utils.js';
 
 function parseCoordPair(s: string): { x: number; y: number } {
@@ -26,6 +29,7 @@ export async function swipe(
     start?: string;
     end?: string;
     duration?: number;
+    drag?: boolean;
   } = {}
 ): Promise<number> {
   if (!direction && !(flags.start && flags.end)) {
@@ -37,6 +41,9 @@ export async function swipe(
   }
 
   const result = await runDirect(async (driver) => {
+    if (flags.drag && !(driver instanceof MacDriver)) {
+      throw new Error('--drag is macOS-only; a swipe already drags on touch devices');
+    }
     if (driver instanceof IOSDriver && driver.platform === 'tvos') {
       throw new Error(
         'swipe is not supported on tvOS — XCTest has no Siri Remote touch-surface\n' +
@@ -67,7 +74,11 @@ export async function swipe(
         endX = coords.endX * w;
         endY = coords.endY * h;
       }
-      await driver.swipe(startX, startY, endX, endY, durationSec);
+      if (driver instanceof MacDriver && flags.drag) {
+        await driver.drag(startX, startY, endX, endY, durationSec);
+      } else {
+        await driver.swipe(startX, startY, endX, endY, durationSec);
+      }
     } else if (driver instanceof WebDriver) {
       const { widthPixels: w, heightPixels: h } = await driver.deviceInfo();
       const durationMs = flags.duration ?? 500;

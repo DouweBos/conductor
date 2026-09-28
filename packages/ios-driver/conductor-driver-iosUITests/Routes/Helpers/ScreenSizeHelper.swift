@@ -1,5 +1,7 @@
 import XCTest
+#if canImport(UIKit)
 import UIKit
+#endif
 import ConductorDriverLib
 
 // UIKit doesn't include UIDeviceOrientation on tvOS
@@ -32,7 +34,9 @@ struct ScreenSizeHelper {
     // so callers that want the screenshot-matching dimensions use this, and
     // callers that want the app window frame read it from the hierarchy.
     static func physicalScreenSize() -> (Float, Float) {
-        #if os(tvOS)
+        #if os(macOS)
+        let size = MacScreen.current().frame.size
+        #elseif os(tvOS)
         // tvOS has no windowing, so the runner's own screen bounds are already
         // the full screen. Querying HeadBoard's frame hangs indefinitely on
         // physical Apple TVs, and it buys nothing here.
@@ -44,7 +48,7 @@ struct ScreenSizeHelper {
     }
 
     private static func actualOrientation() -> DeviceOrientation {
-        #if os(tvOS)
+        #if os(tvOS) || os(macOS)
         let orientation = Optional(DeviceOrientation.unknown)
         #else
         let orientation = DeviceOrientation(rawValue: XCUIDevice.shared.orientation.rawValue)

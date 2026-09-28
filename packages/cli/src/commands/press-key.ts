@@ -1,4 +1,5 @@
-export const HELP = `  press-key <key>                     Press a key (Enter, Backspace, Home, ...)
+export const HELP = `  press-key <key>                     Press a key (Enter, Backspace, Home, ...), or on macOS a
+                                       shortcut like cmd+s, cmd+shift+z, ctrl+tab
     --long-press                      Hold the button ~1.5s (tvOS remote buttons)
     --duration <seconds>              Hold for a custom duration (tvOS remote buttons)
     --measure                         Time the app's response to the press
@@ -18,6 +19,7 @@ import { VegaDriver } from '../drivers/vega.js';
 import { VegaButton } from '../drivers/vega/input.js';
 import { RokuDriver } from '../drivers/roku.js';
 import { rokuEcpKey } from '../drivers/roku/key-mapping.js';
+import { MacDriver, parseMacKeyCombo } from '../drivers/macos.js';
 import type { IOSButton } from '../drivers/ios.js';
 
 export const VALID_KEYS = [
@@ -165,6 +167,25 @@ export const ANDROID_KEYCODE: Partial<Record<Key, number>> = {
   'Remote Page Down': 93,
 };
 
+// macOS: the named keys the driver's /pressKey takes. Remote D-pad keys map to
+// the arrow keys, which is how Mac apps do keyboard navigation.
+const MAC_KEY_MAP: Partial<Record<Key, string>> = {
+  Enter: 'return',
+  Backspace: 'delete',
+  Delete: 'delete',
+  Tab: 'tab',
+  Escape: 'escape',
+  Home: 'home',
+  End: 'end',
+  'Remote Dpad Up': 'up',
+  'Remote Dpad Down': 'down',
+  'Remote Dpad Left': 'left',
+  'Remote Dpad Right': 'right',
+  'Remote Dpad Center': 'return',
+  'Remote Page Up': 'pageup',
+  'Remote Page Down': 'pagedown',
+};
+
 export type AnyDriver = IOSDriver | AndroidDriver | WebDriver | VegaDriver | RokuDriver;
 
 /**
@@ -177,7 +198,11 @@ export async function dispatchKey(
   matched: Key,
   holdSeconds?: number
 ): Promise<void> {
-  if (driver instanceof IOSDriver) {
+  if (driver instanceof MacDriver) {
+    const macKey = MAC_KEY_MAP[matched];
+    if (macKey) await driver.pressKeyCombo(macKey);
+    // Keys with no Mac equivalent (Back, VolumeUp, ...) are silently ignored
+  } else if (driver instanceof IOSDriver) {
     if (driver.platform === 'tvos') {
       const tvosButton = TVOS_REMOTE_BUTTONS[matched];
       const iosButton = IOS_BUTTON_MAP[matched];
@@ -263,8 +288,26 @@ export async function pressKey(
   }
 
   const matched = VALID_KEYS.find((k) => k.toLowerCase() === key.toLowerCase());
+  const combo = matched ? null : parseMacKeyCombo(key);
+  if (combo) {
+    const res = await runDirect(async (driver) => {
+      if (!(driver instanceof MacDriver)) {
+        throw new Error(`"${key}" is a macOS keyboard shortcut; other platforms take named keys`);
+      }
+      await driver.pressKeyCombo(combo.key, combo.modifiers);
+    }, sessionName);
+    if (res.success) {
+      printSuccess(`press-key ${key} — done`, opts);
+      return 0;
+    }
+    printError(`press-key ${key} — failed\n${res.stderr}`, opts);
+    return 1;
+  }
   if (!matched) {
-    printError(`Unknown key "${key}". Valid keys: ${VALID_KEYS.join(', ')}`, opts);
+    printError(
+      `Unknown key "${key}". Valid keys: ${VALID_KEYS.join(', ')} — or on macOS a shortcut like cmd+s`,
+      opts
+    );
     return 1;
   }
 

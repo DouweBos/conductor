@@ -7,6 +7,7 @@ import { printData, printError, OutputOptions } from '../output.js';
 import { detectPlatform, detectDeviceKind } from '../drivers/bootstrap.js';
 import { listApps as listPhysicalApps } from '../drivers/devicectl.js';
 import { VegaCli } from '../drivers/vega/cli.js';
+import { listMacApps } from '../drivers/macos.js';
 
 async function resolveDeviceId(sessionName: string): Promise<string | undefined> {
   if (sessionName !== 'default') return sessionName;
@@ -40,6 +41,15 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
       opts
     );
     return 1;
+  } else if (platform === 'macos') {
+    try {
+      const apps = await listMacApps();
+      appIds = apps.map((a) => a.id);
+      for (const a of apps) appNames[a.id] = a.name;
+    } catch (e) {
+      printError(`list-apps failed: ${e instanceof Error ? e.message : String(e)}`, opts);
+      return 1;
+    }
   } else if (platform === 'vega') {
     // Vega is driven through Amazon's CLI, not adb; strip the `vega:` id prefix.
     appIds = (await new VegaCli(deviceId.replace(/^vega:/, '')).listInstalledApps()).sort();

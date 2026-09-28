@@ -84,7 +84,8 @@ export async function captureScreen(
   opts: { fullPage?: boolean },
   displayOverride?: string
 ): Promise<Capture> {
-  if (!(driver instanceof IOSDriver)) {
+  // A Mac capture is the frontmost window, so there is no panel to choose.
+  if (!(driver instanceof IOSDriver) || driver.platform === 'macos') {
     if (displayOverride) {
       throw new Error('--display is iOS-only; other platforms expose a single screen');
     }

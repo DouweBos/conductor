@@ -9,7 +9,9 @@ struct RunningAppRouteHandler: HTTPHandler {
         category: String(describing: Self.self)
     )
     
-    #if os(tvOS)
+    #if os(macOS)
+    private static let homescreenBundleId = RunningApp.homeBundleId
+    #elseif os(tvOS)
     private static let homescreenBundleId = "com.apple.HeadBoard"
     #else
     private static let homescreenBundleId = "com.apple.springboard"
@@ -27,7 +29,12 @@ struct RunningAppRouteHandler: HTTPHandler {
                 return app.state == .runningForeground
             }
             
-            let response = ["runningAppBundleId": runningAppId ?? RunningAppRouteHandler.homescreenBundleId]
+            #if os(macOS)
+            let fallback = RunningApp.foregroundBundleId() ?? RunningAppRouteHandler.homescreenBundleId
+            #else
+            let fallback = RunningAppRouteHandler.homescreenBundleId
+            #endif
+            let response = ["runningAppBundleId": runningAppId ?? fallback]
             
             let responseData = try JSONSerialization.data(
                 withJSONObject: response,

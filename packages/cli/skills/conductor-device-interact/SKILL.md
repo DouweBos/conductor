@@ -1,6 +1,6 @@
 ---
 name: conductor-device-interact
-description: Drive a running iOS simulator, Android emulator, tvOS simulator, Vega (Amazon Fire TV) virtual device, Roku device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements (by selector or raw coordinate), typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys, opening URLs or deep links, navigating back, granting/denying app permissions, adding media to the gallery, setting GPS location or a travel route, toggling airplane mode, recording a screen video, or verifying an app change in the real running app.
+description: Drive a running iOS simulator, Android emulator, tvOS simulator, macOS app, Vega (Amazon Fire TV) virtual device, Roku device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements (by selector or raw coordinate), right-clicking or hovering, typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys or keyboard shortcuts, clicking menu-bar items, opening URLs or deep links, navigating back, granting/denying app permissions, adding media to the gallery, setting GPS location or a travel route, toggling airplane mode, recording a screen video, or verifying an app change in the real running app.
 ---
 
 # Conductor — device interaction
@@ -36,17 +36,18 @@ conductor assert-visible "Dashboard"
 |---|---|
 | `conductor launch-app <appId>` | Launch app (saved to session). `--no-stop-app` resumes; `--argument key=value` passes launch args |
 | `conductor stop-app [<appId>]` | Stop the app |
-| `conductor tap-on <element>` | Tap by text, id, or `@eN`. `--long-press`, `--double-tap`, `--optional`, `--index <n>`, `--repeat <n> --delay <ms>` |
+| `conductor tap-on <element>` | Tap by text, id, or `@eN`. `--long-press`, `--double-tap`, `--optional`, `--index <n>`, `--repeat <n> --delay <ms>`. macOS only: `--right-click`, `--hover`, `--modifiers cmd,shift` (e.g. ⌘-click) |
 | `conductor tap-on --at <x,y>` | Tap a raw coordinate (px `100,200`, percent `50%,50%`, or `0-1` fraction) — no element match |
 | `conductor copy-text-from <element>` | Print an element's text (and copy to the iOS clipboard) |
 | `conductor input-text <text>` | Type into the focused field |
 | `conductor erase-text [n]` | Erase n characters (default 50) |
-| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`, `Remote Page Up/Down` on tvOS and Android TV, and `Remote Guide` on tvOS) for tvOS / Android TV / vega / roku. `--long-press` / `--duration <seconds>` holds it; `--measure` times the response (see `conductor-profiler`) |
+| `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`, `Remote Page Up/Down` on tvOS and Android TV, and `Remote Guide` on tvOS) for tvOS / Android TV / vega / roku. `--long-press` / `--duration <seconds>` holds it; `--measure` times the response (see `conductor-profiler`). On macOS also shortcuts: `cmd+s`, `cmd+shift+z`, `ctrl+tab`, arrows, `F1`–`F12` |
 | `conductor hide-keyboard` | Dismiss the on-screen keyboard |
+| `conductor menu "<Menu> > <Item>"` | macOS: click through the menu bar, e.g. `menu "File > Export > PDF…"` |
 | `conductor back` | Press back |
 | `conductor scroll [--direction down\|up\|left\|right]` | Scroll |
 | `conductor scroll-until-visible <element> [--direction] [--timeout ms]` | Scroll until element appears |
-| `conductor swipe --direction <dir>` / `--start <x,y> --end <x,y> [--duration ms]` | Swipe |
+| `conductor swipe --direction <dir>` / `--start <x,y> --end <x,y> [--duration ms]` | Swipe. On macOS a swipe scrolls (scroll wheel); add `--drag` to press, drag and release instead |
 | `conductor open-link <url>` | Open a URL / deep link |
 | `conductor pinch [--scale N] [--center x,y]` | Two-finger pinch (scale<1 out, >1 in) |
 | `conductor rotate-gesture [--degrees N] [--center x,y]` | Two-finger rotate |
@@ -125,7 +126,8 @@ relaunch without the flag. (See `conductor-device-setup`.)
 
 ## Tips
 
-- `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web|vega|roku>` scopes by platform.
+- `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web|vega|roku|macos>` scopes by platform.
+- macOS (`--device macos`) works in the background on the app from `launch-app`: clicks press the element's accessibility action and keys go to that app only, so the user's pointer and keyboard are untouched. Coordinates are relative to its front window. `--hover`, `--long-press`, `--modifiers`, `swipe --drag` and gestures need the foreground driver (`CONDUCTOR_MACOS_FOREGROUND=1`, which takes over the real mouse and keyboard). `back` is a no-op. Setup and approvals are in `conductor-device-setup`.
 - Vega (Amazon Fire TV) is D-pad driven: navigate with `press-key "Remote Dpad …"`; coordinate `tap-on` also works. `open-link`, `set-location`, gestures, and clipboard are unsupported. See `conductor-device-setup`.
 - Apple TV (tvOS) is focus-driven and has **no touch surface automation**: XCTest
   refuses remote swipe gestures ("Swipe events are only implemented for iOS,

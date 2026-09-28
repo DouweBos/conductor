@@ -60,6 +60,11 @@ struct PressButtonHandler: HTTPHandler {
         } else {
             XCUIRemote.shared.press(remoteButton)
         }
+        #elseif os(macOS)
+        return AppError(
+            type: .precondition,
+            message: "Button \(requestBody.button.rawValue) does not exist on macOS"
+        ).httpResponse
         #else
         switch requestBody.button {
         case .home:
@@ -68,7 +73,9 @@ struct PressButtonHandler: HTTPHandler {
             XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
         }
         #endif
+        #if !os(macOS)
         return HTTPResponse(statusCode: .ok)
+        #endif
     }
 
     #if os(tvOS)

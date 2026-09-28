@@ -75,7 +75,7 @@ export interface LeakEntry {
 }
 
 export interface MemoryReport {
-  platform: 'ios' | 'tvos' | 'android' | 'web';
+  platform: 'ios' | 'tvos' | 'android' | 'web' | 'macos';
   deviceId: string;
   appId?: string;
   pid?: number;
@@ -142,7 +142,7 @@ async function resolveAppId(
   explicit: string | undefined,
   sessionName: string,
   deviceId: string,
-  platform: 'ios' | 'tvos' | 'android' | 'web'
+  platform: 'ios' | 'tvos' | 'android' | 'web' | 'macos'
 ): Promise<string | undefined> {
   if (explicit) return explicit;
   // No arg: always resolve from the live foreground app, not the session file.
@@ -471,7 +471,17 @@ function parseVmStat(out: string): {
   };
 }
 
-async function findIOSPid(deviceId: string, appId: string): Promise<number | undefined> {
+async function findIOSPid(
+  deviceId: string,
+  appId: string,
+  platform: 'ios' | 'tvos' | 'macos'
+): Promise<number | undefined> {
+  if (platform === 'macos') {
+    // `"pid"=1234` — Mac apps are ordinary host processes, found via LaunchServices.
+    const info = await spawnCommand('lsappinfo', ['info', '-only', 'pid', '-app', appId]);
+    const m = info.success ? info.stdout.match(/"pid"\s*=\s*(\d+)/) : null;
+    return m ? Number(m[1]) : undefined;
+  }
   // Inside-simulator PIDs == host PIDs for app processes.
   const list = await spawnCommand('xcrun', ['simctl', 'spawn', deviceId, 'launchctl', 'list']);
   if (!list.success) return undefined;
@@ -658,7 +668,7 @@ function parseLeaks(out: string): MemoryReport['leaks'] {
 
 async function collectIOS(
   deviceId: string,
-  platform: 'ios' | 'tvos',
+  platform: 'ios' | 'tvos' | 'macos',
   appId: string | undefined,
   opts: MemoryOptions
 ): Promise<MemoryReport> {
@@ -677,9 +687,11 @@ async function collectIOS(
           ? sys.totalBytes - sys.availableBytes
           : undefined,
     };
-    report.notes!.push(
-      'System memory reflects host Mac RAM — simulators share the host memory pool.'
-    );
+    if (platform !== 'macos') {
+      report.notes!.push(
+        'System memory reflects host Mac RAM — simulators share the host memory pool.'
+      );
+    }
   } else {
     report.notes!.push(`vm_stat unavailable: ${vm.stderr.trim()}`);
   }
@@ -689,7 +701,7 @@ async function collectIOS(
     return report;
   }
 
-  const pid = await findIOSPid(deviceId, appId);
+  const pid = await findIOSPid(deviceId, appId, platform);
   if (!pid) {
     report.notes!.push(`No running process found for ${appId}.`);
     if (report.notes!.length === 0) delete report.notes;

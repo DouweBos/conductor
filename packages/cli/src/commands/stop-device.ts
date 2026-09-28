@@ -46,6 +46,7 @@ export async function stopDevice(
   const includeWeb = !platform || platform === 'web';
   const includeVega = !platform || platform === 'vega';
   const includeRoku = !platform || platform === 'roku';
+  const includeMacOS = !platform || platform === 'macos';
   const stopped: { id: string; name: string; platform: string }[] = [];
 
   // ── --all mode ───────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ export async function stopDevice(
       if (d.platform === 'web' && !includeWeb) continue;
       if (d.platform === 'vega' && !includeVega) continue;
       if (d.platform === 'roku' && !includeRoku) continue;
+      if (d.platform === 'macos' && !includeMacOS) continue;
 
       try {
         if (
@@ -72,8 +74,9 @@ export async function stopDevice(
           await shutdownSimulator(d.id);
         } else if (d.platform === 'android') {
           await killEmulator(d.id);
-        } else if (d.platform === 'web' || d.platform === 'vega') {
-          // Vega VVD lifecycle is owned by Amazon's tooling — we only stop our log daemon.
+        } else if (d.platform === 'web' || d.platform === 'vega' || d.platform === 'macos') {
+          // Vega VVD lifecycle is owned by Amazon's tooling, and the Mac is the
+          // host itself — we only stop our daemon (which quits the macOS runner).
           await stopDaemon(d.id);
         } else if (d.platform === 'roku') {
           // A Roku is physical hardware we never booted; there is nothing to stop.
@@ -127,8 +130,13 @@ export async function stopDevice(
       await shutdownSimulator(match.id);
     } else if (match.platform === 'android') {
       await killEmulator(match.id);
-    } else if (match.platform === 'web' || match.platform === 'vega') {
-      // Vega VVD lifecycle is owned by Amazon's tooling — we only stop our log daemon.
+    } else if (
+      match.platform === 'web' ||
+      match.platform === 'vega' ||
+      match.platform === 'macos'
+    ) {
+      // Vega VVD lifecycle is owned by Amazon's tooling, and the Mac is the
+      // host itself — we only stop our daemon (which quits the macOS runner).
       await stopDaemon(match.id);
     } else if (match.platform === 'roku') {
       printError(

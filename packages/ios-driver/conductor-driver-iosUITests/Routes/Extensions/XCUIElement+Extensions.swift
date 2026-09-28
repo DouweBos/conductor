@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 
 extension XCUIElement {
-    #if !os(tvOS)
+    #if os(iOS)
     func setText(text: String, application: XCUIApplication) {
         UIPasteboard.general.string = text
         doubleTap()

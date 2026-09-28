@@ -6,7 +6,9 @@ import ConductorDriverLib
 @MainActor
 struct ViewHierarchyHandler: HTTPHandler {
 
-    #if os(tvOS)
+    #if os(macOS)
+    private static let homescreenBundleId = RunningApp.homeBundleId
+    #elseif os(tvOS)
     private static let homescreenBundleId = "com.apple.HeadBoard"
     #else
     private static let homescreenBundleId = "com.apple.springboard"
@@ -25,6 +27,10 @@ struct ViewHierarchyHandler: HTTPHandler {
         }
 
         do {
+            #if os(macOS)
+            let body = try JSONEncoder().encode(try macViewHierarchy())
+            return HTTPResponse(statusCode: .ok, body: body)
+            #else
             let foregroundApp = RunningApp.getForegroundApp()
             guard let foregroundApp = foregroundApp else {
                 NSLog("No foreground app found returning homescreen app hierarchy")
@@ -40,6 +46,7 @@ struct ViewHierarchyHandler: HTTPHandler {
             NSLog("[Done] View hierarchy snapshot for \(foregroundApp) ")
             let body = try JSONEncoder().encode(viewHierarchy)
             return HTTPResponse(statusCode: .ok, body: body)
+            #endif
         } catch let error as AppError {
             NSLog("AppError in handleRequest, Error:\(error)");
             return error.httpResponse
@@ -49,9 +56,46 @@ struct ViewHierarchyHandler: HTTPHandler {
         }
     }
 
+    #if os(macOS)
+    /// The frontmost app's hierarchy with frames made relative to its front
+    /// window. The app's other windows are dropped — they sit behind the one the
+    /// screenshot shows, so matching them would tap whatever covers them. The
+    /// menu bar, open menus and popovers stay, even though they fall outside.
+    private func macViewHierarchy() throws -> ViewHierarchy {
+        let screen = MacScreen.current()
+        let app = screen.app ?? homescreenApplication
+        let hierarchy = try getHierarchyWithFallback(app)
+        let windowType = Int(XCUIElement.ElementType.window.rawValue)
+        let front = screen.frame
+        func isFrontWindow(_ el: AXElement) -> Bool {
+            abs((el.frame["X"] ?? 0) - front.minX) < 1 && abs((el.frame["Y"] ?? 0) - front.minY) < 1
+                && abs((el.frame["Width"] ?? 0) - front.width) < 1
+        }
+        var pruned = hierarchy
+        if screen.window != nil {
+            pruned.children = (hierarchy.children ?? []).filter { $0.elementType != windowType || isFrontWindow($0) }
+        }
+        let offset = WindowOffset(offsetX: -front.minX, offsetY: -front.minY)
+        let translated = translateFrames(pruned, offset: offset, clipTo: .infinite)
+        // The application element's label is the app name, so a selector for a
+        // same-named row or button would otherwise match the whole app first.
+        let unlabeled = AXElement(
+            identifier: translated.identifier, frame: translated.frame, value: translated.value, title: nil, label: "",
+            elementType: translated.elementType, enabled: translated.enabled,
+            horizontalSizeClass: translated.horizontalSizeClass, verticalSizeClass: translated.verticalSizeClass,
+            placeholderValue: translated.placeholderValue, selected: translated.selected, hasFocus: translated.hasFocus,
+            displayID: translated.displayID, windowContextID: translated.windowContextID, children: translated.children
+        )
+        let root = AXElement(children: [unlabeled])
+        return ViewHierarchy(axElement: root, depth: root.depth())
+    }
+    #endif
+
     func getAppViewHierarchy(foregroundApp: XCUIApplication, excludeKeyboardElements: Bool) async throws -> AXElement {
         let appHierarchy = try getHierarchyWithFallback(foregroundApp)
+        #if !os(macOS)
         await SystemPermissionHelper.handleSystemPermissionAlertIfNeeded(appHierarchy: appHierarchy, foregroundApp: foregroundApp)
+        #endif
                 
         // tvOS has no status bar, and probing HeadBoard for one hangs on
         // physical Apple TVs.

@@ -21,12 +21,24 @@ struct SwipeRouteHandler: HTTPHandler {
             return AppError(type: .precondition, message: "swipe duration can not be negative").httpResponse
         }
 
+        #if os(macOS)
+        // A swipe on a Mac means scrolling: move the content the same way a
+        // finger would, by scrolling at the start point. Real drags use /drag.
+        MacScreen.forInput()
+            .coordinate(requestBody.start)
+            .scroll(
+                byDeltaX: requestBody.end.x - requestBody.start.x,
+                deltaY: requestBody.end.y - requestBody.start.y
+            )
+        return HTTPResponse(statusCode: .ok)
+        #else
         do {
             try await swipePrivateAPI(requestBody)
             return HTTPResponse(statusCode: .ok)
         } catch let error {
             return AppError(message: "Swipe request failure. Error: \(error.localizedDescription)").httpResponse
         }
+        #endif
     }
 
     func swipePrivateAPI(_ request: SwipeRequest) async throws {

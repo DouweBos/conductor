@@ -9,6 +9,7 @@ export const HELP = `  launch-app <appId>                  Launch app (saves to 
                                       without re-entering credentials.
     --no-stop-app                     Do not stop the app before launching (resume instead of restart)
     --argument key=value              Set launch argument (repeatable)
+                                      macOS: "--argument flag" with no value passes "--flag"
     --inject                          iOS simulator only: inject the in-process control library
                                       (DYLD_INSERT_LIBRARIES) so native-* inspection commands work`;
 
@@ -68,6 +69,9 @@ export async function launchApp(
 
     if (driver instanceof IOSDriver) {
       if (flags.inject) {
+        if (driver.platform === 'macos') {
+          throw new Error('--inject is not supported on macOS');
+        }
         const dylibPath = await getInprocDylibPath(driver.platform);
         if (!fs.existsSync(dylibPath)) {
           throw new Error(

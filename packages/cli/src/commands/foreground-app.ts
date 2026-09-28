@@ -7,6 +7,7 @@ import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
 import { RokuDriver } from '../drivers/roku.js';
+import { MacDriver } from '../drivers/macos.js';
 
 async function resolveDeviceId(sessionName: string): Promise<string | undefined> {
   if (sessionName !== 'default') return sessionName;
@@ -34,7 +35,10 @@ export async function foregroundApp(
     const driver = await getDriver(sessionName);
     let appId: string;
 
-    if (driver instanceof IOSDriver) {
+    if (driver instanceof MacDriver) {
+      // The driver reports the app owning the frontmost window.
+      appId = await driver.runningApp([]);
+    } else if (driver instanceof IOSDriver) {
       const deviceId = await resolveDeviceId(sessionName);
       const appIds = deviceId ? await getInstalledAppIds(deviceId) : [];
       appId = await driver.runningApp(appIds);

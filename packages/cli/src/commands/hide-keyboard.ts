@@ -7,13 +7,16 @@ import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
 import { RokuDriver } from '../drivers/roku.js';
+import { MacDriver } from '../drivers/macos.js';
 
 export async function hideKeyboard(
   opts: OutputOptions = {},
   sessionName = 'default'
 ): Promise<number> {
   const result = await runDirect(async (driver) => {
-    if (driver instanceof IOSDriver) {
+    if (driver instanceof MacDriver) {
+      // No on-screen keyboard on a Mac, and Return would submit the field — no-op
+    } else if (driver instanceof IOSDriver) {
       await driver.pressKey('return').catch(() => {
         /* no keyboard visible */
       });

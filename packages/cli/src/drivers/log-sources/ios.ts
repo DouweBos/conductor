@@ -1,5 +1,6 @@
 /**
  * iOS log source — streams logs from an iOS simulator via `xcrun simctl spawn ... log stream`.
+ * With `host` set it streams the Mac's own unified log instead, for macOS apps.
  */
 import { spawn, ChildProcess } from 'child_process';
 import { LogSource, LogEntry } from './types.js';
@@ -28,23 +29,22 @@ export class IOSLogSource implements LogSource {
 
   constructor(
     private readonly deviceId: string,
-    private readonly appId?: string
+    private readonly appId?: string,
+    private readonly host = false
   ) {}
 
   async connect(): Promise<void> {
-    const args = [
-      'simctl',
-      'spawn',
-      this.deviceId,
-      'log',
-      'stream',
-      '--style',
-      'ndjson',
-      '--level',
-      'debug',
-    ];
+    const streamArgs = ['log', 'stream', '--style', 'ndjson', '--level', 'debug'];
+    const args = this.host
+      ? streamArgs.slice(1)
+      : ['simctl', 'spawn', this.deviceId, ...streamArgs];
 
-    if (this.appId) {
+    if (this.host && this.appId) {
+      // A Mac app's executable name rarely matches its bundle ID, but its own
+      // os_log subsystem conventionally does.
+      const name = this.appId.split('.').pop();
+      args.push('--predicate', `subsystem BEGINSWITH "${this.appId}" OR process == "${name}"`);
+    } else if (this.appId) {
       // Filter to just this app's process. The process name is typically the
       // last component of the bundle ID (e.g. "MyApp" from "com.example.MyApp"),
       // but simctl log stream matches on the full process image path, so use
@@ -52,7 +52,7 @@ export class IOSLogSource implements LogSource {
       args.push('--predicate', `process CONTAINS "${this.appId.split('.').pop()}"`);
     }
 
-    this.proc = spawn('xcrun', args, { stdio: ['ignore', 'pipe', 'ignore'] });
+    this.proc = spawn(this.host ? 'log' : 'xcrun', args, { stdio: ['ignore', 'pipe', 'ignore'] });
 
     this.proc.stdout!.on('data', (chunk: Buffer) => {
       this.buffer += chunk.toString('utf-8');

@@ -1,6 +1,6 @@
 ---
 name: conductor-device-setup
-description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, physical iOS/tvOS devices, Vega (Amazon Fire TV) virtual devices, Roku devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD or a Roku device, driving a physical iPhone/iPad/Apple TV, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
+description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, physical iOS/tvOS devices, macOS apps on this Mac, Vega (Amazon Fire TV) virtual devices, Roku devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD or a Roku device, driving a physical iPhone/iPad/Apple TV or a Mac app, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
 ---
 
 # Conductor — device & app setup
@@ -21,7 +21,7 @@ conductor list-apps          # installed app ids / package names (--json adds ap
 
 | Command                                                               | Purpose                                                                    |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `conductor start-device --platform <ios\|android\|tvos\|web\|vega\|roku>` | Boot a simulator/emulator, start the web driver, attach to a Vega VVD, or check a Roku device |
+| `conductor start-device --platform <ios\|android\|tvos\|web\|vega\|roku\|macos>` | Boot a simulator/emulator, start the web driver, attach to a Vega VVD, check a Roku device, or start the driver for this Mac |
 | `conductor start-device --os-version <n> --device-type <name>`        | Pick OS version + device type (creates if needed)                          |
 | `conductor start-device --device-name <name>`                          | Boot the existing device with that name (iOS/tvOS sim name, Android AVD, Vega serial, Roku host) |
 | `conductor start-device --platform android --avd <name> --device-type <profile> --memory <mb>` | Create an Android AVD with a RAM floor (default 4096MB; only raises, creation-time only) |
@@ -137,6 +137,51 @@ Unsupported on Roku: `install-app`/`uninstall-app` (sideload via the device's de
 web server at `http://<device-ip>`), `list-apps`, `clear-state`, gestures,
 screen recording, clipboard, `set-location`, memory/CPU profiling, and device logs.
 
+### macOS apps (this Mac)
+
+The Mac itself is a device with the fixed id `macos`. There is nothing to boot:
+`conductor start-device --platform macos` checks the automation setup and warms
+up the driver, then target it with `--device macos`. It is listed as
+`available` in `list-devices`, and as `running` while its daemon is up.
+
+```bash
+conductor start-device --platform macos
+conductor --device macos launch-app com.example.MyMacApp
+conductor --device macos capture-ui
+```
+
+By default it runs **in the background**: the ConductorAX helper works on the
+app through Accessibility, so it doesn't move your pointer, type into other
+apps, or need the app in front — its window can even be covered or on another
+display. One-time setup: allow **ConductorAX** in System Settings ▸ Privacy &
+Security ▸ **Accessibility** and ▸ **Screen & System Audio Recording**, then
+restart the driver (`conductor --device macos daemon-stop`; the next command
+starts it). Both grants can reset after a conductor upgrade.
+
+The background driver clicks by pressing an element's accessibility action, so
+custom-drawn views with no action, long press, modifier clicks, hover and drag
+fail with a message. For those, `CONDUCTOR_MACOS_FOREGROUND=1` switches to the
+XCUITest driver, which **drives your real mouse and keyboard** and needs
+Automation Mode (`automationmodetool enable-automationmode-without-authentication`,
+ask the user) plus Accessibility for `conductor-driver-macosUITests-Runner`.
+Tell the user before using it.
+
+The "screen" is the **target app's front window** (the app from `launch-app`, else the frontmost one): `take-screenshot`,
+`inspect`/`capture-ui` frames, and `tap-on --at` coordinates are all relative to
+its top-left corner. Menus and popovers outside the window stay in the hierarchy.
+
+App lifecycle: `launch-app <bundleId>` (launches or activates; `--argument`
+relaunches with launch arguments), `stop-app`, `list-apps` (apps in the
+Applications folders), `install-app <path.app>` (copies it into
+`~/Applications`), `open-link <url>`, and `clipboard` (your real clipboard).
+`logs` streams the app's unified log once an app id is known; `crashes` reads
+`~/Library/Logs/DiagnosticReports`.
+
+Unsupported on macOS (explicit error): `set-location`, `set-orientation`,
+`set-permissions` (grant in System Settings instead), `add-media`,
+`clear-state`, `uninstall-app`, `clear-keychain`, `download-app`, gestures,
+`record-video`, `launch-app --inject` / `native-*`, and the live video stream.
+
 ### Physical iOS / tvOS devices
 
 Real iPhones, iPads, and Apple TVs work alongside simulators. They're discovered
@@ -168,7 +213,7 @@ logs` still gets **Metro** logs, which is the useful source for React Native).
 
 | Command                                               | Purpose                                                                |
 | ----------------------------------------------------- | ---------------------------------------------------------------------- |
-| `conductor install-app <path>`                        | Install .app / .ipa / .apk                                             |
+| `conductor install-app <path>`                        | Install .app / .ipa / .apk (macOS: copies the .app into ~/Applications) |
 | `conductor launch-app <appId>`                        | Launch app (saved to session); `--no-stop-app`, `--argument key=value`, `--inject` (enables the `native-*` in-process instrument — see `conductor-native`) |
 | `conductor stop-app [<appId>]`                        | Stop app                                                               |
 | `conductor uninstall-app <appId>`                     | Uninstall app                                                          |

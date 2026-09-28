@@ -27,12 +27,15 @@ struct AXClientSwizzler {
             return
         }
         let defaultParametersSelector = Selector(("defaultParameters"))
-        let original = class_getInstanceMethod(axClientiOSClass, defaultParametersSelector)!
+        guard let original = class_getInstanceMethod(axClientiOSClass, defaultParametersSelector),
+              let replaced = class_getInstanceMethod(
+                AXClientiOS_Standin.self,
+                #selector(AXClientiOS_Standin.swizzledDefaultParameters))
+        else {
+            NSLog("[\(className)] defaultParameters not found — skipping AXClient swizzle")
+            return
+        }
 
-        let replaced = class_getInstanceMethod(
-            AXClientiOS_Standin.self,
-            #selector(AXClientiOS_Standin.swizzledDefaultParameters))!
-        
         method_exchangeImplementations(original, replaced)
     }()
 }

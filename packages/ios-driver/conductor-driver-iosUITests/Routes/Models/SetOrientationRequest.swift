@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#endif
 
 struct SetOrientationRequest: Codable {
     let orientation: Orientation
@@ -10,7 +12,7 @@ struct SetOrientationRequest: Codable {
         case landscapeRight
         case upsideDown
 
-        #if !os(tvOS)
+        #if os(iOS)
         var uiDeviceOrientation: UIDeviceOrientation {
             switch self {
             case .portrait:

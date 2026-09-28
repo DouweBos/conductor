@@ -11,6 +11,12 @@ struct KeyboardRouteHandler: HTTPHandler {
             return AppError(type: .precondition, message: "incorrect request body provided for input text").httpResponse
         }
         
+        #if os(macOS)
+        // Macs have a hardware keyboard; there is no on-screen one to report.
+        let body = try JSONEncoder().encode(KeyboardHandlerResponse(isKeyboardVisible: false))
+        _ = requestBody
+        return HTTPResponse(statusCode: .ok, body: body)
+        #else
         do {
             let appId = RunningApp.getForegroundAppId(requestBody.appIds)
             let keyboard = XCUIApplication(bundleIdentifier: appId).keyboards.firstMatch
@@ -22,5 +28,6 @@ struct KeyboardRouteHandler: HTTPHandler {
         } catch let error {
             return AppError(message: "Keyboard handler failed \(error.localizedDescription)").httpResponse
         }
+        #endif
     }
 }

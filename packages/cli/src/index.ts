@@ -159,6 +159,7 @@ import {
 import { travel, HELP as travelHelp } from './commands/travel.js';
 import { recordVideo, HELP as recordVideoHelp } from './commands/record-video.js';
 import { assertScreenshot, HELP as assertScreenshotHelp } from './commands/assert-screenshot.js';
+import { menu, HELP as menuHelp } from './commands/menu.js';
 import { getSession, updateSession } from './session.js';
 import { pickDevice } from './device-picker.js';
 import { parseCdpDeviceId } from './drivers/cdp-discovery.js';
@@ -209,6 +210,7 @@ const COMMAND_HELP: Record<string, string> = {
   back: backHelp,
   'press-key': pressKeyHelp,
   'hide-keyboard': hideKeyboardHelp,
+  menu: menuHelp,
   scroll: scrollHelp,
   swipe: swipeHelp,
   'scroll-until-visible': scrollUntilVisibleHelp,
@@ -264,7 +266,7 @@ const COMMAND_HELP: Record<string, string> = {
 const OPTIONS_HELP = `Options:
   --device <id>     Target device ID (also keys the session and daemon)
   --device-name <n> Target a booted device by name (resolved to ID from booted devices)
-  --platform <p>    Filter to devices of this platform (ios, android, tvos, web, vega, roku)
+  --platform <p>    Filter to devices of this platform (ios, android, tvos, web, vega, roku, macos)
   --cdp-url <url>   Attach the web driver to an existing browser over CDP (e.g. an
                     Electron app started with --remote-debugging-port). Remembered per session.
   --cdp-target <id> Pick which CDP page target to control (see \`conductor web-targets\`)
@@ -303,6 +305,9 @@ async function main(): Promise<void> {
       'stop-app',
       'long-press',
       'double-tap',
+      'right-click',
+      'hover',
+      'drag',
       'optional',
       'benchmark',
       'dump',
@@ -812,6 +817,9 @@ async function main(): Promise<void> {
         index: argv['index'] !== undefined ? Number(argv['index']) : undefined,
         longPress: argv['long-press'] as boolean,
         doubleTap: argv['double-tap'] as boolean,
+        rightClick: argv['right-click'] as boolean,
+        hover: argv['hover'] as boolean,
+        modifiers: argv['modifiers'] as string | undefined,
         optional: argv['optional'] as boolean,
         focused: argv['focused'] !== undefined ? (argv['focused'] as boolean) : undefined,
         enabled: argv['enabled'] !== undefined ? (argv['enabled'] as boolean) : undefined,
@@ -848,6 +856,10 @@ async function main(): Promise<void> {
 
     case 'hide-keyboard':
       exitCode = await hideKeyboard(opts, sessionName);
+      break;
+
+    case 'menu':
+      exitCode = await menu(rest.join(' '), opts, sessionName);
       break;
 
     case 'press-key': {
@@ -889,6 +901,7 @@ async function main(): Promise<void> {
         start: argv['start'] as string | undefined,
         end: argv['end'] as string | undefined,
         duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
+        drag: argv['drag'] as boolean,
       });
       break;
     }

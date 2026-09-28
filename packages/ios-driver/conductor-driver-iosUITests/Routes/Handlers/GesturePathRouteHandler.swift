@@ -22,12 +22,16 @@ struct GesturePathRouteHandler: HTTPHandler {
             }
         }
 
+        #if os(macOS)
+        return AppError(type: .precondition, message: "Multi-touch gestures are not supported on macOS").httpResponse
+        #else
         do {
             try await dispatch(body)
             return HTTPResponse(statusCode: .ok)
         } catch {
             return AppError(message: "gesturePath failed: \(error.localizedDescription)").httpResponse
         }
+        #endif
     }
 
     private func dispatch(_ request: GesturePathRequest) async throws {

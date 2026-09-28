@@ -7,6 +7,7 @@ import { printSuccess, printError, OutputOptions } from '../output.js';
 import { detectPlatform, detectDeviceKind } from '../drivers/bootstrap.js';
 import { installApp as installPhysicalApp } from '../drivers/devicectl.js';
 import { VegaCli } from '../drivers/vega/cli.js';
+import { installMacApp } from '../drivers/macos.js';
 
 async function resolveDeviceId(sessionName: string): Promise<string | undefined> {
   if (sessionName !== 'default') return sessionName;
@@ -42,6 +43,15 @@ export async function installApp(
       opts
     );
     return 1;
+  } else if (platform === 'macos') {
+    try {
+      const dest = await installMacApp(appPath);
+      printSuccess(`install-app "${appPath}" — installed to ${dest}`, opts);
+      return 0;
+    } catch (e) {
+      printError(`install-app failed: ${e instanceof Error ? e.message : String(e)}`, opts);
+      return 1;
+    }
   } else if (platform === 'vega') {
     // Vega installs a `.vpkg` through Amazon's CLI; strip the `vega:` id prefix.
     try {

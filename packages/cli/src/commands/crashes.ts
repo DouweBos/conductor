@@ -1,5 +1,5 @@
 export const HELP = `  crashes list [--app <bundleId>] [--since <duration>]
-                                       List recent crash reports (iOS host + Android logcat)
+                                       List recent crash reports (iOS/macOS host + Android logcat)
   crashes show <id>                    Print a specific crash report
   crashes tail                         Stream new crash reports as they appear`;
 
@@ -20,7 +20,7 @@ interface CrashReport {
   threadName: string | null;
   topFrames: string[];
   sourceFile: string | null;
-  platform: 'ios' | 'android';
+  platform: 'ios' | 'android' | 'macos';
 }
 
 const IOS_REPORTS_DIR = path.join(os.homedir(), 'Library', 'Logs', 'DiagnosticReports');
@@ -188,8 +188,13 @@ export async function crashesList(
     sessionName !== 'default' ? await detectPlatform(sessionName).catch(() => null) : null;
 
   const reports: CrashReport[] = [];
-  // Always include iOS host-side reports — they aren't device-scoped.
-  reports.push(...listIosReports({ app: listOpts.app, sinceMs }));
+  // Always include iOS host-side reports — they aren't device-scoped. Mac app
+  // crashes land in the same folder, so for a macOS session label them as such.
+  reports.push(
+    ...listIosReports({ app: listOpts.app, sinceMs }).map((r) =>
+      platform === 'macos' ? { ...r, platform: 'macos' as const } : r
+    )
+  );
   if (platform === 'android' && sessionName !== 'default') {
     reports.push(...(await listAndroidReports(sessionName, { app: listOpts.app, sinceMs })));
   } else if (platform === 'vega') {
