@@ -2,6 +2,8 @@
  * Unit tests for macOS support: shortcut parsing, the fixed `macos` device ID,
  * and the guarantee that no simulator-only path runs against the host Mac.
  */
+import http from 'http';
+import type { AddressInfo } from 'net';
 import { TestSuite, assert } from './runner.js';
 import { detectPlatform } from '../src/drivers/bootstrap.js';
 import { MacDriver, parseMacKeyCombo, parseMacModifiers } from '../src/drivers/macos.js';
@@ -65,10 +67,62 @@ macos.test('simulator-only operations fail cleanly instead of running simctl', a
   await rejects(driver.clearAppState('com.example'), /not supported on macOS/, 'clearAppState');
   await rejects(driver.uninstallApp('com.example'), /not supported on macOS/, 'uninstallApp');
   await rejects(driver.clearKeychain(), /not supported on macOS/, 'clearKeychain');
-  await rejects(driver.startRecording('/tmp/x.mov'), /not supported on macOS/, 'startRecording');
   await rejects(
     driver.launchApp('com.example', undefined, { dylibPath: '/x', inprocPort: 1 }),
     /injection is not supported on macOS/,
     'launchApp --inject'
   );
+});
+
+/** A stand-in driver answering each route with a fixed status and body. */
+async function fakeDriver(
+  routes: Record<string, [number, unknown]>
+): Promise<{ port: number; seen: Array<{ path: string; body: unknown }>; close(): void }> {
+  const seen: Array<{ path: string; body: unknown }> = [];
+  const server = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c: Buffer) => (raw += c.toString()));
+    req.on('end', () => {
+      const path = (req.url ?? '').replace(/^\//, '');
+      seen.push({ path, body: raw ? JSON.parse(raw) : undefined });
+      const [status, body] = routes[path] ?? [404, { error: 'not found' }];
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(body));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  return { port: (server.address() as AddressInfo).port, seen, close: () => server.close() };
+}
+
+macos.test('recording and streaming go through the background driver routes', async () => {
+  const fake = await fakeDriver({
+    'recording/start': [200, {}],
+    'recording/stop': [200, { path: '/tmp/out.mp4' }],
+    'stream/start': [200, { port: 4242 }],
+  });
+  try {
+    const driver = new MacDriver(fake.port);
+    await driver.startRecording('/tmp/out.mp4');
+    assert(
+      (fake.seen[0].body as { path: string }).path === '/tmp/out.mp4',
+      'recording/start carries the absolute path'
+    );
+    assert((await driver.finishRecording()) === '/tmp/out.mp4', 'recording/stop returns the file');
+    assert((await driver.startStream()) === 4242, 'stream/start returns the TCP port');
+  } finally {
+    fake.close();
+  }
+});
+
+macos.test('capture routes explain the foreground driver lacks them', async () => {
+  const fake = await fakeDriver({
+    'recording/stop': [400, { errorMessage: 'no recording is running' }],
+  });
+  try {
+    const driver = new MacDriver(fake.port);
+    await rejects(driver.startStream(), /needs the background macOS driver/, 'foreground 404');
+    await rejects(driver.finishRecording(), /no recording is running/, 'driver error message');
+  } finally {
+    fake.close();
+  }
 });

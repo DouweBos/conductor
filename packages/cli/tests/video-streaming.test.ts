@@ -71,6 +71,20 @@ videoStreaming.test('parser emits keyframe-flagged Annex B access units', async 
   );
 });
 
+videoStreaming.test('parser announces a new config only when SPS/PPS change', async () => {
+  const configs: VideoConfig[] = [];
+  const parser = new H264AnnexBParser({ onConfig: (c) => configs.push(c), onFrame: () => {} });
+  // Encoders repeat identical SPS/PPS on every keyframe: one config.
+  parser.push(annexB(SPS, PPS, IDR, SLICE, SPS, PPS, IDR, AUD));
+  const afterRepeat = configs.length;
+  assert(afterRepeat === 1, `repeated SPS/PPS re-announced: ${afterRepeat}`);
+  // A different SPS (here level 3.1) means the stream changed.
+  const sps31 = [0x67, 0x42, 0x00, 0x1f, 0xf8, 0x58, 0x9c, 0x80];
+  parser.push(annexB(sps31, PPS, IDR, AUD));
+  assert(configs.length === 2, `changed SPS should re-announce: ${configs.length}`);
+  assert(configs[1].codecString === 'avc1.42001f', `new codec: ${configs[1].codecString}`);
+});
+
 videoStreaming.test('parser drops frames until config is available', async () => {
   const frames: unknown[] = [];
   const parser = new H264AnnexBParser({

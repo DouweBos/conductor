@@ -20,7 +20,8 @@ trap 'rm -rf "$BUILD"' EXIT
 for arch in arm64 x86_64; do
   echo "==> Compiling $arch"
   swiftc -O -target "$arch-apple-macos14" -o "$BUILD/conductor-ax-$arch" "$SRC"/*.swift \
-    -framework AppKit -framework ApplicationServices -framework ScreenCaptureKit -framework Network
+    -framework AppKit -framework ApplicationServices -framework ScreenCaptureKit -framework Network \
+    -framework AVFoundation -framework VideoToolbox -framework CoreMedia
 done
 
 rm -rf "$APP"

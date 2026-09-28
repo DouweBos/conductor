@@ -16,7 +16,7 @@
 
 export const VIDEO_PROTOCOL_VERSION = 1;
 
-export type VideoPlatform = 'ios' | 'tvos' | 'android' | 'web';
+export type VideoPlatform = 'ios' | 'tvos' | 'android' | 'web' | 'macos';
 
 /** Wire codec advertised in the config frame. */
 export type VideoCodec = 'h264' | 'jpeg';

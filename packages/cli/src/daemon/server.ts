@@ -48,7 +48,8 @@ import { InputRouter, type LivePointerBackend } from './input-router.js';
 import { iosBackend, androidBackend, type InputBackend } from './input-backends.js';
 import { IOSHidClient } from '../drivers/ios-hid.js';
 import { startVideoServer, type VideoServerHandle } from './video-server.js';
-import { IOSCaptureSource } from './video-source.js';
+import { IOSCaptureSource, MacCaptureSource } from './video-source.js';
+import { MacDriver } from '../drivers/macos.js';
 import { LogCollector } from './log-collector.js';
 import { getSession } from '../session.js';
 
@@ -189,12 +190,27 @@ async function startInputServerForPlatform(): Promise<void> {
 
 /**
  * Start the streaming-video WebSocket server for the current device, once its
- * driver is up. iOS/tvOS only for now (host-side SimulatorKit capture); the
- * binary must be built/downloaded. Capture is lazy: it doesn't spawn until the
+ * driver is up. iOS/tvOS simulators use host-side SimulatorKit capture (the
+ * binary must be built/downloaded); macOS uses the background driver. Capture is lazy: it doesn't spawn until the
  * first subscriber connects, and stops when the last one leaves.
  */
 async function startVideoServerForPlatform(): Promise<void> {
   if (videoServer) return;
+  if (driverPlatform === 'macos') {
+    // The background driver captures the window itself; no extra binary.
+    const port = await getStreamPort(sessionName);
+    const driver = new MacDriver(driverPort);
+    videoServer = await startVideoServer({
+      port,
+      device: sessionName,
+      platform: 'macos',
+      makeSource: (hub) => new MacCaptureSource(driver, hub, dlog),
+      dlog,
+    });
+    streamPort = port;
+    dlog(`video server listening on ${port}`);
+    return;
+  }
   if (driverPlatform !== 'ios' && driverPlatform !== 'tvos') return;
   // Capture attaches to the Simulator's framebuffer via SimulatorKit, which has
   // no counterpart on real hardware.

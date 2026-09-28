@@ -1,6 +1,7 @@
 export const HELP = `  record-video start [--out <path>]    Start a screen VIDEO recording (distinct from \`flow record\`)
   record-video stop                    Stop recording and write the video file
-                                       iOS: HEVC .mov via simctl · Android: .mp4 via screenrecord`;
+                                       iOS: HEVC .mov via simctl · Android: .mp4 via screenrecord
+                                       macOS: H.264 .mp4 of the target app's window`;
 
 import fs from 'fs';
 import os from 'os';
@@ -9,6 +10,7 @@ import { spawn } from 'child_process';
 import { runDirect } from '../runner.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { MacDriver } from '../drivers/macos.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 
@@ -16,8 +18,8 @@ const RECORDINGS_DIR = path.join(os.homedir(), '.conductor', 'recordings');
 const ANDROID_REMOTE = '/sdcard/conductor_recording.mp4';
 
 interface RecordingState {
-  pid: number;
-  platform: 'ios' | 'android';
+  pid: number; // 0 on macOS: the background driver records
+  platform: 'ios' | 'android' | 'macos';
   outPath: string;
   serial?: string; // android only
 }
@@ -54,8 +56,10 @@ async function start(
 
   let state: RecordingState | null = null;
   const result = await runDirect(async (driver) => {
-    if (driver instanceof IOSDriver && driver.platform === 'macos') {
-      throw new Error('record-video is not supported on macOS yet — use take-screenshot');
+    if (driver instanceof MacDriver) {
+      const outPath = path.resolve(process.cwd(), flags.out ?? 'conductor-recording.mp4');
+      await driver.startRecording(outPath);
+      state = { pid: 0, platform: 'macos', outPath };
     } else if (driver instanceof IOSDriver) {
       const outPath = path.resolve(process.cwd(), flags.out ?? 'conductor-recording.mov');
       const proc = spawn(
@@ -75,7 +79,7 @@ async function start(
       proc.unref();
       state = { pid: proc.pid!, platform: 'android', outPath, serial: driver.serial };
     } else {
-      throw new Error('record-video is only supported on iOS and Android');
+      throw new Error('record-video is only supported on iOS, Android and macOS');
     }
   }, sessionName);
 
@@ -101,7 +105,16 @@ async function stop(opts: OutputOptions, sessionName: string): Promise<number> {
   const state = JSON.parse(fs.readFileSync(file, 'utf-8')) as RecordingState;
 
   try {
-    if (state.platform === 'ios') {
+    if (state.platform === 'macos') {
+      const result = await runDirect(async (driver) => {
+        if (!(driver instanceof MacDriver)) throw new Error('the recording was started on macOS');
+        state.outPath = await driver.finishRecording();
+      }, sessionName);
+      if (!result.success) {
+        printError(`record-video stop — failed\n${result.stderr}`, opts);
+        return 1;
+      }
+    } else if (state.platform === 'ios') {
       // SIGINT lets simctl flush and finalize the .mov it is writing directly to outPath.
       try {
         process.kill(state.pid, 'SIGINT');

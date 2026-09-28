@@ -195,8 +195,48 @@ export class MacDriver extends IOSDriver {
     this.unsupportedOnMac('add-media');
   }
 
-  override async startRecording(_outputPath: string): Promise<void> {
-    this.unsupportedOnMac('Screen recording', 'capture stills with `conductor take-screenshot`');
+  /** POST to a route only the background driver (ConductorAX) serves, returning its JSON. */
+  protected async postBackground<T>(route: string, body: unknown = {}): Promise<T> {
+    const { status, data } = await this.request('POST', `/${route}`, body);
+    const text = data.toString('utf-8');
+    if (status === 404) {
+      throw new Error(
+        `${route} needs the background macOS driver — unset CONDUCTOR_MACOS_FOREGROUND and restart the daemon`
+      );
+    }
+    if (status < 200 || status >= 300) {
+      let message = text.slice(0, 200);
+      try {
+        message = (JSON.parse(text) as { errorMessage?: string }).errorMessage ?? message;
+      } catch {
+        /* not JSON */
+      }
+      throw new Error(`macOS driver ${route} failed: ${message}`);
+    }
+    return (text ? JSON.parse(text) : {}) as T;
+  }
+
+  /** Record the target window to an H.264 .mp4 until stopRecording(). */
+  override async startRecording(outputPath: string): Promise<void> {
+    await this.postBackground('recording/start', { path: path.resolve(outputPath) });
+  }
+
+  /** Finish the recording; resolves to the written file. */
+  override async stopRecording(): Promise<void> {
+    await this.finishRecording();
+  }
+
+  async finishRecording(): Promise<string> {
+    return (await this.postBackground<{ path: string }>('recording/stop')).path;
+  }
+
+  /** Start the live H.264 stream of the target window; resolves to its loopback TCP port. */
+  async startStream(): Promise<number> {
+    return (await this.postBackground<{ port: number }>('stream/start')).port;
+  }
+
+  async stopStream(): Promise<void> {
+    await this.postBackground('stream/stop');
   }
 }
 

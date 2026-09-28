@@ -414,7 +414,7 @@ export async function streamServerInfo(sessionName = 'default'): Promise<StreamS
     throw new Error('No device found. Connect a device or start a simulator, then run again.');
   }
   const platform = await detectPlatform(deviceId);
-  if (platform !== 'ios' && platform !== 'tvos') {
+  if (platform !== 'ios' && platform !== 'tvos' && platform !== 'macos') {
     throw new Error(`Live video streaming is not yet available for ${platform} devices.`);
   }
 

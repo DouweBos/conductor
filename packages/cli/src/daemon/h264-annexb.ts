@@ -237,12 +237,19 @@ export class H264AnnexBParser {
     if (nal.length === 0) return;
     const nalType = nal[0] & 0x1f;
 
+    // Encoders repeat SPS/PPS on every keyframe; a different one means the
+    // stream changed (e.g. a macOS window resize), so announce a new config.
     if (nalType === NAL_SPS) {
+      if (this.sps && !this.sps.equals(nal)) {
+        this.config = null;
+        this.pps = null;
+      }
       this.sps = Buffer.from(nal);
       this.emitConfigIfReady();
       return;
     }
     if (nalType === NAL_PPS) {
+      if (this.pps && !this.pps.equals(nal)) this.config = null;
       this.pps = Buffer.from(nal);
       this.emitConfigIfReady();
       return;

@@ -56,7 +56,7 @@ conductor assert-visible "Dashboard"
 | `conductor add-media <path>...` | Push image/video files into the device gallery |
 | `conductor set-airplane-mode <on\|off>` / `toggle-airplane-mode` | Airplane mode (Android only) |
 | `conductor travel <lat,lng>... [--speed <m/s>]` | Move GPS through a route of coordinates |
-| `conductor record-video start [--out <path>]` / `record-video stop` | Record a screen **video** (iOS/Android). Distinct from `flow record` (which records a YAML flow) |
+| `conductor record-video start [--out <path>]` / `record-video stop` | Record a screen **video** (iOS/Android; macOS: an H.264 .mp4 of the target app's window, background driver only). Distinct from `flow record` (which records a YAML flow) |
 | `conductor clipboard read` / `clipboard write <text>` / `paste` | Clipboard (iOS) |
 | `conductor list-options [command]` | List valid values for enumerated params |
 | `conductor input-server` | Start (if needed) and print the streaming-input WebSocket URL for the device |
@@ -78,13 +78,15 @@ discrete commands above — this is for interactive host UIs.
 
 For live device mirroring, `conductor stream-server` ensures the daemon + capture
 backend are up and prints the loopback URL
-(`ws://127.0.0.1:<port>/stream?device=<id>&platform=<ios|tvos|android|web>`; also
+(`ws://127.0.0.1:<port>/stream?device=<id>&platform=<ios|tvos|android|web|macos>`; also
 in `daemon-status --json` as `streamPort`). One capture fans out to N subscribers.
 On connect the server sends a JSON `config` frame
 (`{t:"config",codec:"h264",width,height,rotation,fps,sps,pps,avcC,codecString}`),
 then **binary** frames — each one H.264 Annex B access unit, keyframe-led; a late
-joiner gets the cached config + a keyframe immediately. iOS/tvOS only for now
-(host-side SimulatorKit → VideoToolbox capture); Android/web are follow-ons.
+joiner gets the cached config + a keyframe immediately. iOS/tvOS simulators
+(host-side SimulatorKit → VideoToolbox capture) and macOS (the background driver
+streams the target app's window via ScreenCaptureKit; a resize re-sends `config`
+at the new size); Android/web are follow-ons.
 This is capture only — input stays on `input-server`. For a still image use
 `screenshot` / `capture-ui`; this socket is for continuous low-latency mirroring.
 

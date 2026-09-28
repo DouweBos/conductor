@@ -76,9 +76,11 @@ the only thing in the stack that produces a low-latency encoded stream.
 **URL.** `ws://127.0.0.1:<streamPort>/stream?device=<id>&platform=<ios|tvos|android|web>`
 (`streamPort` from `getStreamPort`, base 8075; also in `daemon-status --json`).
 
-**Handshake.** On connect the server sends exactly one **JSON** `config` frame,
-then every subsequent message is **binary**. Clients distinguish by frame type
-(text vs binary), matching the Argus decode path.
+**Handshake.** On connect the server sends one **JSON** `config` frame, then
+every subsequent message is **binary**. Clients distinguish by frame type
+(text vs binary), matching the Argus decode path. If the encoder's SPS/PPS
+change mid-stream (a macOS window resize), a new `config` frame follows and the
+next binary frame is a keyframe at the new size — reconfigure the decoder on it.
 
 ```jsonc
 // config frame (text)

@@ -148,3 +148,83 @@ export class IOSCaptureSource implements VideoSource {
     });
   }
 }
+
+/**
+ * macOS: the background driver (ConductorAX) captures the target window with
+ * ScreenCaptureKit and serves the same raw Annex B TCP stream as conductor-capture.
+ * On a drop (window closed, driver restarted) it asks again after a backoff, so
+ * the stream follows the app's current front window.
+ */
+export class MacCaptureSource implements VideoSource {
+  private socket: net.Socket | null = null;
+  private parser: H264AnnexBParser | null = null;
+  private active = false;
+  private restarting = false;
+
+  constructor(
+    private readonly driver: { startStream(): Promise<number>; stopStream(): Promise<void> },
+    private readonly hub: VideoHub,
+    private readonly dlog: (m: string) => void = () => {}
+  ) {}
+
+  async start(): Promise<void> {
+    if (this.active) return;
+    this.active = true;
+    await this.capture();
+  }
+
+  private async capture(): Promise<void> {
+    const port = await this.driver.startStream();
+    const parser = new H264AnnexBParser({
+      onConfig: (config) => {
+        this.dlog(`H.264 config ${config.codecString} ${config.width}x${config.height}`);
+        this.hub.emitConfig(config);
+      },
+      onFrame: (annexB, keyFrame) => this.hub.emitFrame(annexB, keyFrame),
+    });
+    this.parser = parser;
+    const socket = net.connect(port, '127.0.0.1', () =>
+      this.dlog(`connected to macOS window stream on ${port}`)
+    );
+    socket.on('data', (chunk: Buffer) => parser.push(chunk));
+    socket.on('error', (err) => this.dlog(`macOS stream error: ${err.message}`));
+    socket.on('close', () => {
+      if (this.socket !== socket) return;
+      this.dlog('macOS stream closed');
+      this.maybeRestart();
+    });
+    this.socket = socket;
+  }
+
+  private maybeRestart(): void {
+    if (!this.active || this.restarting) return;
+    this.restarting = true;
+    this.teardown();
+    setTimeout(() => {
+      this.restarting = false;
+      if (!this.active) return;
+      this.dlog('restarting macOS window stream');
+      this.capture().catch((err) => {
+        this.dlog(`macOS stream restart failed: ${err.message}`);
+        this.maybeRestart();
+      });
+    }, RESTART_BACKOFF_MS).unref?.();
+  }
+
+  private teardown(): void {
+    const socket = this.socket;
+    this.socket = null;
+    socket?.destroy();
+    this.parser?.reset();
+    this.parser = null;
+  }
+
+  async stop(): Promise<void> {
+    if (!this.active) return;
+    this.active = false;
+    this.teardown();
+    await this.driver.stopStream().catch(() => {});
+    this.hub.clear();
+    this.dlog('macOS stream stopped');
+  }
+}

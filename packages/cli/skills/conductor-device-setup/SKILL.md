@@ -180,7 +180,9 @@ Applications folders), `install-app <path.app>` (copies it into
 Unsupported on macOS (explicit error): `set-location`, `set-orientation`,
 `set-permissions` (grant in System Settings instead), `add-media`,
 `clear-state`, `uninstall-app`, `clear-keychain`, `download-app`, gestures,
-`record-video`, `launch-app --inject` / `native-*`, and the live video stream.
+and `launch-app --inject` / `native-*`. `record-video` and the live stream
+(`stream-server`) capture the target app's window and need the background
+driver.
 
 ### Physical iOS / tvOS devices
 

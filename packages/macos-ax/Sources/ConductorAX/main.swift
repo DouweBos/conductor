@@ -21,6 +21,7 @@ struct Key: Decodable { let key: String; let modifiers: [String]? }
 struct Bundle: Decodable { let bundleId: String }
 struct AppId: Decodable { let appId: String }
 struct MenuPath: Decodable { let path: [String] }
+struct OutputPath: Decodable { let path: String }
 
 let needsForeground = "needs the real pointer — set CONDUCTOR_MACOS_FOREGROUND=1 to use the foreground driver"
 
@@ -122,6 +123,14 @@ func handle(_ req: HTTPRequest) throws -> HTTPResponse {
         return .json(["restoredBundleId": ""])
     case "setPermissions":
         break
+    case "recording/start":
+        try WindowCapture.shared.startRecording(to: try body(req, OutputPath.self).path, target: try Target.resolve())
+    case "recording/stop":
+        return .json(["path": try WindowCapture.shared.stopRecording()])
+    case "stream/start":
+        return .json(["port": Int(try WindowCapture.shared.startStreaming(target: try Target.resolve()))])
+    case "stream/stop":
+        WindowCapture.shared.stopStreaming()
     case "hover", "drag", "gesturePath":
         throw DriverError(.precondition, "\(req.path) \(needsForeground)")
     case "pressButton", "setOrientation":
