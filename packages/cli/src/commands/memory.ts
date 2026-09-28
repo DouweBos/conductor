@@ -23,6 +23,7 @@ import { printError, printData, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 import { IOSDriver } from '../drivers/ios.js';
 import { AndroidDriver } from '../drivers/android.js';
+import { macAppPid } from '../drivers/macos.js';
 import { WebDriver } from '../drivers/web.js';
 import { parseHprof } from './hprof.js';
 
@@ -476,12 +477,7 @@ async function findIOSPid(
   appId: string,
   platform: 'ios' | 'tvos' | 'macos'
 ): Promise<number | undefined> {
-  if (platform === 'macos') {
-    // `"pid"=1234` — Mac apps are ordinary host processes, found via LaunchServices.
-    const info = await spawnCommand('lsappinfo', ['info', '-only', 'pid', '-app', appId]);
-    const m = info.success ? info.stdout.match(/"pid"\s*=\s*(\d+)/) : null;
-    return m ? Number(m[1]) : undefined;
-  }
+  if (platform === 'macos') return macAppPid(appId);
   // Inside-simulator PIDs == host PIDs for app processes.
   const list = await spawnCommand('xcrun', ['simctl', 'spawn', deviceId, 'launchctl', 'list']);
   if (!list.success) return undefined;

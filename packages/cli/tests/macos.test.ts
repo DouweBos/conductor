@@ -7,7 +7,13 @@ import http from 'http';
 import type { AddressInfo } from 'net';
 import { TestSuite, assert } from './runner.js';
 import { detectPlatform } from '../src/drivers/bootstrap.js';
-import { MacDriver, parseMacKeyCombo, parseMacModifiers } from '../src/drivers/macos.js';
+import {
+  MacDriver,
+  parseLsappinfoPid,
+  parseMacKeyCombo,
+  parseMacModifiers,
+} from '../src/drivers/macos.js';
+import { macCpuArgs } from '../src/commands/profile.js';
 import { macViewportFlagError } from '../src/commands/set-viewport.js';
 import { parseWindowArgs } from '../src/commands/window.js';
 
@@ -151,4 +157,19 @@ macos.test('parses window arguments', async () => {
   assert(typeof parseWindowArgs(['focus']) === 'string', 'focus without a title');
   assert(typeof parseWindowArgs([]) === 'string', 'no subcommand');
   assert(typeof parseWindowArgs(['close']) === 'string', 'unknown subcommand');
+});
+
+macos.test('finds an app pid in lsappinfo output', async () => {
+  assert(parseLsappinfoPid('"pid"=1234\n') === 1234, 'plain');
+  assert(parseLsappinfoPid('"pid" = 98') === 98, 'spaced');
+  assert(parseLsappinfoPid('') === undefined, 'not running prints nothing');
+  assert(parseLsappinfoPid('"pid"=[ NULL ]') === undefined, 'no number');
+});
+
+macos.test('profile cpu attaches xctrace by pid with no --device', async () => {
+  const args = macCpuArgs(4321, 5, '/tmp/cpu.trace');
+  assert(!args.includes('--device'), 'no --device on the host');
+  assert(args[args.indexOf('--attach') + 1] === '4321', 'attaches by pid');
+  assert(args[args.indexOf('--time-limit') + 1] === '5s', 'time limit');
+  assert(args[args.indexOf('--output') + 1] === '/tmp/cpu.trace', 'output');
 });

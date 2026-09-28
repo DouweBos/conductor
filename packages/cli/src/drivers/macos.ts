@@ -272,8 +272,19 @@ export class MacDriver extends IOSDriver {
 }
 
 async function isRunning(bundleId: string): Promise<boolean> {
+  return (await macAppPid(bundleId)) !== undefined;
+}
+
+/** The pid in `lsappinfo info -only pid` output (`"pid"=1234`), if any. */
+export function parseLsappinfoPid(out: string): number | undefined {
+  const m = out.match(/"pid"\s*=\s*(\d+)/);
+  return m ? Number(m[1]) : undefined;
+}
+
+/** Pid of a running Mac app — ordinary host processes, found via LaunchServices. */
+export async function macAppPid(bundleId: string): Promise<number | undefined> {
   const out = await run('lsappinfo', ['info', '-only', 'pid', '-app', bundleId]).catch(() => '');
-  return /"pid"\s*=\s*\d+/.test(out);
+  return parseLsappinfoPid(out);
 }
 
 function run(cmd: string, args: string[], stdin?: string): Promise<string> {

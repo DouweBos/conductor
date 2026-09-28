@@ -1,5 +1,5 @@
-export const HELP = `  profile cpu --duration <s> [--out <path>]
-                                       Record a CPU trace (iOS: xctrace, Android: simpleperf)
+export const HELP = `  profile cpu --duration <s> [--out <path>] [<appId>]
+                                       Record a CPU trace (iOS/macOS: xctrace, Android: simpleperf)
     --report [--top N]                 Android: also symbolize the trace into a ranked table
   profile memory --track <s> [--interval <ms>] [<appId>]
                                        Sample memory for N seconds, report deltas
@@ -24,7 +24,8 @@ import path from 'path';
 import { printError, printData, printSuccess, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
-import { spawnCommand } from '../runner.js';
+import { spawnCommand, getDriver } from '../runner.js';
+import { MacDriver, macAppPid } from '../drivers/macos.js';
 import { adbShell } from '../android/device.js';
 import { memory } from './memory.js';
 import { MetroCdpClient } from '../drivers/metro-cdp.js';
@@ -185,6 +186,46 @@ async function recordIosCpu(
   });
 }
 
+/** Time Profiler against a host Mac app. xctrace attaches by pid; there is no --device. */
+async function recordMacCpu(
+  sessionName: string,
+  appId: string | undefined,
+  durationSec: number,
+  out: string
+): Promise<void> {
+  let bundleId = appId;
+  if (!bundleId) {
+    const driver = await getDriver(sessionName);
+    if (driver instanceof MacDriver) bundleId = (await driver.runningApp([])) || undefined;
+  }
+  if (!bundleId) throw new Error('no app to profile — pass --app <bundleId> or launch one first');
+  const pid = await macAppPid(bundleId);
+  if (pid === undefined) throw new Error(`${bundleId} is not running`);
+  const args = macCpuArgs(pid, durationSec, out);
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('xcrun', args, { stdio: 'inherit' });
+    proc.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error(`xctrace exited with code ${code}`))
+    );
+    proc.on('error', reject);
+  });
+}
+
+export function macCpuArgs(pid: number, durationSec: number, out: string): string[] {
+  return [
+    'xctrace',
+    'record',
+    '--template',
+    'Time Profiler',
+    '--attach',
+    String(pid),
+    '--time-limit',
+    `${durationSec}s`,
+    '--output',
+    out,
+  ];
+}
+
 async function recordAndroidCpu(
   deviceId: string,
   appId: string | undefined,
@@ -275,19 +316,21 @@ export async function profileCpu(
     return 1;
   }
   const platform = await detectPlatform(sessionName).catch(() => null);
-  const isIos = platform === 'ios' || platform === 'tvos';
-  const out = profileOpts.out ?? defaultTracePath('cpu', isIos ? 'trace' : 'perf.data');
+  const isApple = platform === 'ios' || platform === 'tvos' || platform === 'macos';
+  const out = profileOpts.out ?? defaultTracePath('cpu', isApple ? 'trace' : 'perf.data');
   let entries: SimpleperfEntry[] | undefined;
   try {
-    if (isIos) {
-      if (profileOpts.report) {
-        printError(
-          'profile cpu --report is Android-only. Export the iOS trace with ' +
-            '`xcrun xctrace export --input <trace> --toc` to see what it holds.',
-          opts
-        );
-        return 1;
-      }
+    if (isApple && profileOpts.report) {
+      printError(
+        'profile cpu --report is Android-only. Export the trace with ' +
+          '`xcrun xctrace export --input <trace> --toc` to see what it holds.',
+        opts
+      );
+      return 1;
+    }
+    if (platform === 'macos') {
+      await recordMacCpu(sessionName, profileOpts.appId, profileOpts.durationSec, out);
+    } else if (isApple) {
       await recordIosCpu(sessionName, profileOpts.appId, profileOpts.durationSec, out);
     } else if (platform === 'android') {
       entries = await recordAndroidCpu(

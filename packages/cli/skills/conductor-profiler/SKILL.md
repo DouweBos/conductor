@@ -94,7 +94,7 @@ profile) or convert with `npx hermes-profile-transformer`.
 
 | Command | Purpose |
 |---|---|
-| `conductor profile cpu --duration <s> [--out <path>]` | Record a trace (iOS: xctrace, Android: simpleperf) |
+| `conductor profile cpu --duration <s> [--out <path>] [<appId>]` | Record a trace (iOS: xctrace, Android: simpleperf; macOS: xctrace attached to the app's pid — the app from `launch-app` if no appId) |
 | `conductor profile cpu --duration <s> --report [--top n]` | Android: also return a ranked symbol table |
 
 Without `--report` on Android you get a binary `perf.data` you cannot read —
