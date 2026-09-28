@@ -50,10 +50,12 @@ package-cli: build-ios-driver build-ios-inproc build-tvos-driver build-android-d
 		$(CLI_DRIVERS)/android/conductor-app.apk
 	cp $(ANDROID_OUT)/androidTest/debug/conductor-android-debug-androidTest.apk \
 		$(CLI_DRIVERS)/android/conductor-server.apk
+	packages/ios-driver/tools/brand-runner.sh $(IOS_BUILD_PRODUCTS)/conductor-driver-ios.app $(IOS_BUILD_PRODUCTS)/conductor-driver-iosUITests-Runner.app
 	cd $(IOS_BUILD_PRODUCTS) && zip -qr $(CURDIR)/$(CLI_DRIVERS)/ios/conductor-driver-ios.zip conductor-driver-ios.app
 	cd $(IOS_BUILD_PRODUCTS) && zip -qr $(CURDIR)/$(CLI_DRIVERS)/ios/conductor-driver-iosUITests-Runner.zip conductor-driver-iosUITests-Runner.app
 	cp $$(find $(IOS_DERIVED)/Build/Products -name "*.xctestrun" | head -1) \
 		$(CLI_DRIVERS)/ios/conductor-driver-ios-config.xctestrun
+	packages/ios-driver/tools/brand-runner.sh $(TVOS_BUILD_PRODUCTS)/conductor-driver-tvos.app $(TVOS_BUILD_PRODUCTS)/conductor-driver-tvosUITests-Runner.app
 	cd $(TVOS_BUILD_PRODUCTS) && zip -qr $(CURDIR)/$(CLI_DRIVERS)/tvos/conductor-driver-tvos.zip conductor-driver-tvos.app
 	cd $(TVOS_BUILD_PRODUCTS) && zip -qr $(CURDIR)/$(CLI_DRIVERS)/tvos/conductor-driver-tvosUITests-Runner.zip conductor-driver-tvosUITests-Runner.app
 	cp $$(find $(TVOS_DERIVED)/Build/Products -name "*.xctestrun" | head -1) \
