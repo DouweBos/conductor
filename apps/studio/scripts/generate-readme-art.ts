@@ -1,7 +1,7 @@
 /**
- * Render the README's banner and section images, light and dark, into the
- * repo's assets/ directory. Built from the app icon's artwork so they stay in
- * step with it.
+ * Render the README's banner and section images, plus the app icon for the
+ * web, light and dark, into the repo's assets/ directory. Built from the app
+ * icon's artwork so they stay in step with it.
  *
  * Run with: pnpm build:readme-art (macOS: the text uses Helvetica Neue and Menlo)
  */
@@ -171,4 +171,11 @@ for (const [name, draw] of Object.entries(ART)) {
     writeFileSync(path.join(ASSETS, file), png);
     console.log(`[readme-art] wrote assets/${file}`);
   }
+}
+
+// The icon on its own, for houwert.dev and anywhere else that needs it as an image.
+for (const mode of ["light", "dark"] as const) {
+  const png = new Resvg(appIcon(mode), { fitTo: { mode: "width", value: 512 } }).render().asPng();
+  writeFileSync(path.join(ASSETS, `icon-${mode}.png`), png);
+  console.log(`[readme-art] wrote assets/icon-${mode}.png`);
 }
