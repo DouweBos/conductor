@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in the CLI, a driver or Studio doesn't work as expected.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you ran, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands or a minimal flow YAML.
+      render: shell
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options: [iOS simulator, iOS device, tvOS simulator, tvOS device, Android, Fire TV, Roku, macOS, Web, Conductor Studio]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Conductor version
+      description: Output of `conductor --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Xcode / Android SDK version, device or simulator model.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: text

@@ -1,13 +1,31 @@
 {
   "name": "@houwert/conductor",
   "version": "0.33.3",
-  "description": "CLI tool for mobile app interactions — optimized for AI agents",
+  "description": "UI automation CLI for AI agents. Drive and inspect iOS, tvOS, Android, Fire TV, Roku, macOS and web apps from the terminal.",
+  "keywords": [
+    "ai-agents",
+    "ui-automation",
+    "mobile-testing",
+    "e2e-testing",
+    "ios",
+    "tvos",
+    "android",
+    "fire-tv",
+    "roku",
+    "macos",
+    "playwright",
+    "xcuitest",
+    "simulator",
+    "maestro",
+    "claude-code",
+    "react-native"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/DouweBos/conductor"
   },
-  "homepage": "https://github.com/DouweBos/conductor",
+  "homepage": "https://houwert.dev/conductor/",
   "publishConfig": {
     "access": "public"
   },
@@ -51,5 +69,8 @@
     "prettier": "^3.8.1",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.56.1"
+  },
+  "bugs": {
+    "url": "https://github.com/DouweBos/conductor/issues"
   }
 }
