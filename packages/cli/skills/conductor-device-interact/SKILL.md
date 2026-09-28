@@ -48,6 +48,7 @@ conductor assert-visible "Dashboard"
 | `conductor scroll [--direction down\|up\|left\|right]` | Scroll |
 | `conductor scroll-until-visible <element> [--direction] [--timeout ms]` | Scroll until element appears |
 | `conductor swipe --direction <dir>` / `--start <x,y> --end <x,y> [--duration ms]` | Swipe. On macOS a swipe scrolls (scroll wheel); add `--drag` to press, drag and release instead |
+| `conductor window list` / `window focus "<title>"` | macOS: list the target app's windows, or raise one by title and drive it (screenshots, coordinates, hierarchy) instead of the front window; `window focus --clear` goes back to the front window |
 | `conductor open-link <url>` | Open a URL / deep link |
 | `conductor pinch [--scale N] [--center x,y]` | Two-finger pinch (scale<1 out, >1 in) |
 | `conductor rotate-gesture [--degrees N] [--center x,y]` | Two-finger rotate |

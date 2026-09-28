@@ -1,13 +1,15 @@
-export const HELP = `  set-viewport [<width> <height>]      Resize the web browser viewport (web only)
+export const HELP = `  set-viewport [<width> <height>]      Resize the web browser viewport, or on macOS the target app's window (points)
     --preset <mobile|tablet|desktop>  Use a device preset instead of explicit width/height
     --width <n> / --height <n>         Viewport size in CSS pixels
     --scale <n>                       Device scale factor (default: 2 for mobile/tablet, else 1)
     --mobile / --no-mobile            Emulate a mobile device (touch + mobile UA hints)
     --user-agent <str>                Override the user agent string
-    --color-scheme <dark|light>       Emulate prefers-color-scheme`;
+    --color-scheme <dark|light>       Emulate prefers-color-scheme
+                                       (--scale, --mobile, --user-agent and --color-scheme are web-only)`;
 
 import { runDirect } from '../runner.js';
 import { WebDriver } from '../drivers/web.js';
+import { MacDriver } from '../drivers/macos.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 
 interface Preset {
@@ -31,6 +33,19 @@ export interface SetViewportOptions {
   mobile?: boolean;
   userAgent?: string;
   colorScheme?: string;
+}
+
+/** Flags that only mean something to a browser; macOS resizes a real window. */
+export function macViewportFlagError(flags: SetViewportOptions): string | null {
+  const webOnly = [
+    flags.scale !== undefined && '--scale',
+    flags.mobile !== undefined && '--mobile',
+    flags.userAgent !== undefined && '--user-agent',
+    flags.colorScheme !== undefined && '--color-scheme',
+  ].filter(Boolean);
+  return webOnly.length
+    ? `${webOnly.join(', ')} ${webOnly.length === 1 ? 'is' : 'are'} web-only — on macOS set-viewport only resizes the window`
+    : null;
 }
 
 export async function setViewport(
@@ -75,8 +90,14 @@ export async function setViewport(
   }
 
   const result = await runDirect(async (driver) => {
+    if (driver instanceof MacDriver) {
+      const error = macViewportFlagError(flags);
+      if (error) throw new Error(error);
+      await driver.setWindow({ width: width!, height: height! });
+      return;
+    }
     if (!(driver instanceof WebDriver)) {
-      throw new Error('set-viewport is only supported on web devices');
+      throw new Error('set-viewport is only supported on web devices and macOS');
     }
     await driver.setViewport({
       width: width!,

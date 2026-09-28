@@ -22,6 +22,7 @@ struct Bundle: Decodable { let bundleId: String }
 struct AppId: Decodable { let appId: String }
 struct MenuPath: Decodable { let path: [String] }
 struct OutputPath: Decodable { let path: String }
+struct WindowChange: Decodable { let title: String?; let width: Double?; let height: Double?; let x: Double?; let y: Double? }
 
 let needsForeground = "needs the real pointer — set CONDUCTOR_MACOS_FOREGROUND=1 to use the foreground driver"
 
@@ -50,6 +51,56 @@ func hierarchy() throws -> [String: Any] {
         1 + ((n["children"] as? [[String: Any]])?.map(depth).max() ?? 0)
     }
     return ["axElement": root, "depth": depth(root)]
+}
+
+enum Windows {
+    /// Focus a window by title and/or move and resize the target window. Sizes
+    /// and positions are in points; x/y are global screen coordinates.
+    static func change(_ c: WindowChange) throws -> [String: Any] {
+        var target = try Target.resolve()
+        if let title = c.title {
+            if title.isEmpty {
+                Target.windowTitle = nil
+            } else {
+                guard let el = Target.window(titled: title, in: target.app) else {
+                    let titles = Target.windows(of: target.app).map { AX.string($0, kAXTitleAttribute) ?? "" }
+                    throw DriverError(.precondition, "\(target.bundleId) has no window titled \"\(title)\" "
+                        + "(windows: \(titles.map { "\"\($0)\"" }.joined(separator: ", ")))")
+                }
+                if (AX.attr(el, kAXMinimizedAttribute) as Bool?) == true { AX.set(el, kAXMinimizedAttribute, kCFBooleanFalse) }
+                AX.perform(el, kAXRaiseAction)
+                Target.windowTitle = AX.string(el, kAXTitleAttribute) ?? title
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+            target = try Target.resolve()
+            WindowCapture.shared.retarget(target)
+        }
+        if c.width != nil || c.height != nil || c.x != nil || c.y != nil {
+            guard let el = target.window, let frame = AX.frame(el) else {
+                throw DriverError(.precondition, "\(target.bundleId) has no window on screen")
+            }
+            if c.x != nil || c.y != nil {
+                var origin = CGPoint(x: c.x ?? frame.minX, y: c.y ?? frame.minY)
+                guard let v = AXValueCreate(.cgPoint, &origin), AX.set(el, kAXPositionAttribute, v) else {
+                    throw DriverError(.precondition, "the window can't be moved")
+                }
+            }
+            if c.width != nil || c.height != nil {
+                var size = CGSize(width: c.width ?? frame.width, height: c.height ?? frame.height)
+                guard AX.isSettable(el, kAXSizeAttribute), let v = AXValueCreate(.cgSize, &size),
+                      AX.set(el, kAXSizeAttribute, v) else {
+                    throw DriverError(.precondition, "the window can't be resized")
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+            target = try Target.resolve()
+        }
+        let f = target.window.flatMap(AX.frame) ?? target.frame
+        return [
+            "title": target.window.flatMap { AX.string($0, kAXTitleAttribute) } ?? "",
+            "frame": ["x": f.minX, "y": f.minY, "width": f.width, "height": f.height],
+        ]
+    }
 }
 
 func handle(_ req: HTTPRequest) throws -> HTTPResponse {
@@ -131,6 +182,19 @@ func handle(_ req: HTTPRequest) throws -> HTTPResponse {
         return .json(["port": Int(try WindowCapture.shared.startStreaming(target: try Target.resolve()))])
     case "stream/stop":
         WindowCapture.shared.stopStreaming()
+    case "windows":
+        let t = try Target.resolve()
+        return .json(["windows": Target.windows(of: t.app).map { el -> [String: Any] in
+            let f = AX.frame(el) ?? .zero
+            return [
+                "title": AX.string(el, kAXTitleAttribute) ?? "",
+                "frame": ["x": f.minX, "y": f.minY, "width": f.width, "height": f.height],
+                "focused": t.window.map { CFEqual($0, el) } ?? false,
+                "minimized": (AX.attr(el, kAXMinimizedAttribute) as Bool?) ?? false,
+            ]
+        }])
+    case "window":
+        return .json(try Windows.change(try body(req, WindowChange.self)))
     case "hover", "drag", "gesturePath":
         throw DriverError(.precondition, "\(req.path) \(needsForeground)")
     case "pressButton", "setOrientation":

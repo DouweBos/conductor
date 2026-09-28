@@ -7,7 +7,11 @@ import ScreenCaptureKit
 /// top-left, matching the screenshot.
 struct Target {
     /// Set by /launchApp and /target. Without it we follow the frontmost app.
-    static var bundleId: String?
+    static var bundleId: String? {
+        didSet { if oldValue != bundleId { windowTitle = nil } }
+    }
+    /// Set by `window focus`: drive this window instead of the app's front one.
+    static var windowTitle: String?
 
     let pid: pid_t
     let bundleId: String
@@ -27,7 +31,12 @@ struct Target {
 
         // WindowServer knows which of the app's windows is really in front; AX
         // also lists offscreen and helper windows.
-        if let front = visibleWindows().first(where: { $0.pid == pid }) {
+        let onScreen = visibleWindows().filter { $0.pid == pid }
+        if let title = windowTitle, let chosen = window(titled: title, in: app),
+           let frame = AX.frame(chosen), let cg = onScreen.first(where: { close($0.bounds, frame) }) {
+            return Target(pid: pid, bundleId: bundleId, app: app, windowID: cg.id, frame: cg.bounds, window: chosen)
+        }
+        if let front = onScreen.first {
             let axWindow = AX.children(app).first { el in
                 AX.role(el) == kAXWindowRole && AX.frame(el).map { close($0, front.bounds) } == true
             }
@@ -36,6 +45,18 @@ struct Target {
         }
         let display = CGDisplayBounds(CGMainDisplayID())
         return Target(pid: pid, bundleId: bundleId, app: app, windowID: nil, frame: display, window: nil)
+    }
+
+    static func windows(of app: AXUIElement) -> [AXUIElement] {
+        AX.children(app).filter { AX.role($0) == kAXWindowRole }
+    }
+
+    /// Exact title first, then the first title containing it (both case-insensitive).
+    static func window(titled title: String, in app: AXUIElement) -> AXUIElement? {
+        let all = windows(of: app)
+        let t = { (el: AXUIElement) in AX.string(el, kAXTitleAttribute) ?? "" }
+        return all.first { t($0).compare(title, options: .caseInsensitive) == .orderedSame }
+            ?? all.first { t($0).range(of: title, options: .caseInsensitive) != nil }
     }
 
     static func runningTarget() -> String? {

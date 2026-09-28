@@ -18,6 +18,13 @@ import { IOSDriver } from './ios.js';
 /** Fixed device ID for the host Mac — there is only ever one. */
 export const MACOS_DEVICE_ID = 'macos';
 
+export interface MacWindow {
+  title: string;
+  frame: { x: number; y: number; width: number; height: number };
+  focused: boolean;
+  minimized: boolean;
+}
+
 export type MacModifier = 'command' | 'shift' | 'option' | 'control' | 'function';
 
 export class MacDriver extends IOSDriver {
@@ -214,6 +221,30 @@ export class MacDriver extends IOSDriver {
       throw new Error(`macOS driver ${route} failed: ${message}`);
     }
     return (text ? JSON.parse(text) : {}) as T;
+  }
+
+  /** The target app's windows; `focused` marks the one conductor drives. */
+  async listWindows(): Promise<MacWindow[]> {
+    return (await this.get<{ windows: MacWindow[] }>('windows')).windows;
+  }
+
+  /**
+   * Focus a window by title (empty title: follow the front window again) and/or
+   * move and resize the target window, in points. Resolves to its new frame.
+   */
+  async setWindow(change: {
+    title?: string;
+    width?: number;
+    height?: number;
+    x?: number;
+    y?: number;
+  }): Promise<{ title: string; frame: MacWindow['frame'] }> {
+    const result = await this.postBackground<{ title: string; frame: MacWindow['frame'] }>(
+      'window',
+      change
+    );
+    this.invalidateHierarchyCache();
+    return result;
   }
 
   /** Record the target window to an H.264 .mp4 until stopRecording(). */

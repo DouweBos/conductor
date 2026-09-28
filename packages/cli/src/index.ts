@@ -160,6 +160,7 @@ import { travel, HELP as travelHelp } from './commands/travel.js';
 import { recordVideo, HELP as recordVideoHelp } from './commands/record-video.js';
 import { assertScreenshot, HELP as assertScreenshotHelp } from './commands/assert-screenshot.js';
 import { menu, HELP as menuHelp } from './commands/menu.js';
+import { windowCommand, HELP as windowHelp } from './commands/window.js';
 import { getSession, updateSession } from './session.js';
 import { pickDevice } from './device-picker.js';
 import { parseCdpDeviceId } from './drivers/cdp-discovery.js';
@@ -211,6 +212,7 @@ const COMMAND_HELP: Record<string, string> = {
   'press-key': pressKeyHelp,
   'hide-keyboard': hideKeyboardHelp,
   menu: menuHelp,
+  window: windowHelp,
   scroll: scrollHelp,
   swipe: swipeHelp,
   'scroll-until-visible': scrollUntilVisibleHelp,
@@ -856,6 +858,10 @@ async function main(): Promise<void> {
 
     case 'hide-keyboard':
       exitCode = await hideKeyboard(opts, sessionName);
+      break;
+
+    case 'window':
+      exitCode = await windowCommand(rest, { clear: argv['clear'] as boolean }, opts, sessionName);
       break;
 
     case 'menu':

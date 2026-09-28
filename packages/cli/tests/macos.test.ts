@@ -1,12 +1,15 @@
 /**
- * Unit tests for macOS support: shortcut parsing, the fixed `macos` device ID,
- * and the guarantee that no simulator-only path runs against the host Mac.
+ * Unit tests for macOS support: shortcut and argument parsing, the fixed `macos`
+ * device ID, the background driver's capture routes, and the guarantee that no
+ * simulator-only path runs against the host Mac.
  */
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { TestSuite, assert } from './runner.js';
 import { detectPlatform } from '../src/drivers/bootstrap.js';
 import { MacDriver, parseMacKeyCombo, parseMacModifiers } from '../src/drivers/macos.js';
+import { macViewportFlagError } from '../src/commands/set-viewport.js';
+import { parseWindowArgs } from '../src/commands/window.js';
 
 export const macos = new TestSuite('macOS');
 
@@ -125,4 +128,27 @@ macos.test('capture routes explain the foreground driver lacks them', async () =
   } finally {
     fake.close();
   }
+});
+
+macos.test('set-viewport rejects web-only flags on macOS', async () => {
+  assert(macViewportFlagError({ width: 800, height: 600 }) === null, 'plain size is fine');
+  assert(macViewportFlagError({ preset: 'desktop' }) === null, 'a preset only sets the size');
+  const one = macViewportFlagError({ width: 800, height: 600, scale: 2 });
+  assert(one !== null && /--scale is web-only/.test(one), `single flag: ${one}`);
+  const many = macViewportFlagError({ mobile: true, userAgent: 'x', colorScheme: 'dark' });
+  assert(
+    many !== null && /--mobile, --user-agent, --color-scheme are web-only/.test(many),
+    `several flags: ${many}`
+  );
+});
+
+macos.test('parses window arguments', async () => {
+  const eq = (a: unknown, b: unknown, label: string) =>
+    assert(JSON.stringify(a) === JSON.stringify(b), `${label}: ${JSON.stringify(a)}`);
+  eq(parseWindowArgs(['list']), { sub: 'list' }, 'list');
+  eq(parseWindowArgs(['focus', 'Untitled', '2']), { sub: 'focus', title: 'Untitled 2' }, 'focus');
+  eq(parseWindowArgs(['focus'], true), { sub: 'focus', title: '' }, 'focus --clear');
+  assert(typeof parseWindowArgs(['focus']) === 'string', 'focus without a title');
+  assert(typeof parseWindowArgs([]) === 'string', 'no subcommand');
+  assert(typeof parseWindowArgs(['close']) === 'string', 'unknown subcommand');
 });

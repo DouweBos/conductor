@@ -32,7 +32,7 @@ conductor list-apps          # installed app ids / package names (--json adds ap
 | `conductor get-orientation`                                           | Print the current orientation (iOS only)                                   |
 | `conductor set-fold <closed\|book\|open\|0-180>`                     | Fold/unfold a foldable device, or set an exact hinge angle (iPhone Duo)    |
 | `conductor get-fold`                                                  | Print the current hinge angle and pose                                     |
-| `conductor set-viewport [<w> <h>] [--preset mobile\|tablet\|desktop]` | Resize web viewport (web only)                                             |
+| `conductor set-viewport [<w> <h>] [--preset mobile\|tablet\|desktop]` | Resize web viewport; on macOS, resize the target app's window (points; web-only flags rejected) |
 | `conductor install-web [--check] [browser]`                           | Install a Playwright browser (chromium/firefox/webkit); `--check` = status |
 
 ### Foldable devices (iPhone Duo)
@@ -169,6 +169,11 @@ Tell the user before using it.
 The "screen" is the **target app's front window** (the app from `launch-app`, else the frontmost one): `take-screenshot`,
 `inspect`/`capture-ui` frames, and `tap-on --at` coordinates are all relative to
 its top-left corner. Menus and popovers outside the window stay in the hierarchy.
+For apps with several windows, `window list` shows them and `window focus
+"<title>"` raises one and makes it the window conductor drives (title match is
+case-insensitive, exact first, then substring); `window focus --clear` follows
+the front window again. `set-viewport <w> <h>` resizes the driven window.
+All three need the background driver.
 
 App lifecycle: `launch-app <bundleId>` (launches or activates; `--argument`
 relaunches with launch arguments), `stop-app`, `list-apps` (apps in the
