@@ -21,6 +21,7 @@
     "prepare-conductor": "tsx scripts/prepare-conductor.ts",
     "postinstall": "tsx scripts/prepare-conductor.ts",
     "build:icon": "tsx scripts/generate-icon.ts",
+    "build:readme-art": "tsx scripts/generate-readme-art.ts",
     "test": "tsx tests/all-tests.ts"
   },
   "dependencies": {

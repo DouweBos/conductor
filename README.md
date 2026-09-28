@@ -1,22 +1,41 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="Conductor" width="800" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.png" />
+  <img src="assets/banner-light.png" alt="Conductor — mobile and web UI automation for AI agents" width="800" />
+</picture>
 
-# Conductor
+### Let your coding agent see and drive the app it's building.
 
-**Mobile and web UI automation for AI agents.**
+Conductor is a CLI that gives AI agents hands and eyes on a running app. Tap, type, read the live UI, take screenshots and run test flows on iOS, Android, TV, macOS and the web, across as many devices as you have.
 
 [![CI](https://github.com/DouweBos/conductor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DouweBos/conductor/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@houwert/conductor)](https://www.npmjs.com/package/@houwert/conductor)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+[**Quick start**](#quick-start) · [**Docs**](https://houwert.dev/conductor/docs) · [**Conductor Studio**](#conductor-studio) · [**Releases**](https://github.com/DouweBos/conductor/releases)
+
 </div>
 
 ---
 
-Conductor is a token-efficient CLI for driving and inspecting running apps, built for AI agents. It is a TypeScript reimplementation and partial fork of [Maestro](https://maestro.mobile.dev) that ships its own native drivers, so there is no external CLI to install and no JVM to configure.
+## Why Conductor
 
-It gives a coding agent the ability to operate an app while writing the code for it: navigate the UI, read the live view hierarchy, take screenshots, run flows, and drive several devices in parallel across concurrent agents.
+- **Built for agents.** Compact, token-efficient output an agent can act on. One `conductor init` teaches Claude Code the whole CLI through bundled skills.
+- **Every screen you ship to.** iOS and tvOS, macOS, Android, Fire TV, Roku and the web, all driven with the same commands.
+- **Nothing else to install.** Conductor ships its own native drivers: no Maestro CLI, no JVM, no external service.
+- **Your Maestro flows still work.** A TypeScript reimplementation and partial fork of [Maestro](https://maestro.mobile.dev); most existing YAML flows run unchanged.
+- **Parallel by default.** Named sessions and a shared device pool let several agents drive several devices at once without stepping on each other.
+- **Stays on your machine.** No telemetry, no analytics, no phone-home.
+
+## What your agent can do
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/section-cli-dark.png" />
+  <img src="assets/section-cli-light.png" alt="A terminal running conductor tap-on &quot;Sign In&quot; and the phone button it tapped" width="800" />
+</picture>
+
+An agent works an app the way you do: act, look at the result, act again. It can operate the app while it writes the code for it.
 
 ```bash
 conductor launch-app com.example.myapp
@@ -25,31 +44,6 @@ conductor input-text "user@example.com"
 conductor assert-visible "Dashboard"
 conductor take-screenshot --output /tmp/screen.png
 ```
-
-Targets iOS and tvOS simulators, physical iOS/tvOS devices, macOS apps on the host Mac, Android emulators and devices, Amazon Fire TV, Roku, and web via Playwright.
-
-## Quick start
-
-```bash
-npm install -g @houwert/conductor
-```
-
-Conductor is a pure CLI. To teach an AI agent how to use it, install the bundled skills into your repository:
-
-```bash
-conductor init            # interactive: pick scope + skills, writes to .claude/skills/
-conductor init --yes      # non-interactive: install all skills into ./.claude/skills/
-conductor init --global   # install into ~/.claude/skills/ for all repos
-conductor init --force    # re-sync skills you have already installed
-```
-
-`init` is the one manual setup step — run it once per repository. In a terminal it prompts for which skills and where; piped or headless (CI, agent) it installs everything non-interactively. It writes a set of capability-scoped Claude Code skills — `conductor-device-interact`, `conductor-inspect`, `conductor-create-flow`, `conductor-native`, `conductor-metro-debugger`, `conductor-profiler` and `conductor-device-setup` — documenting every command and the act → observe → act workflow.
-
-After upgrading conductor, re-run `conductor init --force` to re-sync the installed skills. `init` stamps the version it installed, so it can tell you when they are stale and prune skills no longer shipped. Integrating another way (a custom `CLAUDE.md`, a slash command) works equally well.
-
-Run `conductor --help` for the full command reference, or `conductor <command> --help` for per-command flags.
-
-### What the CLI can do
 
 | Capability | Commands |
 |---|---|
@@ -66,88 +60,61 @@ Run `conductor --help` for the full command reference, or `conductor <command> -
 | Web setup | `install-web [browser]` (installs a Playwright browser; `--check` prints status) |
 | Discovery | `list-options [command]` / `<command> --options`, `workspace` |
 
+The [command catalogue](https://houwert.dev/conductor/docs/commands) covers each one, and `conductor <command> --help` lists every flag.
+
+## Quick start
+
+```bash
+npm install -g @houwert/conductor
+conductor init
+```
+
+`init` installs Conductor's Claude Code skills into your repository (`.claude/skills/`), so your agent knows every command and the act → observe → act loop. It's the only setup step. In a terminal it asks which skills to install and where; headless, in CI or from an agent, it installs them all.
+
+```bash
+conductor init --yes      # install every skill, no prompts
+conductor init --global   # install into ~/.claude/skills/ for all repos
+conductor init --force    # re-sync after upgrading conductor
+```
+
+The skills are `conductor-device-interact`, `conductor-inspect`, `conductor-create-flow`, `conductor-native`, `conductor-metro-debugger`, `conductor-profiler` and `conductor-device-setup`. `init` records the version it installed, so it can tell you when they're stale and prune skills that are no longer shipped. Prefer your own `CLAUDE.md` or a slash command? That works just as well.
+
+New to Conductor? [Getting started](https://houwert.dev/conductor/docs/getting-started) goes from install to your first command in under a minute.
+
 ## Conductor Studio
 
-**[Conductor Studio](apps/studio)** is a desktop app (Electron + React) built on this CLI. It does three jobs: writing and managing Maestro tests, writing them with an agent, and tracking them as test cases.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/section-studio-dark.png" />
+  <img src="assets/section-studio-light.png" alt="A flow's steps across four screens: two checked, the third being verified" width="800" />
+</picture>
 
-It provides a flow editor with autocomplete and linting, a live device stream with element picking and a record mode that turns your interactions into flow steps, an agentic test writer that verifies described behaviour on a device and files a visual report, and local test case management. Light and dark, signed and notarized, auto-updating.
+**Write, run and track UI tests, by hand or with an agent.** [Conductor Studio](apps/studio) is a desktop app built on the CLI.
 
-Studio bundles its own copy of the conductor CLI, so it needs nothing installed globally. The version it uses can be pinned from Settings.
+- **A Maestro workbench.** A flow editor with autocomplete and linting, find usages, and renames that repoint every caller.
+- **A live device beside your code.** Stream the screen, pick elements, and record your taps into flow steps.
+- **Agentic testing.** Describe a behaviour in a sentence. An agent plans the test, drives the device, and files a visual report with evidence for every expectation.
+- **Test cases.** See your Qase cases alongside the flows that cover them.
 
-**Download:** [Releases](https://github.com/DouweBos/conductor/releases) — macOS (Apple silicon). Studio releases are tagged `studio-v*`; the CLI's are tagged `cli-v*`.
+Studio bundles its own copy of the CLI, so there's nothing else to install. It comes in light and dark, and it's signed, notarized and auto-updating.
 
-See the [Studio README](apps/studio/README.md) for the full feature tour, architecture and release process.
+**[Download for macOS](https://github.com/DouweBos/conductor/releases)** (Apple silicon). Studio releases are tagged `studio-v*`. The [Studio README](apps/studio/README.md) has the full feature tour.
 
-```bash
-pnpm dev:studio    # run it from source
-```
+## Platforms
 
-## Repository structure
+| Platform | Targets |
+|---|---|
+| iOS & tvOS | Simulators and physical devices |
+| macOS | Apps on the host Mac |
+| Android | Emulators and devices |
+| TV | Amazon Fire TV, Roku |
+| Web | Chromium, Firefox and WebKit, via Playwright |
 
-```
-conductor/
-├── packages/
-│   ├── cli/              # TypeScript CLI (@houwert/conductor)
-│   ├── android-driver/   # Kotlin/Gradle instrumentation driver
-│   ├── ios-driver/       # Swift/Xcode XCTest driver
-│   ├── ios-inproc/       # Library injected into the app for a second inspection plane
-│   ├── ios-hid/          # Host binary injecting HID below the XCTest layer
-│   ├── ios-capture/      # Host binary capturing the Simulator framebuffer
-│   └── studio-ui/        # Design system for Conductor Studio
-├── apps/
-│   └── studio/           # Conductor Studio — the desktop app
-└── Makefile
-```
+You'll need Xcode for iOS and tvOS, `adb` on your `PATH` for Android, and a Playwright browser for the web (`conductor install-web`).
 
-## Building locally
+## Contributing
 
-### Prerequisites
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the repository layout, building the drivers and CLI from source, and running the tests.
 
-- Node.js and pnpm 10
-- **iOS/tvOS:** Xcode with command-line tools
-- **Android:** Android SDK with `adb` on `PATH`
+## License
 
-### Full build
-
-```bash
-make build
-```
-
-Builds the iOS and tvOS XCTest drivers, the in-process library and capture binary (xcodebuild), and the Android driver (Gradle); packages them all into the CLI and compiles TypeScript. Then link it globally:
-
-```bash
-cd packages/cli && pnpm link --global
-```
-
-### CLI only
-
-If the drivers are already built and packaged:
-
-```bash
-cd packages/cli
-pnpm install && pnpm build
-```
-
-### Individual targets
-
-```bash
-make build-cli            # CLI TypeScript only
-make build-ios-driver     # iOS XCTest driver
-make build-android-driver # Android instrumentation driver
-make package-cli          # Bundle drivers into CLI package
-```
-
-## Development
-
-```bash
-pnpm dev       # TypeScript watch mode
-pnpm lint      # ESLint + Prettier check
-pnpm lint:fix  # Auto-fix formatting
-pnpm test      # Run test suite
-```
-
-## Requirements
-
-- **iOS/tvOS:** Xcode with a booted simulator, or a paired physical device
-- **Android:** `adb` on `PATH` with a running emulator or connected device
-- **Web:** a Playwright browser (`conductor install-web`)
+[MIT](LICENSE). Conductor includes code derived from Maestro, licensed under Apache 2.0; see [NOTICE](NOTICE).
