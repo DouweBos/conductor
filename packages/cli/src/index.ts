@@ -1510,7 +1510,8 @@ async function main(): Promise<void> {
       } else if (sub === 'use') {
         exitCode = await metroUse(opts, metroSession, {
           location: rest[1],
-          appId: rest[2],
+          // `metro use --reset <appId>` has no location, so the app id comes first.
+          appId: argv['reset'] ? (rest[2] ?? rest[1]) : rest[2],
           reset: argv['reset'] as boolean,
         });
       } else {
