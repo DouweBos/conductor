@@ -651,6 +651,18 @@ async function harvestDomMirror(page: Page, elements: WebElement[]): Promise<boo
 
 const DEFAULT_VIEWPORT = { width: 1280, height: 720 };
 
+/**
+ * Chromium rejects CDP WebSockets that carry an Origin header unless allowed,
+ * which blocks DevTools frontends. Allow only the loopback origin, never `*`.
+ */
+export function chromiumLaunchArgs(cdpPort: number): string[] {
+  return [
+    `--remote-debugging-port=${cdpPort}`,
+    `--remote-allow-origins=http://127.0.0.1:${cdpPort}`,
+    '--disable-search-engine-choice-screen',
+  ];
+}
+
 let _browser: Browser | null = null;
 let _context: BrowserContext | null = null;
 let _page: Page | null = null;
@@ -829,10 +841,7 @@ export async function startWebServer(
     dlog(`Launching ${browserName} browser (headless=${headless})...`);
     _browser = await browserType.launch({
       headless,
-      args:
-        browserName === 'chromium'
-          ? [`--remote-debugging-port=${_cdpPort}`, '--disable-search-engine-choice-screen']
-          : undefined,
+      args: browserName === 'chromium' ? chromiumLaunchArgs(_cdpPort) : undefined,
     });
 
     _defaultUserAgent = await deriveDefaultUserAgent(_browser);
