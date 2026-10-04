@@ -44,6 +44,18 @@ const WEB_POLL_INTERVAL_MS = 500;
 const METRO_DISCOVERY_MIN_INTERVAL_MS = 1_500;
 const METRO_DISCOVERY_MAX_INTERVAL_MS = 15_000;
 
+/**
+ * Parse a log timestamp to epoch ms (NaN if unparsable). Sources mix ISO-UTC
+ * with simctl's `2026-10-04 20:58:54.12+0200`, which don't compare as strings.
+ */
+export function parseLogTime(ts: string): number {
+  const normalized = ts
+    .trim()
+    .replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T')
+    .replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+  return Date.parse(normalized);
+}
+
 export interface LogQueryOptions {
   since?: string;
   level?: string;
@@ -143,7 +155,12 @@ export class LogCollector {
 
     if (opts.since) {
       const since = opts.since;
-      entries = entries.filter((e) => e.timestamp > since);
+      const sinceMs = parseLogTime(since);
+      entries = entries.filter((e) => {
+        const ms = parseLogTime(e.timestamp);
+        // Unparsable on either side (e.g. Android threadtime has no year): keep the old lexical order.
+        return Number.isNaN(ms) || Number.isNaN(sinceMs) ? e.timestamp > since : ms > sinceMs;
+      });
     }
 
     if (opts.level) {
