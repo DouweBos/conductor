@@ -48,7 +48,9 @@ final class ConductorControlServer {
             do {
                 let params = NWParameters.tcp
                 params.allowLocalEndpointReuse = true
-                let listener = try NWListener(using: params, on: port)
+                // Loopback only: the server is unauthenticated and can eval code in the app.
+                params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
+                let listener = try NWListener(using: params)
                 listener.newConnectionHandler = { [weak self] conn in self?.handle(conn) }
                 listener.stateUpdateHandler = { state in
                     if case .ready = state {
