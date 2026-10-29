@@ -84,7 +84,7 @@ final class WindowCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         guard let id = target.windowID else {
             throw DriverError(.precondition, "\(target.bundleId) has no window on screen")
         }
-        if lock.withLock({ stream != nil && windowID == id }) { return }
+        if lock.withLock({ self.stream != nil && self.windowID == id }) { return }
         stopStream()
         let (filter, window) = try blocking { () -> (SCContentFilter, SCWindow) in
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
@@ -357,7 +357,7 @@ final class AnnexBServer {
     }
 
     func start() throws -> UInt16 {
-        if let port = lock.withLock({ port }) { return port }
+        if let port = lock.withLock({ self.port }) { return port }
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw DriverError("stream socket() failed") }
         var one: Int32 = 1
