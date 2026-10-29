@@ -36,8 +36,29 @@ enum Actions {
         return chain
     }
 
+    /// The deepest descendant of `root` under the global point that has an action.
+    /// SwiftUI hit tests often stop at an enclosing scroll area or group.
+    static func pressableDescendant(of root: AXUIElement, at g: CGPoint) -> AXUIElement? {
+        var best: AXUIElement?
+        var queue = [root]
+        var visited = 0
+        while !queue.isEmpty, visited < 2000 {
+            let el = queue.removeFirst()
+            visited += 1
+            for kid in AX.children(el) where AX.frame(kid)?.contains(g) == true {
+                if AX.actions(kid).contains(kAXPressAction) { best = kid }
+                queue.append(kid)
+            }
+        }
+        return best
+    }
+
     static func click(_ point: CGPoint, count: Int, in target: Target) throws {
-        let hit = try element(at: point, in: target)
+        var hit = try element(at: point, in: target)
+        if !AX.actions(hit).contains(kAXPressAction),
+           let inner = pressableDescendant(of: hit, at: target.toGlobal(point)) {
+            hit = inner
+        }
         for el in lineage(hit) {
             let role = AX.role(el)
             if role == kAXTextFieldRole || role == kAXTextAreaRole || role == kAXComboBoxRole {

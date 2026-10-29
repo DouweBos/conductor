@@ -8,7 +8,7 @@ export const HELP = `  tap-on [<element>]                   Tap element by text,
     --long-press                      Hold instead of tap
     --double-tap                      Double-tap the element (a true double-click on macOS)
     --right-click                     macOS: right-click (context menu) instead of clicking
-    --hover                           macOS: move the pointer over the element without clicking
+    --hover                           macOS (foreground driver): move the pointer over the element
     --modifiers <cmd,shift,...>       macOS: hold these keys while clicking (e.g. cmd for ⌘-click)
     --repeat <n>                      Tap n times (default 1)
     --delay <ms>                      Delay between repeated taps (default 100)

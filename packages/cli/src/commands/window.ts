@@ -54,7 +54,13 @@ export async function windowCommand(
     if (windows.length === 0) printSuccess('window list — no windows', opts);
     for (const w of windows) {
       const f = w.frame;
-      const state = w.focused ? ' (driven)' : w.minimized ? ' (minimized)' : '';
+      const state = w.focused
+        ? ' (driven)'
+        : w.overlay
+          ? ' (overlay)'
+          : w.minimized
+            ? ' (minimized)'
+            : '';
       console.log(`"${w.title}"  ${f.width}x${f.height} at ${f.x},${f.y}${state}`);
     }
   } else {

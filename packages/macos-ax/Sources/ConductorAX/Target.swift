@@ -36,12 +36,20 @@ struct Target {
            let frame = AX.frame(chosen), let cg = onScreen.first(where: { close($0.bounds, frame) }) {
             return Target(pid: pid, bundleId: bundleId, app: app, windowID: cg.id, frame: cg.bounds, window: chosen)
         }
-        if let front = onScreen.first {
-            let axWindow = AX.children(app).first { el in
-                AX.role(el) == kAXWindowRole && AX.frame(el).map { close($0, front.bounds) } == true
+        // The main window, else the frontmost standard one: a hover card or menu
+        // panel in front must not become the coordinate origin.
+        let axWindows = windows(of: app)
+        let main: AXUIElement? = AX.attr(app, kAXMainWindowAttribute)
+        let standard = axWindows.filter { AX.string($0, kAXSubroleAttribute) == kAXStandardWindowSubrole }
+        for candidates in [main.map { [$0] } ?? [], standard, axWindows] {
+            for cg in onScreen {
+                if let el = candidates.first(where: { AX.frame($0).map { close($0, cg.bounds) } == true }) {
+                    return Target(pid: pid, bundleId: bundleId, app: app, windowID: cg.id, frame: cg.bounds, window: el)
+                }
             }
-            return Target(pid: pid, bundleId: bundleId, app: app, windowID: front.id,
-                          frame: front.bounds, window: axWindow)
+        }
+        if let front = onScreen.first {
+            return Target(pid: pid, bundleId: bundleId, app: app, windowID: front.id, frame: front.bounds, window: nil)
         }
         let display = CGDisplayBounds(CGMainDisplayID())
         return Target(pid: pid, bundleId: bundleId, app: app, windowID: nil, frame: display, window: nil)
@@ -90,6 +98,33 @@ struct Target {
         }
     }
 
+    /// The app's other on-screen windows in front of the driven one and overlapping
+    /// it — child panels, hover cards, popovers, open menus — front to back.
+    func overlays() -> [(id: CGWindowID, bounds: CGRect)] {
+        guard let windowID else { return [] }
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenAboveWindow], windowID) as? [[String: Any]] ?? []
+        return list.compactMap { info in
+            guard (info[kCGWindowOwnerPID as String] as? pid_t) == pid,
+                  (info[kCGWindowAlpha as String] as? Double ?? 1) > 0,
+                  let dict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: dict), bounds.intersects(frame),
+                  let id = info[kCGWindowNumber as String] as? CGWindowID
+            else { return nil }
+            return (id, bounds)
+        }
+    }
+
+    /// AX windows of the app backing `overlays()`.
+    func overlayElements() -> [AXUIElement] {
+        let bounds = overlays().map(\.bounds)
+        guard !bounds.isEmpty else { return [] }
+        return Target.windows(of: app).filter { el in
+            if let window, CFEqual(el, window) { return false }
+            guard let f = AX.frame(el) else { return false }
+            return bounds.contains { close($0, f) }
+        }
+    }
+
     func toGlobal(_ p: CGPoint) -> CGPoint {
         CGPoint(x: frame.minX + p.x, y: frame.minY + p.y)
     }
@@ -105,7 +140,10 @@ struct Target {
     /// another display, without bringing it forward.
     func screenshotPNG() throws -> Data {
         guard let windowID else { throw DriverError(.precondition, "\(bundleId) has no window on screen") }
-        let image = try Capture.window(windowID)
+        let above = overlays()
+        let image = above.isEmpty
+            ? try Capture.window(windowID)
+            : try Capture.composite([windowID] + above.map(\.id), crop: frame)
         guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
             throw DriverError("could not encode the screenshot")
         }
@@ -142,6 +180,38 @@ enum Capture {
                 result = .failure(DriverError(
                     "screenshot failed (\(error.localizedDescription)) — allow ConductorAX in System Settings ▸ "
                         + "Privacy & Security ▸ Screen & System Audio Recording, then restart the driver"))
+            }
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 10)
+        return try result.get()
+    }
+
+    /// The given windows composited as on screen, cropped to `crop` (global
+    /// points). Windows of other apps are left out, so covering ones don't show.
+    static func composite(_ ids: [CGWindowID], crop: CGRect) throws -> CGImage {
+        let done = DispatchSemaphore(value: 0)
+        var result: Result<CGImage, Error> = .failure(DriverError(.timeout, "screenshot timed out"))
+        Task {
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                let windows = content.windows.filter { ids.contains($0.windowID) }
+                let centre = CGPoint(x: crop.midX, y: crop.midY)
+                guard !windows.isEmpty,
+                      let display = content.displays.first(where: { $0.frame.contains(centre) }) ?? content.displays.first
+                else { throw DriverError("window \(ids[0]) is no longer available") }
+                let filter = SCContentFilter(display: display, including: windows)
+                let config = SCStreamConfiguration()
+                let scale = CGFloat(filter.pointPixelScale)
+                config.sourceRect = crop.offsetBy(dx: -display.frame.minX, dy: -display.frame.minY)
+                config.width = Int(crop.width * scale)
+                config.height = Int(crop.height * scale)
+                config.showsCursor = false
+                result = .success(try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config))
+            } catch let error as DriverError {
+                result = .failure(error)
+            } catch {
+                result = .failure(DriverError("screenshot failed (\(error.localizedDescription))"))
             }
             done.signal()
         }

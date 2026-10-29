@@ -34,7 +34,11 @@ func hierarchy() throws -> [String: Any] {
     appNode["label"] = ""
     appNode.removeValue(forKey: "title")
     var kids: [[String: Any]] = []
+    // Child panels, popovers and hover cards over the window show in the
+    // screenshot too, so they belong in the tree.
+    let overlays = target.overlayElements()
     for kid in AX.children(target.app) {
+        if overlays.contains(where: { CFEqual($0, kid) }) { continue }
         // Only the front window: the others sit behind what the screenshot shows.
         if AX.role(kid) == kAXWindowRole, let front = target.window, !CFEqual(kid, front) { continue }
         kids.append(snap.node(kid, depth: 1, descend: { el, role in
@@ -42,6 +46,7 @@ func hierarchy() throws -> [String: Any] {
             role != kAXMenuBarItemRole || (AX.attr(el, kAXSelectedAttribute) as Bool?) == true
         }))
     }
+    kids += overlays.map { snap.node($0, depth: 1) }
     appNode["children"] = kids
     let root: [String: Any] = [
         "identifier": "", "label": "", "elementType": 0, "enabled": true, "selected": false,
@@ -184,10 +189,13 @@ func handle(_ req: HTTPRequest) throws -> HTTPResponse {
         WindowCapture.shared.stopStreaming()
     case "windows":
         let t = try Target.resolve()
+        let overlays = t.overlayElements()
         return .json(["windows": Target.windows(of: t.app).map { el -> [String: Any] in
             let f = AX.frame(el) ?? .zero
             return [
                 "title": AX.string(el, kAXTitleAttribute) ?? "",
+                "subrole": AX.string(el, kAXSubroleAttribute) ?? "",
+                "overlay": overlays.contains { CFEqual($0, el) },
                 "frame": ["x": f.minX, "y": f.minY, "width": f.width, "height": f.height],
                 "focused": t.window.map { CFEqual($0, el) } ?? false,
                 "minimized": (AX.attr(el, kAXMinimizedAttribute) as Bool?) ?? false,
@@ -195,7 +203,12 @@ func handle(_ req: HTTPRequest) throws -> HTTPResponse {
         }])
     case "window":
         return .json(try Windows.change(try body(req, WindowChange.self)))
-    case "hover", "drag", "gesturePath":
+    case "hover":
+        // Tracking areas (SwiftUI .onHover, tooltips) are fed by the WindowServer
+        // from the real cursor; pointer events posted to the app don't reach them.
+        throw DriverError(.precondition, "hover can't run in the background: .onHover and tracking areas only "
+            + "follow the real pointer — set CONDUCTOR_MACOS_FOREGROUND=1 to use the foreground driver")
+    case "drag", "gesturePath":
         throw DriverError(.precondition, "\(req.path) \(needsForeground)")
     case "pressButton", "setOrientation":
         throw DriverError(.precondition, "\(req.path) is not supported on macOS")

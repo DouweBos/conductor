@@ -23,6 +23,10 @@ export interface MacWindow {
   frame: { x: number; y: number; width: number; height: number };
   focused: boolean;
   minimized: boolean;
+  /** AX subrole, e.g. AXStandardWindow, AXFloatingWindow, AXDialog. */
+  subrole?: string;
+  /** On screen over the driven window (child panel, popover, hover card): in its tree and screenshots. */
+  overlay?: boolean;
 }
 
 export type MacModifier = 'command' | 'shift' | 'option' | 'control' | 'function';

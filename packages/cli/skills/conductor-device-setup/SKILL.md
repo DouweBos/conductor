@@ -160,15 +160,21 @@ starts it). Both grants can reset after a conductor upgrade.
 
 The background driver clicks by pressing an element's accessibility action, so
 custom-drawn views with no action, long press, modifier clicks, hover and drag
-fail with a message. For those, `CONDUCTOR_MACOS_FOREGROUND=1` switches to the
+fail with a message. Hover (SwiftUI `.onHover`, tooltips) is impossible in the
+background: tracking areas only follow the real pointer. Key presses go to the
+app while it stays inactive, so none of its windows is key — they land on the
+main window rather than an open panel, and handlers gated on `isKeyWindow`
+ignore them. For those, `CONDUCTOR_MACOS_FOREGROUND=1` switches to the
 XCUITest driver, which **drives your real mouse and keyboard** and needs
 Automation Mode (`automationmodetool enable-automationmode-without-authentication`,
 ask the user) plus Accessibility for `conductor-driver-macosUITests-Runner`.
 Tell the user before using it.
 
-The "screen" is the **target app's front window** (the app from `launch-app`, else the frontmost one): `take-screenshot`,
+The "screen" is the **target app's main window** (the app from `launch-app`, else the frontmost one): `take-screenshot`,
 `inspect`/`capture-ui` frames, and `tap-on --at` coordinates are all relative to
-its top-left corner. Menus and popovers outside the window stay in the hierarchy.
+its top-left corner. Child panels, popovers and hover cards over it are part of
+the hierarchy and composited into screenshots (`window list` marks them
+`(overlay)`); menus outside the window stay in the hierarchy.
 For apps with several windows, `window list` shows them and `window focus
 "<title>"` raises one and makes it the window conductor drives (title match is
 case-insensitive, exact first, then substring); `window focus --clear` follows
