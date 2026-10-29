@@ -84,6 +84,12 @@ export class MacDriver extends IOSDriver {
     this.invalidateHierarchyCache();
   }
 
+  /** Replace the focused field's whole contents with `text`. */
+  async replaceText(text: string): Promise<void> {
+    await this.postBackground('replaceText', { text });
+    this.invalidateHierarchyCache();
+  }
+
   async hover(x: number, y: number): Promise<void> {
     await this.post('hover', { x, y });
     this.invalidateHierarchyCache();

@@ -986,7 +986,6 @@ export function macosSetupHint(): string {
   );
 }
 
-const MACOS_AX_EXECUTABLE = path.join('ConductorAX.app', 'Contents', 'MacOS', 'conductor-ax');
 
 async function macosAxApp(): Promise<string> {
   const app = path.join(await getDriversDir(), 'macos-ax', 'ConductorAX.app');
@@ -1007,8 +1006,14 @@ async function macosAxApp(): Promise<string> {
  */
 export async function startMacOSDriver(port = MACOS_BASE_PORT): Promise<void> {
   if (await isPortOpen(port)) {
-    log(`macOS driver already running on port ${port}`);
-    return;
+    if (macosForeground() || !(await isStaleMacosAx(port, await macosAxApp()))) {
+      log(`macOS driver already running on port ${port}`);
+      return;
+    }
+    log(`Replacing the macOS background driver on port ${port} — it runs an older build`);
+    await killMacosAx();
+    const deadline = Date.now() + 5000;
+    while ((await isPortOpen(port)) && Date.now() < deadline) await sleep(100);
   }
 
   if (!macosForeground()) {
@@ -1078,14 +1083,60 @@ export async function startMacOSDriver(port = MACOS_BASE_PORT): Promise<void> {
   );
 }
 
+/**
+ * True when the ConductorAX on `port` isn't the binary in `app` — one left
+ * running by an older conductor version or from before a rebuild.
+ */
+async function isStaleMacosAx(port: number, app: string): Promise<boolean> {
+  const status = await new Promise<Record<string, unknown> | null>((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/status', timeout: 2000 }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body) as Record<string, unknown>);
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(null));
+  });
+  if (status?.mode !== 'background') return false;
+  // Older helpers don't report their binary.
+  if (typeof status.executable !== 'string' || typeof status.built !== 'number') return true;
+  try {
+    const want = fs.realpathSync(path.join(app, 'Contents', 'MacOS', 'conductor-ax'));
+    const builtAt = fs.statSync(want).mtimeMs / 1000;
+    return fs.realpathSync(status.executable) !== want || Math.abs(builtAt - status.built) > 1;
+  } catch {
+    return true;
+  }
+}
+
+/** True when the background driver on `port` runs an older build than the one installed. */
+export async function isStaleMacOSDriver(port: number): Promise<boolean> {
+  if (macosForeground()) return false;
+  return isStaleMacosAx(port, await macosAxApp());
+}
+
+/** Every running ConductorAX, whichever conductor version or path it came from. */
+async function killMacosAx(): Promise<void> {
+  // Anchored on an absolute, space-free executable path so shells that merely
+  // mention it don't match.
+  await spawnAndWait('pkill', ['-f', '^/[^ ]*/ConductorAX\\.app/Contents/MacOS/conductor-ax']).catch(
+    () => {}
+  );
+}
+
 /** Stop whichever macOS driver is running; xcodebuild exits with its runner. */
 export async function stopMacOSDriver(): Promise<void> {
   // Match full executable paths — a bare name would also hit any shell whose
   // command line merely mentions it.
   const runner = path.join(MACOS_DRIVER_CACHE, 'Debug', MACOS_RUNNER_APP, 'Contents', 'MacOS');
   await spawnAndWait('pkill', ['-f', `^${runner}/`]).catch(() => {});
-  const ax = path.join(await getDriversDir().catch(() => ''), 'macos-ax', MACOS_AX_EXECUTABLE);
-  await spawnAndWait('pkill', ['-f', `^${ax}`]).catch(() => {});
+  await killMacosAx();
 }
 
 // ── Physical device bootstrap ─────────────────────────────────────────────────

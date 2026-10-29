@@ -1,3 +1,4 @@
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
@@ -24,3 +25,15 @@ export function nameFile(sessionName = 'default'): string {
 }
 
 export const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Identifies the daemon code on disk (its server.js mtime), so a client can
+ * tell a daemon still running code from before an upgrade or rebuild.
+ */
+export function daemonBuildId(): number {
+  try {
+    return Math.round(fs.statSync(path.join(__dirname, 'server.js')).mtimeMs);
+  } catch {
+    return 0;
+  }
+}

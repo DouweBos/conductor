@@ -36,32 +36,50 @@ enum Actions {
         return chain
     }
 
-    /// The deepest descendant of `root` under the global point that has an action.
+    /// The deepest descendant of `root` under the global point that can be clicked.
     /// SwiftUI hit tests often stop at an enclosing scroll area or group.
-    static func pressableDescendant(of root: AXUIElement, at g: CGPoint) -> AXUIElement? {
+    /// `offscreen` searches the whole subtree: content scrolled out of view lies
+    /// outside the frames of the scroll area and groups that hold it.
+    static func pressableDescendant(of root: AXUIElement, at g: CGPoint, offscreen: Bool = false) -> AXUIElement? {
         var best: AXUIElement?
         var queue = [root]
         var visited = 0
-        while !queue.isEmpty, visited < 2000 {
+        while !queue.isEmpty, visited < 5000 {
             let el = queue.removeFirst()
             visited += 1
-            for kid in AX.children(el) where AX.frame(kid)?.contains(g) == true {
-                if AX.actions(kid).contains(kAXPressAction) { best = kid }
+            for kid in AX.children(el) {
+                let inside = AX.frame(kid)?.contains(g) == true
+                guard inside || offscreen else { continue }
+                if inside, AX.actions(kid).contains(kAXPressAction) || textRoles.contains(AX.role(kid)) { best = kid }
                 queue.append(kid)
             }
         }
         return best
     }
 
+    private static let textRoles: Set<String> = [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole]
+
     static func click(_ point: CGPoint, count: Int, in target: Target) throws {
-        var hit = try element(at: point, in: target)
-        if !AX.actions(hit).contains(kAXPressAction),
-           let inner = pressableDescendant(of: hit, at: target.toGlobal(point)) {
-            hit = inner
+        let g = target.toGlobal(point)
+        var hit: AXUIElement
+        if !target.frame.contains(g) {
+            // Past the visible part of a scroll view: hit tests can't reach it, but
+            // its AX frame still places it, so press it after scrolling it into view.
+            guard let window = target.window, let below = pressableDescendant(of: window, at: g, offscreen: true) else {
+                throw DriverError(.precondition, "nothing clickable at (\(Int(point.x)), \(Int(point.y))), "
+                    + "outside the window — scroll it into view first")
+            }
+            reveal(below)
+            hit = below
+        } else {
+            hit = try element(at: point, in: target)
+            if !AX.actions(hit).contains(kAXPressAction), let inner = pressableDescendant(of: hit, at: g) {
+                hit = inner
+            }
         }
         for el in lineage(hit) {
             let role = AX.role(el)
-            if role == kAXTextFieldRole || role == kAXTextAreaRole || role == kAXComboBoxRole {
+            if textRoles.contains(role) {
                 AX.set(el, kAXFocusedAttribute, kCFBooleanTrue)
                 return
             }
@@ -95,6 +113,10 @@ enum Actions {
               let visible = AX.frame(area) else {
             throw DriverError(.precondition, "nothing scrollable at (\(Int(point.x)), \(Int(point.y)))")
         }
+        scroll(area, visible: visible, dx: dx, dy: dy)
+    }
+
+    private static func scroll(_ area: AXUIElement, visible: CGRect, dx: CGFloat, dy: CGFloat) {
         let contents: [AXUIElement] = AX.attr(area, kAXContentsAttribute) ?? AX.children(area)
         let content = contents.compactMap(AX.frame).reduce(CGRect.null) { $0.union($1) }
         func move(_ barAttr: String, _ delta: CGFloat, _ contentLen: CGFloat, _ visibleLen: CGFloat) {
@@ -107,6 +129,19 @@ enum Actions {
         }
         move(kAXVerticalScrollBarAttribute, dy, content.height, visible.height)
         move(kAXHorizontalScrollBarAttribute, dx, content.width, visible.width)
+    }
+
+    /// Scroll every scroll area holding `el` until it's in view. SwiftUI reports
+    /// AXScrollToVisible as done without scrolling, so move the scroll bars too.
+    static func reveal(_ el: AXUIElement) {
+        AX.perform(el, "AXScrollToVisible")
+        for area in lineage(el, limit: 60) where AX.role(area) == kAXScrollAreaRole {
+            guard let f = AX.frame(el), let visible = AX.frame(area), !visible.contains(f) else { continue }
+            let dx = f.minX < visible.minX || f.maxX > visible.maxX ? visible.midX - f.midX : 0
+            let dy = f.minY < visible.minY || f.maxY > visible.maxY ? visible.midY - f.midY : 0
+            scroll(area, visible: visible, dx: dx, dy: dy)
+            Thread.sleep(forTimeInterval: 0.1)
+        }
     }
 
     static func focused(in target: Target) -> AXUIElement? {
@@ -123,6 +158,24 @@ enum Actions {
             }
         }
         Keys.type(text, pid: target.pid)
+    }
+
+    /// Replace the focused field's contents: set its value, else select all and
+    /// insert, since select-all shortcuts don't reach an inactive app.
+    static func replaceText(_ text: String, in target: Target) throws {
+        guard let el = focused(in: target) else {
+            throw DriverError(.precondition, "no focused text field — tap one first")
+        }
+        if AX.isSettable(el, kAXValueAttribute), AX.set(el, kAXValueAttribute, text as CFString) {
+            Thread.sleep(forTimeInterval: 0.05)
+            if AX.string(el, kAXValueAttribute) == text { return }
+        }
+        let length = (AX.string(el, kAXValueAttribute) ?? "").utf16.count
+        var all = CFRange(location: 0, length: length)
+        guard let range = AXValueCreate(.cfRange, &all), AX.set(el, kAXSelectedTextRangeAttribute, range) else {
+            throw DriverError(.precondition, "\(AX.describe(el)) can't be edited through accessibility")
+        }
+        inputText(text, in: target)
     }
 
     static func eraseText(_ count: Int, in target: Target) {

@@ -114,6 +114,8 @@ func handle(_ req: HTTPRequest) throws -> HTTPResponse {
         return .json([
             "status": "ok", "mode": "background",
             "accessibility": AXIsProcessTrusted(), "screenRecording": CGPreflightScreenCaptureAccess(),
+            "pid": Int(ProcessInfo.processInfo.processIdentifier),
+            "executable": executable.path, "built": executable.built,
         ])
     case "deviceInfo":
         let t = try Target.resolve()
@@ -156,6 +158,8 @@ func handle(_ req: HTTPRequest) throws -> HTTPResponse {
         try Actions.scroll(CGPoint(x: s.x, y: s.y), dx: s.deltaX, dy: s.deltaY, in: try Target.resolve())
     case "inputText":
         Actions.inputText(try body(req, Text.self).text, in: try Target.resolve())
+    case "replaceText":
+        try Actions.replaceText(try body(req, Text.self).text, in: try Target.resolve())
     case "eraseText":
         Actions.eraseText(try body(req, Erase.self).charactersToErase, in: try Target.resolve())
     case "pressKey":
@@ -217,6 +221,13 @@ func handle(_ req: HTTPRequest) throws -> HTTPResponse {
     }
     return .ok
 }
+
+/// Lets the CLI spot a helper left running from an older or rebuilt binary.
+let executable: (path: String, built: Double) = {
+    let path = Foundation.Bundle.main.executablePath ?? CommandLine.arguments[0]
+    let date = (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]) as? Date
+    return (path, date?.timeIntervalSince1970 ?? 0)
+}()
 
 var port: UInt16 = 6075
 let args = CommandLine.arguments

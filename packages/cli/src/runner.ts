@@ -21,6 +21,8 @@ import {
   generateWebSessionId,
   isUnqualifiedWebId,
   macosSetupHint,
+  isStaleMacOSDriver,
+  startMacOSDriver,
 } from './drivers/bootstrap.js';
 import {
   startDaemon,
@@ -217,9 +219,11 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
     }
     driver = tvosDriver;
   } else if (platform === 'macos') {
+    // Always through the daemon: it restarts one left running older conductor
+    // code, and a helper from an older or rebuilt binary is replaced before use.
+    await startDaemon(deviceId);
+    if (await isStaleMacOSDriver(port)) await startMacOSDriver(port);
     if (!(await isPortOpen(port))) {
-      log(`macOS driver not running — starting daemon...`);
-      await startDaemon(deviceId);
       await waitForPort(port).catch((err: Error) => {
         throw new Error(`${err.message}\n${macosSetupHint()}`);
       });

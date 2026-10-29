@@ -39,7 +39,7 @@ conductor assert-visible "Dashboard"
 | `conductor tap-on <element>` | Tap by text, id, or `@eN`. `--long-press`, `--double-tap`, `--optional`, `--index <n>`, `--repeat <n> --delay <ms>`. macOS only: `--right-click`, `--hover`, `--modifiers cmd,shift` (e.g. ⌘-click) |
 | `conductor tap-on --at <x,y>` | Tap a raw coordinate (px `100,200`, percent `50%,50%`, or `0-1` fraction) — no element match |
 | `conductor copy-text-from <element>` | Print an element's text (and copy to the iOS clipboard) |
-| `conductor input-text <text>` | Type into the focused field |
+| `conductor input-text <text>` | Type into the focused field. macOS: `--replace` replaces the field's whole contents (select-all shortcuts don't reach a background app) |
 | `conductor erase-text [n]` | Erase n characters (default 50) |
 | `conductor press-key <key>` | Press a key (Enter, Backspace, Home, …) or a remote button (`Remote Dpad Up/Down/Left/Right/Center`, `Remote Menu`, `Remote Page Up/Down` on tvOS and Android TV, and `Remote Guide` on tvOS) for tvOS / Android TV / vega / roku. `--long-press` / `--duration <seconds>` holds it; `--measure` times the response (see `conductor-profiler`). On macOS also shortcuts: `cmd+s`, `cmd+shift+z`, `ctrl+tab`, arrows, `F1`–`F12` |
 | `conductor hide-keyboard` | Dismiss the on-screen keyboard |
@@ -130,7 +130,7 @@ relaunch without the flag. (See `conductor-device-setup`.)
 ## Tips
 
 - `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web|vega|roku|macos>` scopes by platform.
-- macOS (`--device macos`) works in the background on the app from `launch-app`: clicks press the element's accessibility action and keys go to that app only, so the user's pointer and keyboard are untouched. Coordinates are relative to its main window; child panels and hover cards over it are included in `inspect` and screenshots and marked `(overlay)` in `window list`. The app stays inactive, so none of its windows is key: keys reach its main window, not an open panel, and handlers that check `isKeyWindow` ignore them. `--hover`, `--long-press`, `--modifiers`, `swipe --drag` and gestures need the foreground driver (`CONDUCTOR_MACOS_FOREGROUND=1`, which takes over the real mouse and keyboard). `back` is a no-op. Setup and approvals are in `conductor-device-setup`.
+- macOS (`--device macos`) works in the background on the app from `launch-app`: clicks press the element's accessibility action and keys go to that app only, so the user's pointer and keyboard are untouched. Coordinates are relative to its main window; child panels and hover cards over it are included in `inspect` and screenshots and marked `(overlay)` in `window list`. The app stays inactive, so none of its windows is key: keys reach its main window, not an open panel, and handlers that check `isKeyWindow` ignore them. `tap-on` an element scrolled out of view presses it and scrolls it into view. `--hover`, `--long-press`, `--modifiers`, `swipe --drag` and gestures need the foreground driver (`CONDUCTOR_MACOS_FOREGROUND=1`, which takes over the real mouse and keyboard). `back` is a no-op. Setup and approvals are in `conductor-device-setup`.
 - Vega (Amazon Fire TV) is D-pad driven: navigate with `press-key "Remote Dpad …"`; coordinate `tap-on` also works. `open-link`, `set-location`, gestures, and clipboard are unsupported. See `conductor-device-setup`.
 - Apple TV (tvOS) is focus-driven and has **no touch surface automation**: XCTest
   refuses remote swipe gestures ("Swipe events are only implemented for iOS,

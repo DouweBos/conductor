@@ -13,7 +13,7 @@ import http from 'http';
 import url from 'url';
 import fs from 'fs';
 import path from 'path';
-import { socketPath, pidFile, logFile, IDLE_TIMEOUT_MS } from './protocol.js';
+import { socketPath, pidFile, logFile, IDLE_TIMEOUT_MS, daemonBuildId } from './protocol.js';
 import { ensureAndroidEnv } from '../android/sdk.js';
 import {
   detectPlatform,
@@ -32,6 +32,7 @@ import {
   startTvOSDriver,
   startMacOSDriver,
   stopMacOSDriver,
+  isStaleMacOSDriver,
   stopIOSDriver,
   stopAndroidDriver,
   uninstallDriver,
@@ -239,6 +240,9 @@ async function startVideoServerForPlatform(): Promise<void> {
 
 const DRIVER_HEALTH_INTERVAL_MS = 10000; // Check driver health every 10s
 
+// Read once: the code this process runs, not whatever is on disk later.
+const BUILD_ID = daemonBuildId();
+
 let _restartInProgress = false;
 let _driverStarted = false;
 let _driverStartError: string | null = null;
@@ -259,6 +263,8 @@ async function ensureDriverRunning(): Promise<void> {
     // 'ios', 'tvos', 'macos' and 'web' all use an HTTP server — port open = alive.
     // Physical devices answer on the LAN rather than the host's loopback.
     alive = await isPortOpen(driverPort, await driverHost());
+    // A rebuilt or upgraded macOS helper is replaced rather than left serving old code.
+    if (alive && driverPlatform === 'macos' && (await isStaleMacOSDriver(driverPort))) alive = false;
   }
 
   if (!alive) {
@@ -494,6 +500,7 @@ async function main(): Promise<void> {
         pageTargetId: driverPlatform === 'web' ? getPageTargetId() : null,
         driverStartError: _driverStartError,
         metro: logCollector?.getMetroStatus() ?? null,
+        build: BUILD_ID,
       });
       return;
     }
@@ -602,8 +609,11 @@ async function startDriverForPlatform(
     await probe.connect();
     driverAlive = await probe.isAlive().catch(() => false);
     probe.close();
+  } else if (platform === 'macos') {
+    // startMacOSDriver reuses a running driver itself, unless it's a stale build.
+    driverAlive = false;
   } else {
-    // 'ios', 'tvos', 'macos' and 'web' all use an HTTP server — port open = alive
+    // 'ios', 'tvos' and 'web' all use an HTTP server — port open = alive
     driverAlive = await isPortOpen(driverPort, await driverHost());
   }
   if (driverAlive) {

@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
-import { socketPath, pidFile, logFile, nameFile } from './protocol.js';
+import { socketPath, pidFile, logFile, nameFile, daemonBuildId } from './protocol.js';
 import { log } from '../verbose.js';
 import { webBrowserName } from '../drivers/bootstrap.js';
 import type { LogEntry } from '../drivers/log-sources/types.js';
@@ -19,6 +19,7 @@ interface DaemonStatus {
   streamPort?: number | null;
   cdpUrl?: string | null;
   cdpTargetId?: string | null;
+  build?: number;
 }
 
 /** Full daemon `/status` body for a session, or null if the daemon isn't reachable. */
@@ -100,12 +101,15 @@ function daemonMatchesCdpEnv(status: DaemonStatus): boolean {
 export async function startDaemon(sessionName = 'default'): Promise<boolean> {
   const existing = await fetchStatus(sessionName);
   if (existing) {
-    if (daemonMatchesCdpEnv(existing)) return true;
+    const current = existing.build === daemonBuildId();
+    if (current && daemonMatchesCdpEnv(existing)) return true;
 
     log(
-      `daemon [${sessionName}] CDP env mismatch ` +
-        `(daemon cdpUrl="${existing.cdpUrl ?? ''}" targetId="${existing.cdpTargetId ?? ''}", ` +
-        `env cdpUrl="${process.env.CONDUCTOR_CDP_URL ?? ''}" targetId="${process.env.CONDUCTOR_CDP_TARGET_ID ?? ''}") — restarting`
+      !current
+        ? `daemon [${sessionName}] runs older conductor code — restarting`
+        : `daemon [${sessionName}] CDP env mismatch ` +
+            `(daemon cdpUrl="${existing.cdpUrl ?? ''}" targetId="${existing.cdpTargetId ?? ''}", ` +
+            `env cdpUrl="${process.env.CONDUCTOR_CDP_URL ?? ''}" targetId="${process.env.CONDUCTOR_CDP_TARGET_ID ?? ''}") — restarting`
     );
 
     // Capture the PID before stopDaemon removes the pidfile so we can wait

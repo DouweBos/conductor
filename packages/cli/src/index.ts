@@ -310,6 +310,7 @@ async function main(): Promise<void> {
       'right-click',
       'hover',
       'drag',
+      'replace',
       'optional',
       'benchmark',
       'dump',
@@ -837,7 +838,7 @@ async function main(): Promise<void> {
 
     case 'input-text': {
       const text = rest.join(' ');
-      exitCode = await typeText(text, opts, sessionName);
+      exitCode = await typeText(text, opts, sessionName, { replace: argv['replace'] as boolean });
       break;
     }
 
