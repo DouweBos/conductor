@@ -1,6 +1,6 @@
 {
   "name": "@houwert/conductor",
-  "version": "0.34.1",
+  "version": "0.34.2",
   "description": "UI automation CLI for AI agents. Drive and inspect iOS, tvOS, Android, Fire TV, Roku, macOS and web apps from the terminal.",
   "keywords": [
     "ai-agents",
