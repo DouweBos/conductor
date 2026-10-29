@@ -1,5 +1,13 @@
 # conductor-studio
 
+## 0.7.0
+
+### Minor Changes
+
+- d55fd8d: New app icon: a device framed by viewfinder brackets, in violet on a light
+  tile. On macOS 26 it follows the system appearance, with dark and tinted
+  variants from an Icon Composer bundle; older macOS gets the light icon.
+
 ## 0.6.0
 
 ### Minor Changes

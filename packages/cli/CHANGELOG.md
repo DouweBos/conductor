@@ -1,5 +1,81 @@
 # @houwert/conductor
 
+## 0.34.0
+
+### Minor Changes
+
+- 61b063e: Drive macOS apps on the host Mac. The Mac is a device with the fixed id
+  `macos`: `conductor start-device --platform macos` checks the automation setup
+  and warms up a new macOS build of the XCUITest driver, and every command then
+  takes `--device macos`. `inspect`, `capture-ui`, `tap-on`, `input-text`,
+  `take-screenshot`, flows and the rest work as on iOS, against the frontmost
+  app's front window — screenshots capture that window, and hierarchy frames and
+  coordinates are relative to its top-left corner.
+
+  Mac-specific input: `tap-on --right-click`, `--hover` and `--modifiers cmd,shift`,
+  a real double-click for `--double-tap`, keyboard shortcuts in `press-key`
+  (`cmd+s`, `cmd+shift+z`) and flow `pressKey`, `swipe --drag`, and a new
+  `menu "File > Save"` command. `scroll` and `swipe` use the scroll wheel.
+
+  App lifecycle goes through the host: `launch-app`, `stop-app`, `list-apps`,
+  `install-app` (copies the .app into `~/Applications`), `open-link`, clipboard,
+  unified-log streaming in `logs`, and `crashes` from DiagnosticReports.
+  Simulator-only operations (`set-location`, `set-permissions`, `clear-state`,
+  recording, gestures, injection, …) fail with an explicit message instead.
+
+  By default it runs in the background: a small ConductorAX helper drives the app
+  through Accessibility (element actions, key events posted to that app only) and
+  captures its window with ScreenCaptureKit, so it never takes over the pointer or
+  keyboard and works on covered windows and other displays. It needs Accessibility
+  and Screen Recording approval once. `CONDUCTOR_MACOS_FOREGROUND=1` switches to
+  the XCUITest driver for real pointer input (hover, drag, modifier clicks), which
+  needs Automation Mode as well.
+
+  Both macOS drivers carry the Studio icon, so they're recognisable in System
+  Settings' permission lists.
+
+- e253d5b: macOS: `record-video start/stop` records the target app's window to an H.264
+  `.mp4` (also the flow `startRecording`/`stopRecording` steps), and
+  `stream-server` serves a live H.264 stream of that window. The stream follows
+  window resizes. Both use the background driver, which needs a rebuilt
+  ConductorAX with Screen Recording allowed.
+- dbb59c4: macOS window control. `window list` shows the target app's windows.
+  `window focus "<title>"` raises a window and makes it the one conductor drives:
+  screenshots, coordinates, the hierarchy and the live stream all follow it.
+  `window focus --clear` goes back to the front window. `set-viewport <w> <h>`
+  resizes the driven window, and rejects the web-only flags.
+- 30bf435: Let `start-device` pick a device by name. `--device-name` was only ever a
+  selector for already-booted devices, so `conductor start-device --platform
+android --device-name plex_tv_local` silently dropped the flag and booted the
+  first AVD in the list instead. It now selects on every platform: the AVD on
+  Android (`--avd` stays as an alias), the simulator name on iOS/tvOS, the serial
+  on Vega and the host on Roku. Paired with `--device-type` it names the device it
+  creates.
+
+  Android start-up is more honest too: booting an AVD that is already running
+  reports it instead of timing out behind a second emulator that immediately
+  exits, the boot wait matches on the requested AVD rather than "whichever device
+  attached next", and emulator output goes to
+  `~/.conductor/logs/emulator-<avd>.log` so a failed boot reports its cause
+  instead of a bare 120s timeout.
+
+### Patch Changes
+
+- fa6e0f5: The iOS and tvOS drivers now use the Conductor Studio icon instead of blank
+  white tiles on the home screen. That covers the driver apps and, on
+  simulators, their XCTest runners.
+- 1efc03f: The in-process control server injected by `launch-app --inject` now listens on loopback only, so other machines on the network can no longer reach it.
+- e2179ee: react-native-macos: `metro use` writes `RCT_jsLocation` into the host's
+  `defaults` for the app. For a sandboxed app it writes into the app's container.
+  The daemon now also finds the app's Metro port from its own sockets, and
+  matches Metro targets by the Mac's computer name.
+- b604f6e: macOS: `profile cpu [<appId>]` records a Time Profiler trace with `xctrace`,
+  attached to the app's pid. Without an appId it profiles the app from
+  `launch-app`, or else the frontmost app.
+- 6291026: `metro use --reset <appId>` now resets that app. It used to ignore the app id
+  and reset the session's app instead.
+- 9f0f206: Refresh the npm package description, homepage and keywords.
+
 ## 0.33.3
 
 ### Patch Changes
