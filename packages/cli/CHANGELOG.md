@@ -1,5 +1,19 @@
 # @houwert/conductor
 
+## 0.34.3
+
+### Patch Changes
+
+- d0247d3: Fix reaching a physical device whose name has accented letters. The Bonjour hostname conductor derives from the name turned each accented letter into a dash, so an Apple TV named "Pokój dzienny" was looked up as` Pok-j-dzienny.local` instead of the `Pokoj-dzienny.local` it advertises. Accents are now dropped first.
+- 2389f36: Let DevTools attach to the web daemon's Chromium. It now launches with
+  `--remote-allow-origins=http://127.0.0.1:<cdpPort>`; without it Chromium
+  rejected every CDP WebSocket that sent an Origin header. Only the loopback
+  origin is allowed.
+- 5089a53: Fix device log streaming never returning entries. The daemon's `since` filter
+  compared timestamps as strings, so an ISO-UTC `since` never matched simctl's
+  `2026-10-04 20:58:54.12+0200` entries. It now compares parsed times, falling
+  back to string order only when a timestamp can't be parsed.
+
 ## 0.34.2
 
 ### Patch Changes
