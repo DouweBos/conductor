@@ -173,12 +173,15 @@ const _hostCache = new Map<string, string>();
 /**
  * The mDNS name a device advertises itself under, derived from its display name
  * the same way the device does: apostrophes are dropped outright (so "Douwe's
- * iPhone" is "Douwes-iPhone", not "Douwe-s-iPhone") and every other run of
+ * iPhone" is "Douwes-iPhone", not "Douwe-s-iPhone"), accented letters lose
+ * their accents (so "Pokój dzienny" is "Pokoj-dzienny") and every other run of
  * non-alphanumerics collapses to a single dash.
  */
 export function bonjourHostname(deviceName: string): string {
   return (
     deviceName
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
       .replace(/['’]/g, '')
       .replace(/[^A-Za-z0-9-]+/g, '-')
       .replace(/-+/g, '-')

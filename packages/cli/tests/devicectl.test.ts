@@ -111,6 +111,8 @@ devicectlSuite.test('derives the Bonjour hostname the way the device advertises 
     'curly apostrophe is dropped'
   );
   assert(bonjourHostname("Douwe's iPhone") === 'Douwes-iPhone.local', 'straight apostrophe too');
+  // A real Apple TV named "Pokój dzienny" advertises "Pokoj-dzienny.local".
+  assert(bonjourHostname('Pokój dzienny') === 'Pokoj-dzienny.local', 'accents are dropped');
 });
 
 devicectlSuite.test('prefers devicectl hostnames re-pointed at .local', async () => {
