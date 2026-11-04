@@ -264,7 +264,8 @@ async function ensureDriverRunning(): Promise<void> {
     // Physical devices answer on the LAN rather than the host's loopback.
     alive = await isPortOpen(driverPort, await driverHost());
     // A rebuilt or upgraded macOS helper is replaced rather than left serving old code.
-    if (alive && driverPlatform === 'macos' && (await isStaleMacOSDriver(driverPort))) alive = false;
+    if (alive && driverPlatform === 'macos' && (await isStaleMacOSDriver(driverPort)))
+      alive = false;
   }
 
   if (!alive) {

@@ -986,7 +986,6 @@ export function macosSetupHint(): string {
   );
 }
 
-
 async function macosAxApp(): Promise<string> {
   const app = path.join(await getDriversDir(), 'macos-ax', 'ConductorAX.app');
   if (!fs.existsSync(app)) {
@@ -1125,9 +1124,10 @@ export async function isStaleMacOSDriver(port: number): Promise<boolean> {
 async function killMacosAx(): Promise<void> {
   // Anchored on an absolute, space-free executable path so shells that merely
   // mention it don't match.
-  await spawnAndWait('pkill', ['-f', '^/[^ ]*/ConductorAX\\.app/Contents/MacOS/conductor-ax']).catch(
-    () => {}
-  );
+  await spawnAndWait('pkill', [
+    '-f',
+    '^/[^ ]*/ConductorAX\\.app/Contents/MacOS/conductor-ax',
+  ]).catch(() => {});
 }
 
 /** Stop whichever macOS driver is running; xcodebuild exits with its runner. */
