@@ -20,6 +20,7 @@ import path from 'path';
 import { log } from '../verbose.js';
 import { sleep } from '../utils.js';
 import { resolveAndroidTool } from '../android/sdk.js';
+import { pruneXctestAttachmentsInBackground } from './xctest-attachments.js';
 import {
   findPhysicalDevice,
   resolveDeviceHost,
@@ -645,6 +646,24 @@ export async function isSimulatorBooted(deviceId: string): Promise<boolean> {
   }
 }
 
+/**
+ * Turn off XCTest's automatic screen capture. The driver's "test" never ends, so
+ * a screen recording grows unbounded on disk (tens of GB on a long-lived session).
+ */
+export async function disableXctestrunScreenCapture(
+  xctestrun: string,
+  testTarget: string
+): Promise<void> {
+  const settings: Array<[string, string]> = [
+    ['PreferredScreenCaptureFormat', 'screenshots'],
+    ['SystemAttachmentLifetime', 'keepNever'],
+    ['UserAttachmentLifetime', 'keepNever'],
+  ];
+  for (const [key, value] of settings) {
+    await spawnAndWait('plutil', ['-replace', `${testTarget}.${key}`, '-string', value, xctestrun]);
+  }
+}
+
 /** Check if something is listening on the given TCP port. */
 export function isPortOpen(port: number, host = '127.0.0.1'): Promise<boolean> {
   return new Promise((resolve) => {
@@ -679,6 +698,7 @@ export async function startIOSDriver(deviceId: string, port = IOS_BASE_PORT): Pr
 
   log(`Starting iOS XCTest driver for device ${deviceId} on port ${port}`);
   await setupIOSDriverCache();
+  pruneXctestAttachmentsInBackground();
 
   const xctestrun = path.join(IOS_DRIVER_CACHE, 'conductor-driver-ios-config.xctestrun');
 
@@ -692,6 +712,7 @@ export async function startIOSDriver(deviceId: string, port = IOS_BASE_PORT): Pr
     String(port),
     xctestrun,
   ]);
+  await disableXctestrunScreenCapture(xctestrun, 'conductor-driver-iosUITests');
 
   const proc = spawn(
     'xcodebuild',
@@ -817,6 +838,7 @@ export async function startTvOSDriver(
 
   log(`Starting tvOS XCTest driver for device ${deviceId} on port ${port}`);
   await setupTvOSDriverCache();
+  pruneXctestAttachmentsInBackground();
 
   const xctestrun = path.join(TVOS_DRIVER_CACHE, 'conductor-driver-tvos-config.xctestrun');
 
@@ -830,6 +852,7 @@ export async function startTvOSDriver(
     String(port),
     xctestrun,
   ]);
+  await disableXctestrunScreenCapture(xctestrun, 'conductor-driver-tvosUITests');
 
   const proc = spawn(
     'xcodebuild',
@@ -1050,6 +1073,7 @@ export async function startMacOSDriver(port = MACOS_BASE_PORT): Promise<void> {
     String(port),
     xctestrun,
   ]);
+  await disableXctestrunScreenCapture(xctestrun, 'conductor-driver-macosUITests');
 
   // The runner is a universal binary; pin the arch so xcodebuild doesn't see
   // the native and Rosetta destinations as ambiguous.
@@ -1320,6 +1344,7 @@ export async function startDeviceDriver(
     '1',
     xctestrun,
   ]);
+  await disableXctestrunScreenCapture(xctestrun, testTarget);
 
   log(`Starting ${platform} driver on ${device?.name ?? deviceId} (${host}:${port})`);
   const proc = spawn(

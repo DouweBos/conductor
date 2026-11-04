@@ -24,6 +24,9 @@
    </BuildAction>
    <TestAction
       buildConfiguration = "Debug"
+      systemAttachmentLifetime = "keepNever"
+      userAttachmentLifetime = "keepNever"
+      preferredScreenCaptureFormat = "screenshots"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
