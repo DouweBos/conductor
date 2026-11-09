@@ -16,6 +16,7 @@ import fs from 'fs';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { getFoldDylibPath } from './bootstrap.js';
+import { listDisplays, type DeviceDisplay } from './devicectl.js';
 
 const exec = promisify(execFile);
 
@@ -35,6 +36,8 @@ export interface FoldState {
 /** A simulator process's /tmp is the host's /tmp, so scope paths by device. */
 const controlPath = (udid: string) => `/tmp/conductor-fold-${udid}`;
 const orientationPath = (udid: string) => `/tmp/conductor-orientation-${udid}`;
+/** Written by the dylib whenever the relay's effective angle changes. */
+const anglePath = (udid: string) => `${controlPath(udid)}.angle`;
 
 /**
  * The relay's own orientation vocabulary, which is not devicectl's spelling.
@@ -76,6 +79,49 @@ export function poseForAngle(angle: number): string {
   return 'partial';
 }
 
+/** Parse the dylib's published angle; null when absent or garbled. */
+export function parsePublishedAngle(raw: string | null | undefined): number | null {
+  const text = (raw ?? '').trim();
+  if (!text) return null;
+  const angle = Number(text);
+  return Number.isFinite(angle) && angle >= 0 && angle <= 180 ? angle : null;
+}
+
+/**
+ * Coarse angle from which panel is lit, for when nothing can read the hinge
+ * directly. Can't tell book from open, so an unfolded device reads as open.
+ */
+export function angleFromDisplays(displays: DeviceDisplay[]): number | null {
+  const integrated = displays.filter((d) => d.integrated);
+  if (integrated.length < 2) return null;
+  const live = integrated.find((d) => d.active);
+  if (!live) return null;
+  return live.primary ? FOLD_POSES.closed : FOLD_POSES.open;
+}
+
+function readPublishedAngle(udid: string): number | null {
+  try {
+    return parsePublishedAngle(fs.readFileSync(anglePath(udid), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function waitForPublishedAngle(
+  udid: string,
+  done: (angle: number) => boolean,
+  timeoutMs: number
+): Promise<number | null> {
+  const deadline = Date.now() + timeoutMs;
+  let angle = readPublishedAngle(udid);
+  while (Date.now() < deadline) {
+    if (angle !== null && done(angle)) return angle;
+    await new Promise((r) => setTimeout(r, 100));
+    angle = readPublishedAngle(udid);
+  }
+  return angle !== null && done(angle) ? angle : null;
+}
+
 async function locationdPid(udid: string): Promise<string | null> {
   try {
     const { stdout } = await exec('xcrun', [
@@ -106,13 +152,20 @@ function recordedPid(udid: string): string | null {
  * locationd — anything else launched in that window loads the dylib too, which
  * is harmless (it no-ops outside locationd).
  */
-export async function ensureFoldControllerInjected(udid: string): Promise<void> {
+async function isInjected(udid: string): Promise<boolean> {
   const pid = await locationdPid(udid);
-  if (pid && pid === recordedPid(udid)) return;
+  return !!pid && pid === recordedPid(udid);
+}
+
+export async function ensureFoldControllerInjected(udid: string): Promise<void> {
+  if (await isInjected(udid)) return;
 
   // Restarting locationd resets CoreMotion's relay to a 0° hinge, which folds
   // the device. Remember where the hinge was so it can be put back.
-  const previousAngle = await readHingeAngleViaDevicectl(udid).catch(() => null);
+  const previousAngle =
+    (await readHingeAngleViaDevicectl(udid).catch(() => null)) ??
+    angleFromDisplays(await listDisplays(udid).catch(() => [])) ??
+    null;
 
   const dylib = await getFoldDylibPath();
   if (!dylib) {
@@ -133,8 +186,12 @@ export async function ensureFoldControllerInjected(udid: string): Promise<void> 
   while (Date.now() < deadline) {
     const current = await locationdPid(udid);
     if (current && current === recordedPid(udid)) {
+      // The pid lands before the relay is captured; its first published angle
+      // means it is, and a restore written earlier would be dropped.
+      await waitForPublishedAngle(udid, () => true, Math.max(0, deadline - Date.now()));
       if (previousAngle !== null) {
         fs.writeFileSync(controlPath(udid), String(previousAngle));
+        await waitForPublishedAngle(udid, (a) => Math.abs(a - previousAngle) < 0.5, 5000);
       }
       return;
     }
@@ -150,6 +207,11 @@ export async function setFoldAngle(udid: string, angle: number): Promise<void> {
   }
   await ensureFoldControllerInjected(udid);
   fs.writeFileSync(controlPath(udid), String(angle));
+  const reached = await waitForPublishedAngle(udid, (a) => Math.abs(a - angle) < 0.5, 5000);
+  if (reached === null) {
+    const now = readPublishedAngle(udid);
+    throw new Error(`hinge did not reach ${angle}°` + (now === null ? '' : ` (still at ${now}°)`));
+  }
 }
 
 /**
@@ -164,19 +226,25 @@ export async function setOrientationViaRelay(udid: string, orientation: string):
 }
 
 /**
- * Read the current fold state. devicectl is the authority: the hinge can be
- * moved from Device Hub as well as by us, so anything we cached locally would
- * only cover the folds this process happened to see.
+ * Read the current fold state. The dylib publishes the relay's live angle,
+ * which Device Hub moves go through too, so it's authoritative once injected.
+ * Xcode 27.2 dropped devicectl's hinge reader; older Xcodes still have it.
  */
 export async function getFoldState(udid: string): Promise<FoldState> {
-  const angle = await readHingeAngleViaDevicectl(udid);
+  let angle = (await isInjected(udid)) ? readPublishedAngle(udid) : null;
+  angle ??= await readHingeAngleViaDevicectl(udid).catch(() => null);
+  if (angle === null) {
+    await ensureFoldControllerInjected(udid);
+    angle = await waitForPublishedAngle(udid, () => true, 5000);
+  }
+  if (angle === null) throw new Error('could not read hinge angle — is this a foldable device?');
   return { angle, pose: poseForAngle(angle) };
 }
 
 /**
- * `devicectl device motion hinge-angle` is a monitor: it prints the current
- * angle immediately but then streams until its session expires, so take the
- * first sample and stop it rather than waiting around.
+ * `devicectl device motion hinge-angle` (Xcode 27.1) is a monitor: it prints
+ * the current angle immediately but then streams until its session expires, so
+ * take the first sample and stop it rather than waiting around.
  */
 async function readHingeAngleViaDevicectl(udid: string): Promise<number> {
   return new Promise<number>((resolve, reject) => {

@@ -39,7 +39,7 @@ conductor list-apps          # installed app ids / package names (--json adds ap
 
 `set-fold` drives the hinge the same way Device Hub's slider does, so the device
 really folds: SpringBoard swaps between the cover and inner displays, and
-`devicectl device motion hinge-angle` reports the new angle. `take-screenshot`
+`get-fold` reads the new angle back. `take-screenshot`
 follows the fold automatically — it captures whichever panel is live, so an
 unfolded device gives you the inner screen rather than the powered-off cover.
 Pass `--display cover` or `--display inner` to pin it to one panel, or a display
@@ -56,11 +56,12 @@ Angles are in degrees, 0 (shut) to 180 (flat). `closed`/`book`/`open` map to
 the hinge but may leave the cover display active, because the system decides
 when to swap on its own transition logic.
 
-The first `set-fold` after a device boots takes a few seconds: it injects a
+The first `set-fold` or `get-fold` after a device boots takes a few seconds: it injects a
 controller into the simulator's locationd (restarting it), because Apple ships
 no fold setter in `simctl` or `devicectl`. The current angle is restored
-afterwards, so injecting doesn't change the pose. Subsequent calls are instant. This is
-iOS-simulator only.
+afterwards, so injecting doesn't change the pose (on Xcode 27.2+, which can't read the
+hinge before injecting, a half-open `book` comes back as `open`). Subsequent calls
+are instant. This is iOS-simulator only.
 
 `set-orientation` works on foldables too, but by the same route: they accept
 `devicectl`'s setter and ignore it, so the command verifies the result and

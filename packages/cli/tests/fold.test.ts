@@ -7,6 +7,8 @@ import { TestSuite, assert } from './runner.js';
 import {
   FOLD_POSES,
   RELAY_ORIENTATIONS,
+  angleFromDisplays,
+  parsePublishedAngle,
   poseForAngle,
   resolveFoldAngle,
 } from '../src/drivers/ios-fold.js';
@@ -51,4 +53,30 @@ foldSuite.test('fold values resolve to angles, and bad ones are rejected', async
   assert(resolveFoldAngle('banana') === null, 'not a pose or a number');
   // Number('') is 0, so an empty value would otherwise fold the device shut.
   assert(resolveFoldAngle('') === null, 'empty value');
+});
+
+foldSuite.test("the dylib's published angle parses, and junk is rejected", async () => {
+  assert(parsePublishedAngle('180.0') === 180, 'open');
+  assert(parsePublishedAngle(' 130.0\n') === 130, 'whitespace');
+  assert(parsePublishedAngle('0.0') === 0, 'closed is a real angle, not missing');
+  assert(parsePublishedAngle('') === null, 'empty file mid-write');
+  assert(parsePublishedAngle(null) === null, 'no file');
+  assert(parsePublishedAngle('nan') === null, 'garbage');
+  assert(parsePublishedAngle('270') === null, 'out of range');
+});
+
+foldSuite.test('the live panel gives a coarse angle when nothing can read the hinge', async () => {
+  const panel = (displayId: number, primary: boolean, active: boolean) => ({
+    displayId,
+    name: primary ? 'LCD' : 'LCD-1',
+    active,
+    primary,
+    kind: 'integrated',
+    integrated: true,
+    pointScale: 3,
+  });
+  assert(angleFromDisplays([panel(1, true, true), panel(3, false, false)]) === 0, 'cover lit');
+  assert(angleFromDisplays([panel(1, true, false), panel(3, false, true)]) === 180, 'inner lit');
+  assert(angleFromDisplays([panel(1, true, false), panel(3, false, false)]) === null, 'none lit');
+  assert(angleFromDisplays([panel(1, true, true)]) === null, 'not a foldable');
 });

@@ -18,7 +18,7 @@ own: `portrait`, `pud`, `landscape-left`, `landscape-right`, `faceup`,
 ## Why injection
 
 Apple ships no fold setter. `simctl` has nothing, and `devicectl` only *reads*
-the angle (`device motion hinge-angle`). A fold is an AVP event — `{source:
+the angle (`device motion hinge-angle`) — and Xcode 27.2 dropped even that. A fold is an AVP event — `{source:
 "hinge-slider-control", type: "range", value: <angle>}` — that Device Hub sends
 over CoreDevice's remote-HID channel to the guest's `dtuhidd`, which hands it to
 `locationd`, whose `CMDeviceStateRelayManager` synthesises the hinge IOHID event
@@ -49,7 +49,12 @@ Device Hub produces — just without the UI.
 - Restarting `locationd` resets CoreMotion's relay to a 0° hinge, i.e. it folds
   the device. The CLI reads the angle before injecting and restores it after, so
   injection doesn't quietly change the pose.
-- `get-fold` reads `devicectl`, not anything we cache: the hinge can be moved
-  from Device Hub too, and a local cache would only cover our own writes.
+- The relay entry point is `startUpdatesForPhysicalDevice:` up to iOS 27.1 and
+  `startUpdatesForPhysicalDevice:aopAngle:` from 27.2; the dylib hooks both.
+- `get-fold` reads `/tmp/conductor-fold-<UDID>.angle`, which the dylib rewrites
+  from the relay's `setEffectiveAngle:`, so Device Hub moves show up too. Without
+  an injected controller it falls back to `devicectl device motion hinge-angle`
+  (Xcode 27.1 only), then injects. With no hinge reader, the angle restored after
+  injection is inferred from the live panel: cover → 0°, inner → 180°.
 - A simulator process's `/tmp` is the host's `/tmp`, so the control files are
   UDID-scoped — several foldables can be booted at once.
