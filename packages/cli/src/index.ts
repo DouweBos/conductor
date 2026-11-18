@@ -163,6 +163,7 @@ import { menu, HELP as menuHelp } from './commands/menu.js';
 import { windowCommand, HELP as windowHelp } from './commands/window.js';
 import { getSession, updateSession } from './session.js';
 import { pickDevice } from './device-picker.js';
+import { resolveSessionName, DeviceSelectionError, isWebDeviceId } from './device-selection.js';
 import { parseCdpDeviceId } from './drivers/cdp-discovery.js';
 import { checkForUpdates } from './update-check.js';
 import { findPkgRoot } from './pkg-root.js';
@@ -467,38 +468,26 @@ async function main(): Promise<void> {
   }
 
   // The device ID is the natural key for both the session file and the daemon.
-  // Use --device if given, otherwise detect the first booted device, otherwise 'default'.
+  // Use --device if given, otherwise the only booted device, otherwise 'default'.
   // Only resolve for commands that actually need a device.
   let sessionName = 'default';
   if (!NO_DEVICE_COMMANDS.has(command)) {
-    const explicitDevice = argv['device'] as string | undefined;
-    const deviceName = argv['device-name'] as string | undefined;
-
-    if (explicitDevice && deviceName) {
-      console.error('Error: --device and --device-name are mutually exclusive.');
+    try {
+      sessionName = await resolveSessionName(argv, process.argv.slice(2), {
+        pick: pickDevice,
+        discover: discoverBootedDevices,
+      });
+    } catch (err) {
+      if (!(err instanceof DeviceSelectionError)) throw err;
+      console.error(`Error: ${err.message}`);
       process.exit(1);
-    }
-
-    if (deviceName) {
-      const devices = await discoverBootedDevices();
-      const match = devices.find((d) => d.name === deviceName);
-      if (!match) {
-        console.error(
-          `Error: No booted device found with name "${deviceName}". Run \`conductor list-devices\` to see booted devices.`
-        );
-        process.exit(1);
-      }
-      sessionName = match.id;
-    } else {
-      sessionName =
-        explicitDevice ?? (await pickDevice(argv['platform'] as string | undefined)) ?? 'default';
     }
   }
 
   // CDP attach settings (web only): --cdp-url/--cdp-target map to the env the daemon
   // reads. Passing them once persists them to the session so later commands for the
   // same --device don't need the flags; absent flags hydrate from the saved session.
-  const isWebSession = sessionName === 'web' || sessionName.startsWith('web:');
+  const isWebSession = isWebDeviceId(sessionName);
   if (isWebSession && !NO_DEVICE_COMMANDS.has(command)) {
     const cdpUrlFlag = argv['cdp-url'] as string | undefined;
     const cdpTargetFlag = argv['cdp-target'] as string | undefined;

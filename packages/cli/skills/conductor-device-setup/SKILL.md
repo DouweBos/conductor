@@ -84,6 +84,12 @@ Use a distinct fully-qualified `--device web:chromium:<label>` per target (a bar
 several webviews can be driven concurrently. Only `type=page` targets are
 controllable. See [Web testing → Attaching to an existing browser](../../../docs/web.md).
 
+`--cdp-url`/`--cdp-target` are rejected unless `--device` is a web device, and
+flags glued into one argument (zsh doesn't word-split an unquoted `$FLAGS`) are an
+error. Use a shell array (`"${FLAGS[@]}"`) or `${=FLAGS}` in zsh. Without
+`--device`, several booted devices are an error in non-interactive shells; conductor
+never falls back to the first one.
+
 **Discovery:** endpoints on the conventional debugging ports (9222–9229 on
 localhost) are found automatically — `list-devices` shows each webview as a
 booted `web:cdp:<port>:<targetId>` device. That id is self-describing, so you can

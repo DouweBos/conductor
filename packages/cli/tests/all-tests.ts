@@ -32,6 +32,7 @@ import { startDeviceAndroid } from './start-device-android.test.js';
 import { metroCdp } from './metro-cdp.test.js';
 import { metroUse } from './metro-use.test.js';
 import { cdpDiscovery } from './cdp-discovery.test.js';
+import { deviceSelection } from './device-selection.test.js';
 import { devicectlSuite } from './devicectl.test.js';
 import { foldSuite } from './fold.test.js';
 import { displaysSuite } from './displays.test.js';
@@ -91,7 +92,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, metroUse, cdpDiscovery, devicectlSuite, foldSuite, displaysSuite, pressKeyRemote, snapshotRef, flowRecorder, vega, roku, macos, inputStreaming, videoStreaming, maestroParity, pathAliases, profiling, logCollector, webServer, xctestAttachments];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, metroUse, cdpDiscovery, deviceSelection, devicectlSuite, foldSuite, displaysSuite, pressKeyRemote, snapshotRef, flowRecorder, vega, roku, macos, inputStreaming, videoStreaming, maestroParity, pathAliases, profiling, logCollector, webServer, xctestAttachments];
 
   if (device) {
     console.log(`\nDevice: ${device}`);

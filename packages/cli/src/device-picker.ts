@@ -8,7 +8,7 @@ import { discoverBootedDevices } from './commands/list-devices.js';
  * - 0 devices → returns undefined
  * - 1 device  → returns it automatically
  * - N devices + TTY → shows a numbered picker
- * - N devices + no TTY → returns undefined (caller should error)
+ * - N devices + no TTY → throws, so the caller never silently picks one
  *
  * When `platform` is provided, only devices matching that platform are considered.
  */
@@ -24,11 +24,10 @@ export async function pickDevice(platform?: string): Promise<string | undefined>
 
   // Non-interactive context — can't prompt
   if (!process.stdin.isTTY) {
-    console.error(
+    throw new Error(
       `Multiple devices found but stdin is not a TTY. Use --device to specify one:\n` +
         devices.map((d) => `  ${d.id}  ${d.name} (${d.platform})`).join('\n')
     );
-    return undefined;
   }
 
   console.log('Multiple devices detected — pick one:\n');
