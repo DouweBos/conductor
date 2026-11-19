@@ -111,6 +111,8 @@
 		BBBB000A2DF24A000000000A /* PermissionButtonFinderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBB00172DF24A0000000017 /* PermissionButtonFinderTests.swift */; };
 		BBBB000B2DF24A000000000B /* AXElementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBB00182DF24A0000000018 /* AXElementTests.swift */; };
 		BBBB000C2DF24A000000000C /* AXFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBB00192DF24A0000000019 /* AXFrameTests.swift */; };
+		BBBB00F12DF24A00000000F1 /* OrientationMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBB00F32DF24A00000000F3 /* OrientationMapping.swift */; };
+		BBBB00F22DF24A00000000F2 /* OrientationMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBB00F42DF24A00000000F4 /* OrientationMappingTests.swift */; };
 		C2DB03C0028C821C6F580B2C /* XCAXClient_iOS+FBSnapshotReqParams.m in Sources */ = {isa = PBXBuildFile; fileRef = 526111792DE5E8E5007C356B /* XCAXClient_iOS+FBSnapshotReqParams.m */; };
 		D2244FD4EDCE31D1BAFD0549 /* SnapshotParametersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69198CA2D2E1AAFBD06FEB38 /* SnapshotParametersTests.swift */; };
 		F328D3E62A2A98E7000546D3 /* StringExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = F328D3E52A2A98E7000546D3 /* StringExtensions.swift */; };
@@ -565,6 +567,8 @@
 		BBBB00172DF24A0000000017 /* PermissionButtonFinderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionButtonFinderTests.swift; sourceTree = "<group>"; };
 		BBBB00182DF24A0000000018 /* AXElementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXElementTests.swift; sourceTree = "<group>"; };
 		BBBB00192DF24A0000000019 /* AXFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXFrameTests.swift; sourceTree = "<group>"; };
+		BBBB00F32DF24A00000000F3 /* OrientationMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationMapping.swift; sourceTree = "<group>"; };
+		BBBB00F42DF24A00000000F4 /* OrientationMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationMappingTests.swift; sourceTree = "<group>"; };
 		BBBB001A2DF24A000000001A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BBBB00202DF24A0000000020 /* ConductorDriverLib.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ConductorDriverLib.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		BBBB00212DF24A0000000021 /* ConductorDriverLibTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ConductorDriverLibTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1028,6 +1032,7 @@
 			isa = PBXGroup;
 			children = (
 				BBBB00152DF24A0000000015 /* PermissionButtonFinder.swift */,
+				BBBB00F32DF24A00000000F3 /* OrientationMapping.swift */,
 			);
 			path = Helpers;
 			sourceTree = "<group>";
@@ -1038,6 +1043,7 @@
 				BBBB00172DF24A0000000017 /* PermissionButtonFinderTests.swift */,
 				BBBB00182DF24A0000000018 /* AXElementTests.swift */,
 				BBBB00192DF24A0000000019 /* AXFrameTests.swift */,
+				BBBB00F42DF24A00000000F4 /* OrientationMappingTests.swift */,
 			);
 			path = ConductorDriverLib/Tests/ConductorDriverLibTests;
 			sourceTree = "<group>";
@@ -1491,6 +1497,7 @@
 				BBBB00042DF24A0000000004 /* PermissionValue.swift in Sources */,
 				BBBB00052DF24A0000000005 /* PermissionButtonFinder.swift in Sources */,
 				BBBB00062DF24A0000000006 /* ConductorDriverLib.swift in Sources */,
+				BBBB00F12DF24A00000000F1 /* OrientationMapping.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1501,6 +1508,7 @@
 				BBBB000A2DF24A000000000A /* PermissionButtonFinderTests.swift in Sources */,
 				BBBB000B2DF24A000000000B /* AXElementTests.swift in Sources */,
 				BBBB000C2DF24A000000000C /* AXFrameTests.swift in Sources */,
+				BBBB00F22DF24A00000000F2 /* OrientationMappingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

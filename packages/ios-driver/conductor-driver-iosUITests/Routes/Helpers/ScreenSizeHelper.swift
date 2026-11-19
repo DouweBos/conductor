@@ -47,71 +47,41 @@ struct ScreenSizeHelper {
         return (Float(size.width), Float(size.height))
     }
 
+    // XCUI frames (and so every coordinate the CLI sends) are in the foreground
+    // app's interface orientation. Device orientation alone misses apps that force
+    // landscape: the device stays unknown/portrait while the UI is rotated.
     private static func actualOrientation() -> DeviceOrientation {
         #if os(tvOS) || os(macOS)
-        let orientation = Optional(DeviceOrientation.unknown)
+        return .portrait
         #else
-        let orientation = DeviceOrientation(rawValue: XCUIDevice.shared.orientation.rawValue)
+        let interface = RunningApp.getForegroundApp()?.conductor_interfaceOrientation()
+        let resolved = OrientationMapping.effective(
+            interface: interface.map { Int($0) },
+            device: XCUIDevice.shared.orientation.rawValue
+        )
+        return DeviceOrientation(rawValue: resolved) ?? .portrait
         #endif
-
-        guard let unwrappedOrientation = orientation, orientation != .unknown else {
-            // If orientation is "unknown", we assume it is "portrait" to
-            // work around https://stackoverflow.com/q/78932288/7009800
-            return DeviceOrientation.portrait
-        }
-
-        // A physical device resting on a desk reports .faceUp/.faceDown, which a
-        // simulator never does. Those say nothing about how the UI is laid out,
-        // so treat them as portrait — matching what actualScreenSize() already
-        // does for them. (A device held flat while the app is in landscape will
-        // map coordinates as portrait; device orientation is all XCUIDevice
-        // exposes here.)
-        if unwrappedOrientation == .faceUp || unwrappedOrientation == .faceDown {
-            return DeviceOrientation.portrait
-        }
-
-        return unwrappedOrientation
     }
 
-    /// Takes device orientation into account.
+    /// Screen size in the foreground app's interface orientation.
     static func actualScreenSize() throws -> (Float, Float, DeviceOrientation) {
         let orientation = actualOrientation()
 
         let (width, height) = physicalScreenSize()
-        let (actualWidth, actualHeight) =
-            switch orientation {
-            case .portrait, .portraitUpsideDown: (width, height)
-            case .landscapeLeft, .landscapeRight: (height, width)
-            case .faceDown, .faceUp: (width, height)
-            case .unknown:
-                throw AppError(
-                    message: "Unsupported orientation: \(orientation)")
-            @unknown default:
-                throw AppError(
-                    message: "Unsupported orientation: \(orientation)")
-            }
-
-        return (actualWidth, actualHeight, orientation)
+        let size = OrientationMapping.orientedSize(
+            width: CGFloat(width), height: CGFloat(height), orientation: orientation.rawValue
+        )
+        return (Float(size.width), Float(size.height), orientation)
     }
 
     static func orientationAwarePoint(
         width: Float, height: Float, point: CGPoint
     ) -> CGPoint {
-        let orientation = actualOrientation()
-
-        return switch orientation {
-        case .portrait: point
-        case .landscapeLeft:
-            CGPoint(x: CGFloat(width) - point.y, y: CGFloat(point.x))
-        case .landscapeRight:
-            CGPoint(x: CGFloat(point.y), y: CGFloat(height) - point.x)
-        // Never crash the driver over an orientation we don't map: an untranslated
-        // point is a recoverable mis-tap, a fatalError kills every later request.
-        default:
-            {
-                NSLog("orientationAwarePoint: unmapped orientation \(orientation), using point as-is")
-                return point
-            }()
-        }
+        OrientationMapping.toPortrait(
+            point,
+            orientation: actualOrientation().rawValue,
+            width: CGFloat(width),
+            height: CGFloat(height)
+        )
     }
 }

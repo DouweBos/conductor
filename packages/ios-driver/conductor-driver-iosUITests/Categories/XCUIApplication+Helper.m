@@ -58,4 +58,15 @@
     return app;
 }
 
+- (NSInteger)conductor_interfaceOrientation
+{
+    SEL sel = NSSelectorFromString(@"interfaceOrientation");
+    if (![self respondsToSelector:sel]) {
+        return 0;
+    }
+    IMP imp = [self methodForSelector:sel];
+    NSInteger (*fn)(id, SEL) = (void *)imp;
+    return fn(self, sel);
+}
+
 @end
