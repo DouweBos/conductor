@@ -996,8 +996,7 @@ export function macosSetupHint(): string {
     return (
       'The macOS driver needs two one-time approvals for ConductorAX in System Settings ▸\n' +
       'Privacy & Security: Accessibility, and Screen & System Audio Recording (for screenshots).\n' +
-      'Restart the driver after granting (`conductor --device macos daemon-stop`). Both can reset\n' +
-      'after a conductor upgrade.'
+      'Restart the driver after granting (`conductor --device macos daemon-stop`).'
     );
   }
   return (

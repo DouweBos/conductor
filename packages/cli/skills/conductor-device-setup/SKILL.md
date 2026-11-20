@@ -163,7 +163,7 @@ apps, or need the app in front — its window can even be covered or on another
 display. One-time setup: allow **ConductorAX** in System Settings ▸ Privacy &
 Security ▸ **Accessibility** and ▸ **Screen & System Audio Recording**, then
 restart the driver (`conductor --device macos daemon-stop`; the next command
-starts it). Both grants can reset after a conductor upgrade.
+starts it). Both grants carry over to later conductor versions.
 
 The background driver clicks by pressing an element's accessibility action, so
 custom-drawn views with no action, long press, modifier clicks, hover and drag

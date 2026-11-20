@@ -25,7 +25,47 @@ jobs:
       - name: Apply changesets
         run: pnpm changeset version
 
+      # ConductorAX is signed with the team's Developer ID so macOS keys its
+      # Accessibility and Screen Recording grants to the team, not to one build's
+      # hash: ad-hoc signed, every release asked for both again.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: apps/studio
+
+      - name: Create build keychain
+        env:
+          MATCH_KEYCHAIN_PASSWORD: ${{ secrets.MATCH_KEYCHAIN_PASSWORD }}
+        run: |
+          security create-keychain -p "$MATCH_KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$MATCH_KEYCHAIN_PASSWORD" build.keychain
+          security list-keychains -d user -s build.keychain $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s build.keychain
+
+      - name: Encode match git auth
+        env:
+          MATCH_GIT_PAT: ${{ secrets.MATCH_GIT_PAT }}
+        run: |
+          AUTH=$(printf '%s' "x-access-token:${MATCH_GIT_PAT}" | base64 | tr -d '\n')
+          echo "::add-mask::$AUTH"
+          echo "MATCH_GIT_BASIC_AUTHORIZATION=$AUTH" >> "$GITHUB_ENV"
+
+      - name: Sync Developer ID cert
+        working-directory: apps/studio
+        env:
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_KEYCHAIN_NAME: build.keychain
+          MATCH_KEYCHAIN_PASSWORD: ${{ secrets.MATCH_KEYCHAIN_PASSWORD }}
+          FASTLANE_SKIP_UPDATE_CHECK: "1"
+          CI: "true"
+        run: bundle exec fastlane match developer_id --readonly
+
       - name: Build
+        env:
+          CONDUCTOR_SIGN_IDENTITY: Developer ID Application
         run: make build
 
       # Tags are prefixed `cli-v` so CLI releases don't collide with Studio's
