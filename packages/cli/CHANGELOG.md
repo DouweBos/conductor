@@ -1,5 +1,11 @@
 # @houwert/conductor
 
+## 0.34.6
+
+### Patch Changes
+
+- 5d1391d: The macOS background driver keeps its Accessibility and Screen Recording approvals across conductor updates instead of asking again after each one.
+
 ## 0.34.5
 
 ### Patch Changes
