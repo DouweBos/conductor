@@ -31,3 +31,6 @@ packages/studio-ui/storybook-static/
 !apps/studio/build/**
 # ...but not the intermediate rasters; icon.icns/.png/.svg are the outputs
 apps/studio/build/icon.iconset/
+
+# Gems the release workflow installs for fastlane match
+apps/studio/vendor/
