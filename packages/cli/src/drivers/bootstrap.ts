@@ -29,7 +29,7 @@ import {
 
 // ── Platform detection ────────────────────────────────────────────────────────
 
-export type Platform = 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku' | 'macos';
+export type Platform = 'ios' | 'android' | 'tvos' | 'watchos' | 'web' | 'vega' | 'roku' | 'macos';
 
 /** Cache: deviceId → platform */
 const _platformCache = new Map<string, Platform>();
@@ -66,13 +66,13 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
   const appleUuidRe = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
   const appleUdidRe = /^[0-9a-f]{40}$/i;
   if (appleUuidRe.test(deviceId) || appleUdidRe.test(deviceId)) {
-    // Query simctl to determine whether this UUID belongs to a tvOS runtime
+    // Query simctl to determine whether this UUID belongs to a tvOS/watchOS runtime
     try {
       const out = await spawnCapture('xcrun', ['simctl', 'list', 'devices', '--json']);
       const parsed = JSON.parse(out) as { devices: Record<string, Array<{ udid: string }>> };
       for (const [runtime, sims] of Object.entries(parsed.devices)) {
         if (sims.some((s) => s.udid === deviceId)) {
-          const platform: Platform = runtime.includes('tvOS') ? 'tvos' : 'ios';
+          const platform = simRuntimePlatform(runtime);
           _platformCache.set(deviceId, platform);
           _kindCache.set(deviceId, 'simulator');
           return platform;
@@ -97,6 +97,13 @@ export async function detectPlatform(deviceId: string): Promise<Platform> {
   // Otherwise assume Android (serial like emulator-5554 or real device)
   _platformCache.set(deviceId, 'android');
   return 'android';
+}
+
+/** Map a simctl runtime identifier to the Apple platform it runs. */
+export function simRuntimePlatform(runtime: string): 'ios' | 'tvos' | 'watchos' {
+  if (runtime.includes('tvOS')) return 'tvos';
+  if (runtime.includes('watchOS')) return 'watchos';
+  return 'ios';
 }
 
 export type DeviceKind = 'simulator' | 'physical';
@@ -142,6 +149,7 @@ const TVOS_BASE_PORT = 2075;
 const ANDROID_BASE_PORT = 3763;
 const WEB_BASE_PORT = 4075;
 const VEGA_BASE_PORT = 5075;
+const WATCHOS_BASE_PORT = 9075;
 const MACOS_BASE_PORT = 6075;
 const INPUT_BASE_PORT = 7075;
 const STREAM_BASE_PORT = 8075;
@@ -158,6 +166,7 @@ interface PortState {
   nextWebPort: number;
   nextVegaPort: number;
   nextMacosPort?: number;
+  nextWatchosPort?: number;
   /** Streaming-input WebSocket ports, keyed by deviceId — separate namespace from driver ports. */
   inputAssignments?: Record<string, number>;
   nextInputPort?: number;
@@ -225,11 +234,14 @@ export async function getDriverPort(platform: Platform, deviceId: string): Promi
     if (state.nextWebPort === undefined) state.nextWebPort = WEB_BASE_PORT;
     if (state.nextVegaPort === undefined) state.nextVegaPort = VEGA_BASE_PORT;
     if (state.nextMacosPort === undefined) state.nextMacosPort = MACOS_BASE_PORT;
+    if (state.nextWatchosPort === undefined) state.nextWatchosPort = WATCHOS_BASE_PORT;
     let port: number;
     if (platform === 'ios') {
       port = state.nextIosPort++;
     } else if (platform === 'tvos') {
       port = state.nextTvosPort++;
+    } else if (platform === 'watchos') {
+      port = state.nextWatchosPort++;
     } else if (platform === 'web') {
       port = state.nextWebPort++;
     } else if (platform === 'vega') {
@@ -324,7 +336,7 @@ let _driversDirPromise: Promise<string> | null = null;
 
 /**
  * Resolve the directory containing the platform driver artifacts
- * (`<dir>/{android,ios,tvos}/...`).
+ * (`<dir>/{android,ios,tvos,watchos}/...`).
  *
  * Lookup order:
  *   1. Legacy bundled drivers at `<pkg-root>/drivers/` — populated by
@@ -895,6 +907,134 @@ export async function startTvOSDriver(
  */
 export async function stopTvOSDriver(deviceId: string): Promise<void> {
   await spawnAndWait('xcrun', ['simctl', 'terminate', deviceId, TVOS_RUNNER_BUNDLE_ID]);
+}
+
+// ── watchOS bootstrap ─────────────────────────────────────────────────────────
+
+const WATCHOS_RUNNER_BUNDLE_ID = 'dev.houwert.conductor-driver-watchosUITests.xctrunner';
+const WATCHOS_STARTUP_TIMEOUT_MS = 180000;
+const WATCHOS_STARTUP_POLL_MS = 500;
+
+// __TESTROOT__ in the xctestrun resolves here, so the xctestrun and the
+// Debug-watchsimulator/ folder must live side by side.
+const WATCHOS_DRIVER_CACHE = path.join(os.homedir(), '.conductor', 'watchos-driver');
+
+/**
+ * Ensure the watchOS driver files are extracted from the bundled zips into the
+ * cache dir. Re-extracts only when the bundled xctestrun has changed.
+ */
+export async function setupWatchOSDriverCache(): Promise<void> {
+  const driversDir = await getDriversDir();
+  const dir = path.join(driversDir, 'watchos');
+  const bundledXctestrun = path.join(dir, 'conductor-driver-watchos-config.xctestrun');
+  const bundledDriverZip = path.join(dir, 'conductor-driver-watchos.zip');
+  const bundledRunnerZip = path.join(dir, 'conductor-driver-watchosUITests-Runner.zip');
+
+  if (
+    !fs.existsSync(bundledXctestrun) ||
+    !fs.existsSync(bundledDriverZip) ||
+    !fs.existsSync(bundledRunnerZip)
+  ) {
+    throw new Error(
+      `Conductor watchOS driver files not found at ${dir}.\n` +
+        `Run 'make package-cli' from the repo root to build and bundle the drivers.`
+    );
+  }
+
+  const versionFile = path.join(WATCHOS_DRIVER_CACHE, '.version');
+  const xctestrunMtime = String(fs.statSync(bundledXctestrun).mtimeMs);
+  let cachedMtime = '';
+  try {
+    cachedMtime = fs.readFileSync(versionFile, 'utf-8').trim();
+  } catch {
+    /* first run */
+  }
+
+  const appsDir = path.join(WATCHOS_DRIVER_CACHE, 'Debug-watchsimulator');
+  const runnerApp = path.join(appsDir, 'conductor-driver-watchosUITests-Runner.app');
+  if (cachedMtime === xctestrunMtime && fs.existsSync(runnerApp)) return;
+
+  log('Extracting watchOS driver files to cache...');
+  fs.rmSync(WATCHOS_DRIVER_CACHE, { recursive: true, force: true });
+  fs.mkdirSync(WATCHOS_DRIVER_CACHE, { recursive: true });
+  fs.copyFileSync(
+    bundledXctestrun,
+    path.join(WATCHOS_DRIVER_CACHE, 'conductor-driver-watchos-config.xctestrun')
+  );
+  await spawnAndWait('unzip', ['-q', '-o', bundledDriverZip, '-d', appsDir]);
+  await spawnAndWait('unzip', ['-q', '-o', bundledRunnerZip, '-d', appsDir]);
+
+  fs.writeFileSync(versionFile, xctestrunMtime);
+  log('watchOS driver cache ready');
+}
+
+/**
+ * Start the watchOS XCTest driver via `xcodebuild test-without-building`.
+ * Simulator only: a physical watch is reachable only through its paired iPhone.
+ *
+ * Like tvOS, the runner's host app comes to the foreground on launch, so
+ * `restoreFocusAfterLaunch` re-activates the previous app (or presses the
+ * Digital Crown back to the watch face).
+ */
+export async function startWatchOSDriver(
+  deviceId: string,
+  port = WATCHOS_BASE_PORT,
+  restoreFocusAfterLaunch = false
+): Promise<void> {
+  if (await isPortOpen(port)) {
+    log(`watchOS driver already running on port ${port}`);
+    return;
+  }
+
+  log(`Starting watchOS XCTest driver for device ${deviceId} on port ${port}`);
+  await setupWatchOSDriverCache();
+  pruneXctestAttachmentsInBackground();
+
+  const xctestrun = path.join(WATCHOS_DRIVER_CACHE, 'conductor-driver-watchos-config.xctestrun');
+  await spawnAndWait('plutil', [
+    '-replace',
+    'conductor-driver-watchosUITests.EnvironmentVariables.PORT',
+    '-string',
+    String(port),
+    xctestrun,
+  ]);
+  await disableXctestrunScreenCapture(xctestrun, 'conductor-driver-watchosUITests');
+
+  const proc = spawn(
+    'xcodebuild',
+    ['test-without-building', '-xctestrun', xctestrun, '-destination', `id=${deviceId}`],
+    {
+      detached: true,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    }
+  );
+  proc.unref();
+
+  const deadline = Date.now() + WATCHOS_STARTUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(WATCHOS_STARTUP_POLL_MS);
+    if (await isPortOpen(port)) {
+      log(`watchOS driver ready on port ${port}`);
+      if (restoreFocusAfterLaunch) {
+        try {
+          const restored = await restoreFocusViaDriver(port);
+          log(restored ? `Restored watchOS focus to ${restored}` : 'Dismissed watchOS driver app');
+        } catch {
+          log('Could not restore watchOS focus (non-fatal)');
+        }
+      }
+      return;
+    }
+  }
+
+  throw new Error(
+    `watchOS XCTest driver did not start within ${WATCHOS_STARTUP_TIMEOUT_MS / 1000}s on port ${port}.`
+  );
+}
+
+/** Stop the watchOS XCTest driver by terminating the runner app. */
+export async function stopWatchOSDriver(deviceId: string): Promise<void> {
+  await spawnAndWait('xcrun', ['simctl', 'terminate', deviceId, WATCHOS_RUNNER_BUNDLE_ID]);
 }
 
 // ── macOS bootstrap ───────────────────────────────────────────────────────────
@@ -1625,6 +1765,10 @@ export async function uninstallDriver(deviceId: string, platform: Platform): Pro
     ]).catch(() => {});
   } else if (platform === 'tvos') {
     await spawnAndWait('xcrun', ['simctl', 'uninstall', deviceId, TVOS_RUNNER_BUNDLE_ID]).catch(
+      () => {}
+    );
+  } else if (platform === 'watchos') {
+    await spawnAndWait('xcrun', ['simctl', 'uninstall', deviceId, WATCHOS_RUNNER_BUNDLE_ID]).catch(
       () => {}
     );
   } else {

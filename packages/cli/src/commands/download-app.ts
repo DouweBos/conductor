@@ -55,7 +55,7 @@ export async function downloadApp(
     return 1;
   }
 
-  if (platform === 'ios' || platform === 'tvos') {
+  if (platform === 'ios' || platform === 'tvos' || platform === 'watchos') {
     // Get the .app bundle path from the simulator
     const getPath = await spawnCommand('xcrun', [
       'simctl',

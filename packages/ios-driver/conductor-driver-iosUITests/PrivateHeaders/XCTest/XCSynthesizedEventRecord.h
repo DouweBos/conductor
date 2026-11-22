@@ -10,11 +10,11 @@
 {
     NSMutableArray *_eventPaths;
     NSString *_name;
-#if !TARGET_OS_TV
+#if !TARGET_OS_TV && !TARGET_OS_WATCH
     UIInterfaceOrientation _interfaceOrientation;
 #endif
 }
-#if !TARGET_OS_TV
+#if !TARGET_OS_TV && !TARGET_OS_WATCH
 @property(readonly) UIInterfaceOrientation interfaceOrientation; // @synthesize interfaceOrientation=_interfaceOrientation;
 #endif
 @property(readonly, copy) NSString *name; // @synthesize name=_name;
@@ -22,7 +22,7 @@
 @property(readonly) NSArray *eventPaths;
 
 - (void)addPointerEventPath:(XCPointerEventPath *)arg1;
-#if !TARGET_OS_TV
+#if !TARGET_OS_TV && !TARGET_OS_WATCH
 - (id)initWithName:(NSString *)arg1 interfaceOrientation:(UIInterfaceOrientation)arg2;
 #endif
 - (id)initWithName:(id)arg1;

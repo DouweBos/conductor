@@ -9,9 +9,11 @@ import { TestSuite, assert } from './runner.js';
 import {
   VALID_KEYS,
   TVOS_REMOTE_BUTTONS,
+  WATCHOS_BUTTONS,
   ANDROID_KEYCODE,
   type Key,
 } from '../src/commands/press-key.js';
+import { simRuntimePlatform } from '../src/drivers/bootstrap.js';
 
 export const pressKeyRemote = new TestSuite('remote key maps');
 
@@ -83,4 +85,25 @@ pressKeyRemote.test('every Android keycode maps a declared key name', async () =
       `"${name}" has a keycode but is missing from VALID_KEYS`
     );
   }
+});
+
+pressKeyRemote.test('every watchOS button is a declared key name', async () => {
+  for (const name of Object.keys(WATCHOS_BUTTONS)) {
+    assert(
+      (VALID_KEYS as readonly string[]).includes(name),
+      `"${name}" is mapped but missing from VALID_KEYS, so the CLI would reject it`
+    );
+  }
+  assert(WATCHOS_BUTTONS['Home'] === 'home', 'Home presses the Digital Crown');
+  assert(WATCHOS_BUTTONS['Digital Crown Down'] === 'crownDown', 'crown down');
+  assert(WATCHOS_BUTTONS['Digital Crown Up'] === 'crownUp', 'crown up');
+});
+
+pressKeyRemote.test('simctl runtimes map to their Apple platform', async () => {
+  assert(simRuntimePlatform('com.apple.CoreSimulator.SimRuntime.iOS-26-0') === 'ios', 'iOS');
+  assert(simRuntimePlatform('com.apple.CoreSimulator.SimRuntime.tvOS-26-0') === 'tvos', 'tvOS');
+  assert(
+    simRuntimePlatform('com.apple.CoreSimulator.SimRuntime.watchOS-26-0') === 'watchos',
+    'watchOS'
+  );
 });

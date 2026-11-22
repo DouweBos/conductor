@@ -216,9 +216,9 @@ export async function metroUse(
   }
 
   const platform = await detectPlatform(deviceId).catch(() => undefined);
-  if (platform !== 'ios' && platform !== 'tvos' && platform !== 'macos') {
+  if (platform !== 'ios' && platform !== 'tvos' && platform !== 'watchos' && platform !== 'macos') {
     printError(
-      `metro use: only iOS/tvOS simulators and macOS are supported (device is ${platform ?? 'unknown'}).\n` +
+      `metro use: only iOS/tvOS/watchOS simulators and macOS are supported (device is ${platform ?? 'unknown'}).\n` +
         'On Android, map the port instead: adb -s <serial> reverse tcp:8081 tcp:<metro-port>',
       opts
     );

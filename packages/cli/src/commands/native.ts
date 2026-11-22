@@ -218,7 +218,11 @@ export async function nativeEval(
   }
   try {
     const driver = await getDriver(sessionName);
-    if (!(driver instanceof IOSDriver) || driver.platform === 'macos') {
+    if (
+      !(driver instanceof IOSDriver) ||
+      driver.platform === 'macos' ||
+      driver.platform === 'watchos'
+    ) {
       printError('native-eval is iOS/tvOS simulator only', opts);
       return 1;
     }

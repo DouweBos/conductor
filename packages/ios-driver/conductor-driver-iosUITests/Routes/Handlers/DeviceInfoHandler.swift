@@ -3,6 +3,9 @@ import FlyingFox
 import os
 import XCTest
 import Network
+#if os(watchOS)
+import WatchKit
+#endif
 
 @MainActor
 struct DeviceInfoHandler: HTTPHandler {
@@ -22,6 +25,9 @@ struct DeviceInfoHandler: HTTPHandler {
             #elseif os(tvOS)
             let platform = "TVOS"
             let scale = UIScreen.main.scale
+            #elseif os(watchOS)
+            let platform = "WATCHOS"
+            let scale = WKInterfaceDevice.current().screenScale
             #else
             let platform = "IOS"
             let scale = UIScreen.main.scale

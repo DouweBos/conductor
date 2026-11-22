@@ -1,5 +1,5 @@
 export const HELP = `  stop-device [<name-or-id>]
-    --platform <ios|tvos|android|web|vega|roku> Scope to a single platform
+    --platform <ios|tvos|watchos|android|web|vega|roku> Scope to a single platform
     --all                             Stop all booted simulators / running emulators / web sessions`;
 
 import { spawnCommand } from '../runner.js';
@@ -9,7 +9,7 @@ import { stopDaemon } from '../daemon/client.js';
 import { discoverBootedDevices } from './list-devices.js';
 import { detectDeviceKind } from '../drivers/bootstrap.js';
 
-// ── iOS / tvOS ───────────────────────────────────────────────────────────────
+// ── iOS / tvOS / watchOS ───────────────────────────────────────────────────────────────
 
 async function shutdownSimulator(udid: string): Promise<void> {
   const result = await spawnCommand('xcrun', ['simctl', 'shutdown', udid]);
@@ -42,6 +42,7 @@ export async function stopDevice(
   const platform = flags.platform?.toLowerCase();
   const includeIOS = !platform || platform === 'ios';
   const includeTvOS = !platform || platform === 'tvos';
+  const includeWatchOS = !platform || platform === 'watchos';
   const includeAndroid = !platform || platform === 'android';
   const includeWeb = !platform || platform === 'web';
   const includeVega = !platform || platform === 'vega';
@@ -57,6 +58,7 @@ export async function stopDevice(
     for (const d of devices) {
       if (d.platform === 'ios' && !includeIOS) continue;
       if (d.platform === 'tvos' && !includeTvOS) continue;
+      if (d.platform === 'watchos' && !includeWatchOS) continue;
       if (d.platform === 'android' && !includeAndroid) continue;
       if (d.platform === 'web' && !includeWeb) continue;
       if (d.platform === 'vega' && !includeVega) continue;
@@ -70,7 +72,7 @@ export async function stopDevice(
         ) {
           // Real hardware can't be shut down from here — just release our driver.
           await stopDaemon(d.id);
-        } else if (d.platform === 'ios' || d.platform === 'tvos') {
+        } else if (d.platform === 'ios' || d.platform === 'tvos' || d.platform === 'watchos') {
           await shutdownSimulator(d.id);
         } else if (d.platform === 'android') {
           await killEmulator(d.id);
@@ -126,7 +128,11 @@ export async function stopDevice(
     ) {
       // Real hardware can't be shut down from here — just release our driver.
       await stopDaemon(match.id);
-    } else if (match.platform === 'ios' || match.platform === 'tvos') {
+    } else if (
+      match.platform === 'ios' ||
+      match.platform === 'tvos' ||
+      match.platform === 'watchos'
+    ) {
       await shutdownSimulator(match.id);
     } else if (match.platform === 'android') {
       await killEmulator(match.id);

@@ -1,6 +1,6 @@
 ---
 name: conductor-device-interact
-description: Drive a running iOS simulator, Android emulator, tvOS simulator, macOS app, Vega (Amazon Fire TV) virtual device, Roku device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements (by selector or raw coordinate), right-clicking or hovering, typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys or keyboard shortcuts, clicking menu-bar items, opening URLs or deep links, navigating back, granting/denying app permissions, adding media to the gallery, setting GPS location or a travel route, toggling airplane mode, recording a screen video, or verifying an app change in the real running app.
+description: Drive a running iOS simulator, Android emulator, tvOS simulator, watchOS simulator, macOS app, Vega (Amazon Fire TV) virtual device, Roku device, or Playwright web app with the conductor CLI. Use when launching apps, tapping UI elements (by selector or raw coordinate), right-clicking or hovering, typing text, scrolling/swiping, performing gestures, pressing hardware/keyboard/remote keys or keyboard shortcuts, clicking menu-bar items, opening URLs or deep links, navigating back, granting/denying app permissions, adding media to the gallery, setting GPS location or a travel route, toggling airplane mode, recording a screen video, or verifying an app change in the real running app.
 ---
 
 # Conductor — device interaction
@@ -79,7 +79,7 @@ discrete commands above — this is for interactive host UIs.
 
 For live device mirroring, `conductor stream-server` ensures the daemon + capture
 backend are up and prints the loopback URL
-(`ws://127.0.0.1:<port>/stream?device=<id>&platform=<ios|tvos|android|web|macos>`; also
+(`ws://127.0.0.1:<port>/stream?device=<id>&platform=<ios|tvos|watchos|android|web|macos>`; also
 in `daemon-status --json` as `streamPort`). One capture fans out to N subscribers.
 On connect the server sends a JSON `config` frame
 (`{t:"config",codec:"h264",width,height,rotation,fps,sps,pps,avcC,codecString}`),
@@ -129,7 +129,7 @@ relaunch without the flag. (See `conductor-device-setup`.)
 
 ## Tips
 
-- `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|web|vega|roku|macos>` scopes by platform.
+- `--device <id>` / `--device-name <name>` targets a device; `--platform <ios|android|tvos|watchos|web|vega|roku|macos>` scopes by platform.
 - macOS (`--device macos`) works in the background on the app from `launch-app`: clicks press the element's accessibility action and keys go to that app only, so the user's pointer and keyboard are untouched. Coordinates are relative to its main window; child panels and hover cards over it are included in `inspect` and screenshots and marked `(overlay)` in `window list`. The app stays inactive, so none of its windows is key: keys reach its main window, not an open panel, and handlers that check `isKeyWindow` ignore them. `tap-on` an element scrolled out of view presses it and scrolls it into view. `--hover`, `--long-press`, `--modifiers`, `swipe --drag` and gestures need the foreground driver (`CONDUCTOR_MACOS_FOREGROUND=1`, which takes over the real mouse and keyboard). `back` is a no-op. Setup and approvals are in `conductor-device-setup`.
 - Vega (Amazon Fire TV) is D-pad driven: navigate with `press-key "Remote Dpad …"`; coordinate `tap-on` also works. `open-link`, `set-location`, gestures, and clipboard are unsupported. See `conductor-device-setup`.
 - Apple TV (tvOS) is focus-driven and has **no touch surface automation**: XCTest
@@ -142,6 +142,15 @@ relaunch without the flag. (See `conductor-device-setup`.)
   `"Remote TV Provider"` / `"Remote One Two Three"` / `"Remote Four Colors"`
   (18.1+) are also available. `--duration <seconds>` holds a button for
   accelerated scrolling.
+- Apple Watch (watchOS, simulator only) takes one-finger touch: `tap-on`, `swipe`,
+  `--long-press` work; multi-touch gestures don't. `scroll --direction up|down`
+  turns the Digital Crown (half a turn ≈ one screen); horizontal pages use `swipe`.
+  `press-key Home` presses the crown (app → watch face → app grid), `back` (or
+  `press-key Back`) taps the navigation bar's back button, and
+  `press-key "Digital Crown Up"/"Digital Crown Down"`, `Action` (Ultra only), and
+  `"Double Tap"` (hand gesture) are available. Text fields open a system input
+  sheet: `tap-on` the field first, then `input-text` types into the sheet and
+  presses Done to commit. `launch-app --inject` / `native-*` are unsupported.
 - Roku is D-pad only — there is no touch. `tap-on <selector>` resolves the element but presses `Select`, which activates whatever currently holds **focus**, so navigate focus onto the target with `press-key "Remote Dpad …"` first and use `tap-on` to confirm. `scroll`/`swipe` become repeated D-pad presses in the direction the content moves. `open-link` needs an app id (it becomes a channel launch parameter). Only sideloaded dev-mode channels are inspectable. See `conductor-device-setup`.
 - Add `--json` for machine-readable output; failed assertions exit non-zero.
 - Run a per-session daemon for many commands (see `conductor-device-setup`).

@@ -67,7 +67,13 @@ export type IOSButton =
   | 'guide'
   | 'tvProvider'
   | 'oneTwoThree'
-  | 'fourColors';
+  | 'fourColors'
+  // watchOS: Digital Crown rotation, Action Button (Ultra), double-tap hand gesture.
+  | 'crownUp'
+  | 'crownDown'
+  | 'action'
+  | 'doubleTap'
+  | 'back';
 
 /** Result of a direct single-element query against the XCTest runner. */
 export interface IOSQueryElementResult {
@@ -99,7 +105,7 @@ export class IOSDriver {
     private readonly port = 1075,
     private readonly host = '127.0.0.1',
     readonly deviceId?: string,
-    readonly platform: 'ios' | 'tvos' | 'macos' = 'ios',
+    readonly platform: 'ios' | 'tvos' | 'watchos' | 'macos' = 'ios',
     /**
      * Physical devices route app lifecycle through devicectl instead of simctl,
      * and can't offer the simulator-only conveniences (clipboard, location,
@@ -299,6 +305,18 @@ export class IOSDriver {
     await this.post('pressButton', {
       button,
       ...(duration !== undefined ? { duration } : {}),
+    });
+    this.invalidateHierarchyCache();
+  }
+
+  /**
+   * Turn the watchOS Digital Crown. `rotations` is in full turns (half a turn
+   * scrolls about one screen); 'up' moves content toward its top.
+   */
+  async rotateCrown(direction: 'up' | 'down', rotations = 0.5): Promise<void> {
+    await this.post('pressButton', {
+      button: direction === 'up' ? 'crownUp' : 'crownDown',
+      rotations,
     });
     this.invalidateHierarchyCache();
   }

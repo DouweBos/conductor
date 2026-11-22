@@ -60,6 +60,39 @@ struct PressButtonHandler: HTTPHandler {
         } else {
             XCUIRemote.shared.press(remoteButton)
         }
+        #elseif os(watchOS)
+        switch requestBody.button {
+        case .home:
+            // A Digital Crown press: watch face from an app, app grid from the face.
+            XCUIDevice.shared.press(.home)
+        case .lock:
+            return AppError(type: .precondition, message: "Button lock does not exist on watchOS").httpResponse
+        case .crownUp, .crownDown:
+            // A positive delta reveals content further down a list; half a turn is about one screen.
+            let turns = abs(requestBody.rotations ?? 0.5)
+            XCUIDevice.shared.rotateDigitalCrown(delta: requestBody.button == .crownDown ? turns : -turns)
+        case .action:
+            guard XCUIDevice.shared.hasHardwareButton(.action) else {
+                return AppError(
+                    type: .precondition,
+                    message: "This watch has no Action Button; use an Apple Watch Ultra simulator"
+                ).httpResponse
+            }
+            XCUIDevice.shared.press(.action)
+        case .back:
+            // watchOS has no back key; pop the navigation stack via its back button.
+            let app = RunningApp.getForegroundApp() ?? XCUIApplication(bundleIdentifier: RunningApp.homeBundleId)
+            let buttons = app.buttons.matching(identifier: "BackButton").allElementsBoundByIndex
+            guard buttons.count == 1, let button = buttons.first, button.isHittable else {
+                return AppError(type: .precondition, message: "This screen has no navigation back button").httpResponse
+            }
+            button.tap()
+        case .doubleTap:
+            guard XCUIDevice.shared.supportsHandGestures else {
+                return AppError(type: .precondition, message: "This watch does not support hand gestures").httpResponse
+            }
+            XCUIDevice.shared.perform(handGesture: .doubleTap)
+        }
         #elseif os(macOS)
         return AppError(
             type: .precondition,

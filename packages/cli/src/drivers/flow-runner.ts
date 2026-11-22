@@ -57,6 +57,19 @@ const TVOS_FLOW_BUTTONS: Record<
   BACK: 'menu',
 };
 
+// watchOS key names → IOSDriver button values. Mirrors WATCHOS_BUTTONS in commands/press-key.ts.
+const WATCHOS_FLOW_BUTTONS: Record<
+  string,
+  'home' | 'back' | 'crownUp' | 'crownDown' | 'action' | 'doubleTap'
+> = {
+  HOME: 'home',
+  BACK: 'back',
+  'DIGITAL CROWN UP': 'crownUp',
+  'DIGITAL CROWN DOWN': 'crownDown',
+  ACTION: 'action',
+  'DOUBLE TAP': 'doubleTap',
+};
+
 // vega (Amazon Fire TV) remote key names → VegaDriver button values, for flow pressKey.
 const VEGA_FLOW_BUTTONS: Record<string, VegaButton> = {
   BACK: 'back',
@@ -1015,6 +1028,8 @@ async function executeCommandBody(
       if (driver instanceof AndroidDriver) await driver.back();
       else if (driver instanceof WebDriver) await driver.goBack();
       else if (driver instanceof VegaDriver || driver instanceof RokuDriver) await driver.back();
+      else if (driver instanceof IOSDriver && driver.platform === 'watchos')
+        await driver.pressButton('back');
       // iOS has no hardware back button — noop
       break;
     }
@@ -1294,9 +1309,15 @@ async function executeCommandBody(
         await driver.pressKeyCombo(combo.key, combo.modifiers);
       } else if (driver instanceof IOSDriver) {
         const tvosButton = driver.platform === 'tvos' ? TVOS_FLOW_BUTTONS[keyName] : undefined;
+        const watchButton =
+          driver.platform === 'watchos' ? WATCHOS_FLOW_BUTTONS[keyName] : undefined;
         // Home and Lock are hardware buttons on iOS, not software keys
         if (tvosButton) {
           await driver.pressButton(tvosButton);
+        } else if (watchButton) {
+          await driver.pressButton(watchButton);
+        } else if (driver.platform === 'watchos' && (keyName === 'LOCK' || keyName === 'POWER')) {
+          throw new Error(`pressKey: key "${val}" is not supported on watchOS`);
         } else if (keyName === 'HOME') {
           await driver.pressButton('home');
         } else if (keyName === 'LOCK' || keyName === 'POWER') {

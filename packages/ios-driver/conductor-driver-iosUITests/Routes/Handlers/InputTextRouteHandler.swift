@@ -17,6 +17,8 @@ struct InputTextRouteHandler : HTTPHandler {
         #if os(macOS)
         MacScreen.forInput().keyTarget.typeText(requestBody.text)
         return HTTPResponse(statusCode: .ok)
+        #elseif os(watchOS)
+        return await watchInputText(requestBody.text)
         #else
         do {
             let start = Date()
@@ -70,8 +72,29 @@ struct InputTextRouteHandler : HTTPHandler {
         return focused.value as? String
     }
 
-    private func waitUntilKeyboardIsPresented() async {
-        try? await TimeoutHelper.repeatUntil(timeout: 1, delta: 0.2) {
+    #if os(watchOS)
+    /// watchOS edits text in a system input sheet that tapping a field opens; the
+    /// field never takes keyboard focus. Type into the sheet, then Done commits it.
+    private func watchInputText(_ text: String) async -> HTTPResponse {
+        await waitUntilKeyboardIsPresented(timeout: 3)
+        guard let app = RunningApp.getForegroundApp(), app.keyboards.firstMatch.exists else {
+            return AppError(
+                type: .precondition,
+                message: "No text input sheet is open. On watchOS, tap the text field first; the text goes into the sheet it opens."
+            ).httpResponse
+        }
+        app.typeText(text)
+        let done = app.buttons["Done"]
+        guard done.exists else {
+            return AppError(message: "The watchOS input sheet has no Done button to commit the text").httpResponse
+        }
+        done.tap()
+        return HTTPResponse(statusCode: .ok)
+    }
+    #endif
+
+    private func waitUntilKeyboardIsPresented(timeout: TimeInterval = 1) async {
+        try? await TimeoutHelper.repeatUntil(timeout: timeout, delta: 0.2) {
             let app = RunningApp.getForegroundApp() ?? XCUIApplication(bundleIdentifier: RunningApp.homeBundleId)
 
             return app.keyboards.firstMatch.exists

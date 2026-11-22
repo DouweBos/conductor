@@ -76,7 +76,7 @@ export interface LeakEntry {
 }
 
 export interface MemoryReport {
-  platform: 'ios' | 'tvos' | 'android' | 'web' | 'macos';
+  platform: 'ios' | 'tvos' | 'watchos' | 'android' | 'web' | 'macos';
   deviceId: string;
   appId?: string;
   pid?: number;
@@ -143,7 +143,7 @@ async function resolveAppId(
   explicit: string | undefined,
   sessionName: string,
   deviceId: string,
-  platform: 'ios' | 'tvos' | 'android' | 'web' | 'macos'
+  platform: 'ios' | 'tvos' | 'watchos' | 'android' | 'web' | 'macos'
 ): Promise<string | undefined> {
   if (explicit) return explicit;
   // No arg: always resolve from the live foreground app, not the session file.
@@ -475,7 +475,7 @@ function parseVmStat(out: string): {
 async function findIOSPid(
   deviceId: string,
   appId: string,
-  platform: 'ios' | 'tvos' | 'macos'
+  platform: 'ios' | 'tvos' | 'watchos' | 'macos'
 ): Promise<number | undefined> {
   if (platform === 'macos') return macAppPid(appId);
   // Inside-simulator PIDs == host PIDs for app processes.
@@ -664,7 +664,7 @@ function parseLeaks(out: string): MemoryReport['leaks'] {
 
 async function collectIOS(
   deviceId: string,
-  platform: 'ios' | 'tvos' | 'macos',
+  platform: 'ios' | 'tvos' | 'watchos' | 'macos',
   appId: string | undefined,
   opts: MemoryOptions
 ): Promise<MemoryReport> {

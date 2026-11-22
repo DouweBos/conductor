@@ -63,7 +63,7 @@ export async function listApps(opts: OutputOptions = {}, sessionName = 'default'
       printError(`list-apps failed: ${e instanceof Error ? e.message : String(e)}`, opts);
       return 1;
     }
-  } else if (platform === 'ios' || platform === 'tvos') {
+  } else if (platform === 'ios' || platform === 'tvos' || platform === 'watchos') {
     const result = await spawnCommand('bash', [
       '-c',
       `xcrun simctl listapps ${deviceId} | plutil -convert json - -o -`,

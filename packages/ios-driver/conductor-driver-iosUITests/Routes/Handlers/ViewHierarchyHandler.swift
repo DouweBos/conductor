@@ -10,6 +10,8 @@ struct ViewHierarchyHandler: HTTPHandler {
     private static let homescreenBundleId = RunningApp.homeBundleId
     #elseif os(tvOS)
     private static let homescreenBundleId = "com.apple.HeadBoard"
+    #elseif os(watchOS)
+    private static let homescreenBundleId = RunningApp.homeBundleId
     #else
     private static let homescreenBundleId = "com.apple.springboard"
     #endif
@@ -98,8 +100,8 @@ struct ViewHierarchyHandler: HTTPHandler {
         #endif
                 
         // tvOS has no status bar, and probing HeadBoard for one hangs on
-        // physical Apple TVs.
-        #if os(tvOS)
+        // physical Apple TVs. watchOS has no SpringBoard to probe.
+        #if os(tvOS) || os(watchOS)
         let statusBars: [AXElement] = []
         #else
         let statusBars = logger.measure(message: "Fetch status bar hierarchy") {
@@ -107,8 +109,8 @@ struct ViewHierarchyHandler: HTTPHandler {
         } ?? []
         #endif
 
-        // Fetch Safari WebView hierarchy for iOS 26+ (runs in separate SafariViewService process). Skip on tvOS.
-        #if os(tvOS)
+        // Fetch Safari WebView hierarchy for iOS 26+ (runs in separate SafariViewService process). Skip on tvOS/watchOS.
+        #if os(tvOS) || os(watchOS)
         let safariWebViewHierarchy: AXElement? = nil
         #else
         let safariWebViewHierarchy: AXElement? = logger.measure(message: "Fetch Safari WebView hierarchy") {
@@ -132,7 +134,7 @@ struct ViewHierarchyHandler: HTTPHandler {
         var windowOriginY: Double = 0
         // Windowing is iPadOS-only; on tvOS this would just be another HeadBoard
         // snapshot, which hangs on physical Apple TVs.
-        #if !os(tvOS)
+        #if !os(tvOS) && !os(watchOS)
         if appWidth > 0, appHeight > 0 {
             if let origin = findWindowOriginInSpringBoard(width: appWidth, height: appHeight) {
                 windowOriginX = origin.x

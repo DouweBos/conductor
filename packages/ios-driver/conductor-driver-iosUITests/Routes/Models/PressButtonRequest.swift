@@ -23,9 +23,18 @@ struct PressButtonRequest: Codable {
         case oneTwoThree
         case fourColors
         #endif
+        #if os(watchOS)
+        case crownUp
+        case crownDown
+        case action
+        case doubleTap
+        case back
+        #endif
     }
 
     let button: Button
     // tvOS held press (seconds); ignored off-tvOS.
     let duration: TimeInterval?
+    // watchOS Digital Crown rotation in full turns; defaults to half a turn.
+    let rotations: Double?
 }

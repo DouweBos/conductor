@@ -13,6 +13,8 @@ export async function back(opts: OutputOptions = {}, sessionName = 'default'): P
     if (driver instanceof IOSDriver) {
       if (driver.platform === 'tvos') {
         await driver.pressButton('menu');
+      } else if (driver.platform === 'watchos') {
+        await driver.pressButton('back');
       }
       // Plain iOS has no universal "back" concept — this is a no-op (same as maestro IOSDriver.backPress)
     } else if (driver instanceof WebDriver) {

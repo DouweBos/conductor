@@ -30,10 +30,12 @@ import {
   startIOSDriver,
   startAndroidDriver,
   startTvOSDriver,
+  startWatchOSDriver,
   startMacOSDriver,
   stopMacOSDriver,
   isStaleMacOSDriver,
   stopIOSDriver,
+  stopWatchOSDriver,
   stopAndroidDriver,
   uninstallDriver,
   isPortOpen,
@@ -111,7 +113,8 @@ function dlog(msg: string): void {
 // ── Driver lifecycle ──────────────────────────────────────────────────────────
 
 let driverPort = 1075;
-let driverPlatform: 'ios' | 'android' | 'tvos' | 'web' | 'vega' | 'roku' | 'macos' = 'ios';
+let driverPlatform: 'ios' | 'android' | 'tvos' | 'watchos' | 'web' | 'vega' | 'roku' | 'macos' =
+  'ios';
 
 /**
  * Host the driver is reachable on. Simulators and every non-Apple platform use
@@ -140,7 +143,13 @@ let streamPort: number | null = null;
  */
 async function startInputServerForPlatform(): Promise<void> {
   if (inputServer) return;
-  if (driverPlatform !== 'ios' && driverPlatform !== 'tvos' && driverPlatform !== 'android') return;
+  if (
+    driverPlatform !== 'ios' &&
+    driverPlatform !== 'tvos' &&
+    driverPlatform !== 'watchos' &&
+    driverPlatform !== 'android'
+  )
+    return;
 
   let makeBackend: () => InputBackend;
   let livePointer: LivePointerBackend | undefined;
@@ -212,7 +221,7 @@ async function startVideoServerForPlatform(): Promise<void> {
     dlog(`video server listening on ${port}`);
     return;
   }
-  if (driverPlatform !== 'ios' && driverPlatform !== 'tvos') return;
+  if (driverPlatform !== 'ios' && driverPlatform !== 'tvos' && driverPlatform !== 'watchos') return;
   // Capture attaches to the Simulator's framebuffer via SimulatorKit, which has
   // no counterpart on real hardware.
   if ((await detectDeviceKind(sessionName)) === 'physical') {
@@ -270,7 +279,7 @@ async function ensureDriverRunning(): Promise<void> {
 
   if (!alive) {
     if (
-      (driverPlatform === 'ios' || driverPlatform === 'tvos') &&
+      (driverPlatform === 'ios' || driverPlatform === 'tvos' || driverPlatform === 'watchos') &&
       (await detectDeviceKind(sessionName)) === 'simulator' &&
       !(await isSimulatorBooted(sessionName))
     ) {
@@ -290,6 +299,8 @@ async function ensureDriverRunning(): Promise<void> {
       } else if (driverPlatform === 'tvos') {
         // Health-check restart — don't dismiss, to avoid disrupting user's app
         await startTvOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ false);
+      } else if (driverPlatform === 'watchos') {
+        await startWatchOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ false);
       } else if (driverPlatform === 'macos') {
         await startMacOSDriver(driverPort);
       } else if (driverPlatform === 'web') {
@@ -412,6 +423,8 @@ async function main(): Promise<void> {
             await stopDeviceDriver(sessionName, 'ios');
           } else if (driverPlatform === 'ios') {
             await stopIOSDriver(sessionName);
+          } else if (driverPlatform === 'watchos') {
+            await stopWatchOSDriver(sessionName);
           } else if (driverPlatform === 'macos') {
             // The runner drives the real mouse and keyboard; never leave it behind.
             await stopMacOSDriver();
@@ -602,7 +615,7 @@ async function main(): Promise<void> {
  * `_driverStartError`. Extracted so the vega and roku paths can skip it entirely.
  */
 async function startDriverForPlatform(
-  platform: 'ios' | 'android' | 'tvos' | 'web' | 'macos'
+  platform: 'ios' | 'android' | 'tvos' | 'watchos' | 'web' | 'macos'
 ): Promise<void> {
   let driverAlive: boolean;
   if (platform === 'android') {
@@ -650,6 +663,8 @@ async function startDriverForPlatform(
       // First install — the runner takes foreground; ask it to hand
       // focus back to whatever app the user had open.
       await startTvOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ true);
+    } else if (platform === 'watchos') {
+      await startWatchOSDriver(sessionName, driverPort, /* restoreFocusAfterLaunch */ true);
     } else if (platform === 'macos') {
       await startMacOSDriver(driverPort);
     } else if (platform === 'web') {

@@ -218,6 +218,20 @@ export async function getDriver(sessionName = 'default'): Promise<AnyDriver> {
       );
     }
     driver = tvosDriver;
+  } else if (platform === 'watchos') {
+    if (!(await isPortOpen(port))) {
+      log(`watchOS driver not running — starting daemon for ${deviceId}...`);
+      await startDaemon(deviceId);
+      await waitForPort(port);
+    }
+    const watchDriver = new IOSDriver(port, '127.0.0.1', deviceId, 'watchos');
+    if (!(await watchDriver.isAlive())) {
+      throw new Error(
+        `watchOS XCTest driver on port ${port} is not responding.\n` +
+          `Run: conductor daemon-start --device ${deviceId}`
+      );
+    }
+    driver = watchDriver;
   } else if (platform === 'macos') {
     // Always through the daemon: it restarts one left running older conductor
     // code, and a helper from an older or rebuilt binary is replaced before use.
@@ -418,7 +432,7 @@ export async function streamServerInfo(sessionName = 'default'): Promise<StreamS
     throw new Error('No device found. Connect a device or start a simulator, then run again.');
   }
   const platform = await detectPlatform(deviceId);
-  if (platform !== 'ios' && platform !== 'tvos' && platform !== 'macos') {
+  if (platform !== 'ios' && platform !== 'tvos' && platform !== 'watchos' && platform !== 'macos') {
     throw new Error(`Live video streaming is not yet available for ${platform} devices.`);
   }
 

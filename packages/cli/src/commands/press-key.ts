@@ -1,5 +1,7 @@
 export const HELP = `  press-key <key>                     Press a key (Enter, Backspace, Home, ...), or on macOS a
-                                       shortcut like cmd+s, cmd+shift+z, ctrl+tab
+                                       shortcut like cmd+s, cmd+shift+z, ctrl+tab. On watchOS:
+                                       Home (crown press), Back, "Digital Crown Up"/"Down",
+                                       Action, "Double Tap"
     --long-press                      Hold the button ~1.5s (tvOS remote buttons)
     --duration <seconds>              Hold for a custom duration (tvOS remote buttons)
     --measure                         Time the app's response to the press
@@ -66,6 +68,10 @@ export const VALID_KEYS = [
   'Remote TV Provider',
   'Remote One Two Three',
   'Remote Four Colors',
+  'Digital Crown Up',
+  'Digital Crown Down',
+  'Action',
+  'Double Tap',
 ] as const;
 
 export type Key = (typeof VALID_KEYS)[number];
@@ -83,6 +89,17 @@ const IOS_BUTTON_MAP: Partial<Record<Key, 'home' | 'lock'>> = {
   Home: 'home',
   Lock: 'lock',
   Power: 'lock',
+};
+
+// watchOS: Home presses the Digital Crown; Action needs an Ultra; Double Tap needs a
+// hand-gesture capable watch. The driver reports a precondition error otherwise.
+export const WATCHOS_BUTTONS: Partial<Record<Key, IOSButton>> = {
+  Home: 'home',
+  Back: 'back',
+  'Digital Crown Up': 'crownUp',
+  'Digital Crown Down': 'crownDown',
+  Action: 'action',
+  'Double Tap': 'doubleTap',
 };
 
 // tvOS remote: map key names to pressButton values
@@ -212,6 +229,16 @@ export async function dispatchKey(
         await driver.pressButton(iosButton, holdSeconds);
       }
       // Keys not mapped on tvOS are silently ignored
+    } else if (driver.platform === 'watchos') {
+      const watchButton = WATCHOS_BUTTONS[matched];
+      const iosKey = IOS_KEY_MAP[matched];
+      if (watchButton) {
+        await driver.pressButton(watchButton);
+      } else if (iosKey) {
+        await driver.pressKey(iosKey);
+      } else {
+        throw new Error(`press-key: "${matched}" is not supported on watchOS`);
+      }
     } else {
       const iosKey = IOS_KEY_MAP[matched];
       const iosButton = IOS_BUTTON_MAP[matched];

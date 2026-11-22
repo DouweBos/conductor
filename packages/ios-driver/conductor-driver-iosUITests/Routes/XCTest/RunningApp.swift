@@ -11,6 +11,8 @@ struct RunningApp {
     /// Always-running shell app that stands in when nothing else is foreground.
     #if os(macOS)
     static let homeBundleId = "com.apple.finder"
+    #elseif os(watchOS)
+    static let homeBundleId = "com.apple.Carousel"
     #else
     static let homeBundleId = springboardBundleId
     #endif
@@ -38,6 +40,7 @@ struct RunningApp {
     private static let shellBundleIds: Set<String> = [
         "com.apple.springboard",
         "com.apple.HeadBoard",
+        "com.apple.Carousel",
         "com.apple.DocumentManager.DockFolderViewService",
     ]
 

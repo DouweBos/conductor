@@ -105,6 +105,7 @@ export class LogCollector {
     if (
       this.platform === 'ios' ||
       this.platform === 'tvos' ||
+      this.platform === 'watchos' ||
       this.platform === 'android' ||
       this.platform === 'vega' ||
       this.platform === 'macos'
@@ -187,7 +188,7 @@ export class LogCollector {
     if (this.stopped) return;
 
     try {
-      if (this.platform === 'ios' || this.platform === 'tvos') {
+      if (this.platform === 'ios' || this.platform === 'tvos' || this.platform === 'watchos') {
         // `simctl spawn ... log stream` has no devicectl equivalent, so OS logs
         // are simulator-only. Metro still streams over the network below, which
         // is the useful source for React Native apps anyway.

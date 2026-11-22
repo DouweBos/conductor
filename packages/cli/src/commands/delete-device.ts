@@ -1,5 +1,5 @@
 export const HELP = `  delete-device <name-or-id>
-    --platform <ios|tvos|android|web> Scope to a single platform (Vega VVDs are managed by Amazon's tooling)
+    --platform <ios|tvos|watchos|android|web> Scope to a single platform (Vega VVDs are managed by Amazon's tooling)
     --all                             Delete all shutdown simulators / non-running AVDs / web sessions`;
 
 import fs from 'fs';
@@ -8,7 +8,7 @@ import { resolveAndroidTool } from '../android/sdk.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 import { listDaemonSessions, stopDaemon, daemonStatus } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
-import { webBrowserName } from '../drivers/bootstrap.js';
+import { simRuntimePlatform, webBrowserName } from '../drivers/bootstrap.js';
 
 // ── iOS / tvOS ───────────────────────────────────────────────────────────────
 
@@ -32,8 +32,8 @@ async function listSimulators(): Promise<{ runtime: string; device: SimDevice }[
   return flat;
 }
 
-function simPlatform(runtime: string): 'ios' | 'tvos' {
-  return runtime.includes('tvOS') ? 'tvos' : 'ios';
+function simPlatform(runtime: string): 'ios' | 'tvos' | 'watchos' {
+  return simRuntimePlatform(runtime);
 }
 
 async function shutdownSimulator(udid: string): Promise<void> {
@@ -136,6 +136,7 @@ export async function deleteDevice(
   }
   const includeIOS = !platform || platform === 'ios';
   const includeTvOS = !platform || platform === 'tvos';
+  const includeWatchOS = !platform || platform === 'watchos';
   const includeAndroid = !platform || platform === 'android';
   const includeWeb = !platform || platform === 'web';
   const deleted: { id: string; name: string; platform: string }[] = [];
@@ -144,7 +145,7 @@ export async function deleteDevice(
 
   if (flags.all) {
     // iOS / tvOS: delete all non-booted simulators
-    if (includeIOS || includeTvOS) {
+    if (includeIOS || includeTvOS || includeWatchOS) {
       let sims: { runtime: string; device: SimDevice }[];
       try {
         sims = await listSimulators();
@@ -157,6 +158,7 @@ export async function deleteDevice(
         const p = simPlatform(runtime);
         if (p === 'ios' && !includeIOS) continue;
         if (p === 'tvos' && !includeTvOS) continue;
+        if (p === 'watchos' && !includeWatchOS) continue;
         if (device.state === 'Booted') continue;
 
         try {
@@ -230,7 +232,7 @@ export async function deleteDevice(
   // ── Single device mode ─────────────────────────────────────────────────
 
   // Try iOS / tvOS first
-  if (includeIOS || includeTvOS) {
+  if (includeIOS || includeTvOS || includeWatchOS) {
     let sims: { runtime: string; device: SimDevice }[];
     try {
       sims = await listSimulators();
@@ -243,6 +245,7 @@ export async function deleteDevice(
       const p = simPlatform(runtime);
       if (p === 'ios' && !includeIOS) return false;
       if (p === 'tvos' && !includeTvOS) return false;
+      if (p === 'watchos' && !includeWatchOS) return false;
       return device.udid === nameOrId || device.name === nameOrId;
     });
 

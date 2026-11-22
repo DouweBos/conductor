@@ -25,7 +25,7 @@ typedef void (^XCEventGeneratorHandler)(XCSynthesizedEventRecord *record, NSErro
 @property unsigned long long generation; // @synthesize generation=_generation;
 //@property(readonly) NSObject<OS_dispatch_queue> *eventQueue; // @synthesize eventQueue=_eventQueue;
 
-#if TARGET_OS_TV
+#if TARGET_OS_TV || TARGET_OS_WATCH
 // TODO: tvOS-specific headers
 
 #elif TARGET_OS_IPHONE

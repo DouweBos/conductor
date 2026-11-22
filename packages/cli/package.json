@@ -1,7 +1,7 @@
 {
   "name": "@houwert/conductor",
   "version": "0.34.6",
-  "description": "UI automation CLI for AI agents. Drive and inspect iOS, tvOS, Android, Fire TV, Roku, macOS and web apps from the terminal.",
+  "description": "UI automation CLI for AI agents. Drive and inspect iOS, tvOS, watchOS, Android, Fire TV, Roku, macOS and web apps from the terminal.",
   "keywords": [
     "ai-agents",
     "ui-automation",
@@ -9,6 +9,7 @@
     "e2e-testing",
     "ios",
     "tvos",
+    "watchos",
     "android",
     "fire-tv",
     "roku",

@@ -65,7 +65,7 @@ export async function discoverMetroPortForDevice(
   if (platform === 'android') {
     return discoverMetroPortAndroid(deviceId);
   }
-  if (platform === 'ios' || platform === 'tvos') {
+  if (platform === 'ios' || platform === 'tvos' || platform === 'watchos') {
     return discoverMetroPortIOS(deviceId);
   }
   if (platform === 'vega') {
@@ -214,7 +214,7 @@ export async function getDeviceDisplayName(
   platform: string,
   deviceId: string
 ): Promise<string | null> {
-  if (platform === 'ios' || platform === 'tvos') {
+  if (platform === 'ios' || platform === 'tvos' || platform === 'watchos') {
     try {
       const output = await spawnCapture('xcrun', ['simctl', 'list', 'devices', '--json']);
       const parsed = JSON.parse(output) as {

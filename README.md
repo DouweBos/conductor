@@ -22,7 +22,7 @@ Conductor is a CLI that gives AI agents hands and eyes on a running app. Tap, ty
 ## Why Conductor
 
 - **Built for agents.** Compact, token-efficient output an agent can act on. One `conductor init` teaches Claude Code the whole CLI through bundled skills.
-- **Every screen you ship to.** iOS and tvOS, macOS, Android, Fire TV, Roku and the web, all driven with the same commands.
+- **Every screen you ship to.** iOS, tvOS and watchOS, macOS, Android, Fire TV, Roku and the web, all driven with the same commands.
 - **Nothing else to install.** Conductor ships its own native drivers: no Maestro CLI, no JVM, no external service.
 - **Your Maestro flows still work.** A TypeScript reimplementation and partial fork of [Maestro](https://maestro.mobile.dev); most existing YAML flows run unchanged.
 - **Parallel by default.** Named sessions and a shared device pool let several agents drive several devices at once without stepping on each other.
@@ -104,12 +104,13 @@ Studio bundles its own copy of the CLI, so there's nothing else to install. It c
 | Platform | Targets |
 |---|---|
 | iOS & tvOS | Simulators and physical devices |
+| watchOS | Simulators |
 | macOS | Apps on the host Mac |
 | Android | Emulators and devices |
 | TV | Amazon Fire TV, Roku |
 | Web | Chromium, Firefox and WebKit, via Playwright |
 
-You'll need Xcode for iOS and tvOS, `adb` on your `PATH` for Android, and a Playwright browser for the web (`conductor install-web`).
+You'll need Xcode for iOS, tvOS and watchOS, `adb` on your `PATH` for Android, and a Playwright browser for the web (`conductor install-web`).
 
 ## Contributing
 

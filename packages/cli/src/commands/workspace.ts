@@ -123,6 +123,7 @@ export async function workspaceInfo(opts: OutputOptions = {}): Promise<number> {
     if (
       d.platform !== 'ios' &&
       d.platform !== 'tvos' &&
+      d.platform !== 'watchos' &&
       d.platform !== 'android' &&
       d.platform !== 'vega'
     )

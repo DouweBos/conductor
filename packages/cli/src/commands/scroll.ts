@@ -28,6 +28,16 @@ export async function scroll(
       );
     }
 
+    // The Digital Crown is the watch's scroll input; horizontal pages still swipe.
+    if (
+      driver instanceof IOSDriver &&
+      driver.platform === 'watchos' &&
+      (direction === 'up' || direction === 'down')
+    ) {
+      await driver.rotateCrown(direction);
+      return;
+    }
+
     const coords = swipeCoords(direction);
     if (driver instanceof IOSDriver) {
       const info = await driver.deviceInfo();

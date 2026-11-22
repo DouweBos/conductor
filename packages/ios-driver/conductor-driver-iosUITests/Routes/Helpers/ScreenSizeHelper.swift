@@ -2,6 +2,9 @@ import XCTest
 #if canImport(UIKit)
 import UIKit
 #endif
+#if os(watchOS)
+import WatchKit
+#endif
 import ConductorDriverLib
 
 // UIKit doesn't include UIDeviceOrientation on tvOS
@@ -41,6 +44,9 @@ struct ScreenSizeHelper {
         // the full screen. Querying HeadBoard's frame hangs indefinitely on
         // physical Apple TVs, and it buys nothing here.
         let size = UIScreen.main.bounds.size
+        #elseif os(watchOS)
+        // The watch has no windowing and no SpringBoard; the device bounds are the screen.
+        let size = WKInterfaceDevice.current().screenBounds.size
         #else
         let size = XCUIApplication(bundleIdentifier: "com.apple.springboard").frame.size
         #endif
@@ -51,7 +57,7 @@ struct ScreenSizeHelper {
     // app's interface orientation. Device orientation alone misses apps that force
     // landscape: the device stays unknown/portrait while the UI is rotated.
     private static func actualOrientation() -> DeviceOrientation {
-        #if os(tvOS) || os(macOS)
+        #if os(tvOS) || os(macOS) || os(watchOS)
         return .portrait
         #else
         let interface = RunningApp.getForegroundApp()?.conductor_interfaceOrientation()

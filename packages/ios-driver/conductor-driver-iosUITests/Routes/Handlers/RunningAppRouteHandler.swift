@@ -13,6 +13,8 @@ struct RunningAppRouteHandler: HTTPHandler {
     private static let homescreenBundleId = RunningApp.homeBundleId
     #elseif os(tvOS)
     private static let homescreenBundleId = "com.apple.HeadBoard"
+    #elseif os(watchOS)
+    private static let homescreenBundleId = RunningApp.homeBundleId
     #else
     private static let homescreenBundleId = "com.apple.springboard"
     #endif

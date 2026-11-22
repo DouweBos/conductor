@@ -316,7 +316,8 @@ export async function profileCpu(
     return 1;
   }
   const platform = await detectPlatform(sessionName).catch(() => null);
-  const isApple = platform === 'ios' || platform === 'tvos' || platform === 'macos';
+  const isApple =
+    platform === 'ios' || platform === 'tvos' || platform === 'watchos' || platform === 'macos';
   const out = profileOpts.out ?? defaultTracePath('cpu', isApple ? 'trace' : 'perf.data');
   let entries: SimpleperfEntry[] | undefined;
   try {

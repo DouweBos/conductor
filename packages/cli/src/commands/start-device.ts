@@ -1,12 +1,13 @@
 export const HELP = `  start-device
-    --platform <ios|android|tvos|web|vega|roku|macos> Boot a simulator/emulator, start the web driver (Playwright), attach a Vega VVD,
+    --platform <ios|android|tvos|watchos|web|vega|roku|macos> Boot a simulator/emulator, start the web driver (Playwright), attach a Vega VVD,
                                       check a Roku device, or start the driver for this Mac
-    --os-version <n>                  iOS/tvOS version (e.g. 18) or Android API level (e.g. 33)
+    --os-version <n>                  iOS/tvOS/watchOS version (e.g. 18) or Android API level (e.g. 33)
     --avd <name>                      Android AVD name (default: first available; created if missing + --device-type)
-    --device-name <name>              Boot the existing device with this name (iOS/tvOS sim name,
+    --device-name <name>              Boot the existing device with this name (Apple sim name,
                                       Android AVD, Vega serial, Roku host). Alias for --avd on Android
-    --name <name>                     Set a custom name on the device after creation (iOS/tvOS/web)
-    --device-type <name>              iOS/tvOS device type (e.g. "iPhone 16 Pro", "Apple TV 4K") or
+    --name <name>                     Set a custom name on the device after creation (Apple sims/web)
+    --device-type <name>              Apple device type (e.g. "iPhone 16 Pro", "Apple TV 4K",
+                                      "Apple Watch Series 10 (46mm)") or
                                       Android device profile (e.g. "pixel_7"); creates if needed
     --memory <mb>                     Android only: RAM (MB) for a newly-created AVD (default: 4096).
                                       Only raises; applied at creation time, never to an existing AVD
@@ -368,25 +369,44 @@ async function startIOS(
   return 0;
 }
 
-// ── tvOS ──────────────────────────────────────────────────────────────────────
+// ── tvOS / watchOS ────────────────────────────────────────────────────────────
 
-async function createTvOSSimulator(deviceType: string, osVersion?: string): Promise<string> {
+/** A simulator-only Apple OS that boots like tvOS: no pairing, one runtime family. */
+interface AppleSimFamily {
+  os: 'tvOS' | 'watchOS';
+  /** Lower-case substring that marks this family's device types and preferred sims. */
+  model: string;
+  modelLabel: string;
+}
+
+const TVOS_FAMILY: AppleSimFamily = { os: 'tvOS', model: 'apple tv', modelLabel: 'Apple TV' };
+const WATCHOS_FAMILY: AppleSimFamily = {
+  os: 'watchOS',
+  model: 'apple watch',
+  modelLabel: 'Apple Watch',
+};
+
+async function createAppleSimulator(
+  family: AppleSimFamily,
+  deviceType: string,
+  osVersion?: string
+): Promise<string> {
   const deviceTypes = await listDeviceTypes();
   const runtimes = await listRuntimes();
 
   const matchedType = deviceTypes.find((dt) => dt.name.toLowerCase() === deviceType.toLowerCase());
   if (!matchedType) {
-    const tvTypes = deviceTypes
-      .filter((dt) => dt.name.toLowerCase().includes('apple tv'))
+    const familyTypes = deviceTypes
+      .filter((dt) => dt.name.toLowerCase().includes(family.model))
       .map((dt) => dt.name);
     throw new Error(
-      `Unknown device type "${deviceType}". Available Apple TV types:\n  ${tvTypes.join('\n  ')}`
+      `Unknown device type "${deviceType}". Available ${family.modelLabel} types:\n  ${familyTypes.join('\n  ')}`
     );
   }
 
-  // Filter to available tvOS runtimes
   let candidates = runtimes.filter(
-    (r) => r.isAvailable && r.identifier.startsWith('com.apple.CoreSimulator.SimRuntime.tvOS')
+    (r) =>
+      r.isAvailable && r.identifier.startsWith(`com.apple.CoreSimulator.SimRuntime.${family.os}`)
   );
 
   if (osVersion) {
@@ -396,7 +416,7 @@ async function createTvOSSimulator(deviceType: string, osVersion?: string): Prom
   if (candidates.length === 0) {
     const hint = osVersion ? ` matching version ${osVersion}` : '';
     throw new Error(
-      `No available tvOS runtime found${hint}. Install one via Xcode → Settings → Platforms.`
+      `No available ${family.os} runtime found${hint}. Install one via Xcode → Settings → Platforms.`
     );
   }
 
@@ -421,13 +441,14 @@ async function createTvOSSimulator(deviceType: string, osVersion?: string): Prom
     runtime.identifier,
   ]);
   if (!createResult.success) {
-    throw new Error(`Failed to create tvOS simulator: ${createResult.stderr.trim()}`);
+    throw new Error(`Failed to create ${family.os} simulator: ${createResult.stderr.trim()}`);
   }
 
   return createResult.stdout.trim(); // UDID
 }
 
-async function startTvOS(
+async function startAppleSim(
+  family: AppleSimFamily,
   osVersion: string | undefined,
   opts: OutputOptions,
   name?: string,
@@ -442,10 +463,10 @@ async function startTvOS(
     return 1;
   }
 
-  // Filter to available tvOS simulators, optionally by OS version and device type.
+  // Filter to available simulators of this family, optionally by OS version and device type.
   const candidates: { runtime: string; device: SimDevice }[] = [];
   for (const [runtime, sims] of Object.entries(devices)) {
-    if (!runtime.includes('tvOS')) continue;
+    if (!runtime.includes(family.os)) continue;
     if (osVersion && !runtime.includes(osVersion)) continue;
     for (const sim of sims) {
       if (!simMatches(sim.name, deviceName, deviceType)) continue;
@@ -478,8 +499,8 @@ async function startTvOS(
     // --device-name names an existing sim, so there is nothing to create from it alone.
     if (deviceName && !deviceType) {
       printError(
-        `No tvOS simulator named "${deviceName}". Available: ` +
-          `${availableSimNames(devices, 'tvOS').join(', ')}. Pass --device-type to create it.`,
+        `No ${family.os} simulator named "${deviceName}". Available: ` +
+          `${availableSimNames(devices, family.os).join(', ')}. Pass --device-type to create it.`,
         opts
       );
       return 1;
@@ -487,10 +508,10 @@ async function startTvOS(
 
     // If a device type was requested, try to create the simulator
     if (deviceType) {
-      console.log(`No existing tvOS simulator found for "${deviceType}". Creating one...`);
+      console.log(`No existing ${family.os} simulator found for "${deviceType}". Creating one...`);
       let udid: string;
       try {
-        udid = await createTvOSSimulator(deviceType, osVersion);
+        udid = await createAppleSimulator(family, deviceType, osVersion);
       } catch (e) {
         printError(e instanceof Error ? e.message : String(e), opts);
         return 1;
@@ -527,18 +548,18 @@ async function startTvOS(
       return 0;
     }
 
-    const hint = osVersion ? ` for tvOS ${osVersion}` : '';
+    const hint = osVersion ? ` for ${family.os} ${osVersion}` : '';
     printError(
-      `No available tvOS simulator found${hint}. Install one via Xcode → Settings → Platforms.`,
+      `No available ${family.os} simulator found${hint}. Install one via Xcode → Settings → Platforms.`,
       opts
     );
     return 1;
   }
 
-  // Prefer "Apple TV" models
+  // Prefer the family's own models (e.g. "Apple TV", "Apple Watch")
   const sorted = candidates.sort((a, b) => {
-    const ai = a.device.name.toLowerCase().includes('apple tv') ? 0 : 1;
-    const bi = b.device.name.toLowerCase().includes('apple tv') ? 0 : 1;
+    const ai = a.device.name.toLowerCase().includes(family.model) ? 0 : 1;
+    const bi = b.device.name.toLowerCase().includes(family.model) ? 0 : 1;
     return ai - bi;
   });
 
@@ -1201,7 +1222,10 @@ export async function startDevice(
   }
 ): Promise<number> {
   if (!platform) {
-    printError('start-device requires --platform ios|android|tvos|web|vega|roku|macos', opts);
+    printError(
+      'start-device requires --platform ios|android|tvos|watchos|web|vega|roku|macos',
+      opts
+    );
     return 1;
   }
 
@@ -1209,7 +1233,23 @@ export async function startDevice(
     case 'ios':
       return startIOS(flags.osVersion, opts, flags.name, flags.deviceType, flags.deviceName);
     case 'tvos':
-      return startTvOS(flags.osVersion, opts, flags.name, flags.deviceType, flags.deviceName);
+      return startAppleSim(
+        TVOS_FAMILY,
+        flags.osVersion,
+        opts,
+        flags.name,
+        flags.deviceType,
+        flags.deviceName
+      );
+    case 'watchos':
+      return startAppleSim(
+        WATCHOS_FAMILY,
+        flags.osVersion,
+        opts,
+        flags.name,
+        flags.deviceType,
+        flags.deviceName
+      );
     case 'android':
       return startAndroid(
         flags.avd,

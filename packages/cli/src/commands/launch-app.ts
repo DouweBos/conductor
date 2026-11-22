@@ -69,8 +69,8 @@ export async function launchApp(
 
     if (driver instanceof IOSDriver) {
       if (flags.inject) {
-        if (driver.platform === 'macos') {
-          throw new Error('--inject is not supported on macOS');
+        if (driver.platform === 'macos' || driver.platform === 'watchos') {
+          throw new Error(`--inject is not supported on ${driver.platform}`);
         }
         const dylibPath = await getInprocDylibPath(driver.platform);
         if (!fs.existsSync(dylibPath)) {

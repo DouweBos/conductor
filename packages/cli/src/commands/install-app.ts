@@ -60,7 +60,7 @@ export async function installApp(
       printError(`install-app failed: ${e instanceof Error ? e.message : String(e)}`, opts);
       return 1;
     }
-  } else if (platform === 'ios' || platform === 'tvos') {
+  } else if (platform === 'ios' || platform === 'tvos' || platform === 'watchos') {
     if ((await detectDeviceKind(deviceId)) === 'physical') {
       try {
         await installPhysicalApp(deviceId, appPath);

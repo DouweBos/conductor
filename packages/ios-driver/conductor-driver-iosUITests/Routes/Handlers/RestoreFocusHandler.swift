@@ -14,7 +14,7 @@ import UIKit
 ///
 /// Behavior:
 ///   - List running apps via the AX client.
-///   - Drop shell apps (SpringBoard / HeadBoard) and the runner itself.
+///   - Drop shell apps (SpringBoard / HeadBoard / Carousel) and the runner itself.
 ///   - If a candidate remains, activate it.
 ///   - Otherwise press the home button so the runner is at least dismissed.
 @MainActor
@@ -28,6 +28,7 @@ struct RestoreFocusHandler: HTTPHandler {
     private static let shellBundleIds: Set<String> = [
         "com.apple.springboard",
         "com.apple.HeadBoard",
+        "com.apple.Carousel",
         "com.apple.DocumentManager.DockFolderViewService",
     ]
 

@@ -11,7 +11,7 @@
 
 export const INPUT_PROTOCOL_VERSION = 1;
 
-export type InputPlatform = 'ios' | 'tvos' | 'android' | 'web' | 'vega';
+export type InputPlatform = 'ios' | 'tvos' | 'watchos' | 'android' | 'web' | 'vega';
 
 /** How live open-ended drags are serviced: a held-touch backend, or buffered into one gesture on `up`. */
 export type LiveDragMode = 'native' | 'buffered' | 'none';

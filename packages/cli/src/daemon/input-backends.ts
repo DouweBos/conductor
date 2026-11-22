@@ -78,6 +78,11 @@ const IOS_BUTTON: Record<string, IOSButton> = {
   tvProvider: 'tvProvider',
   oneTwoThree: 'oneTwoThree',
   fourColors: 'fourColors',
+  // watchOS: Digital Crown rotation, Action Button, double-tap hand gesture.
+  crownUp: 'crownUp',
+  crownDown: 'crownDown',
+  action: 'action',
+  doubleTap: 'doubleTap',
 };
 
 export function iosBackend(driver: IOSDriver): InputBackend {
@@ -90,14 +95,15 @@ export function iosBackend(driver: IOSDriver): InputBackend {
     return size;
   };
   const tvos = driver.platform === 'tvos';
+  const watchos = driver.platform === 'watchos';
 
   return {
-    platform: tvos ? 'tvos' : 'ios',
+    platform: tvos ? 'tvos' : watchos ? 'watchos' : 'ios',
     capabilities(liveDrag: LiveDragMode): InputCapabilities {
       return {
         touch: true,
         drag: true,
-        multitouch: true,
+        multitouch: !watchos,
         // Advertise what this platform actually accepts so clients can hide
         // controls rather than discover failures at press time.
         buttons: tvos
@@ -114,11 +120,13 @@ export function iosBackend(driver: IOSDriver): InputBackend {
               'pageDown',
               'guide',
             ]
-          : ['home', 'lock'],
+          : watchos
+            ? ['home', 'crownUp', 'crownDown', 'action', 'doubleTap']
+            : ['home', 'lock'],
         keyboard: true,
         text: true,
         tvRemote: tvos,
-        springboard: true,
+        springboard: !watchos,
         liveDrag,
         binaryPointer: false,
         coord: 'normalized',

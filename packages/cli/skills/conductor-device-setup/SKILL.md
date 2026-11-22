@@ -1,6 +1,6 @@
 ---
 name: conductor-device-setup
-description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, physical iOS/tvOS devices, macOS apps on this Mac, Vega (Amazon Fire TV) virtual devices, Roku devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD or a Roku device, driving a physical iPhone/iPad/Apple TV or a Mac app, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
+description: Boot, list, and manage devices and app installs for the conductor CLI — iOS simulators, Android emulators, tvOS simulators, watchOS simulators, physical iOS/tvOS devices, macOS apps on this Mac, Vega (Amazon Fire TV) virtual devices, Roku devices, and Playwright web browsers — plus sessions, the warm-driver daemon, and the parallel device pool. Use when starting or stopping a simulator/emulator/browser, attaching to a Vega VVD or a Roku device, driving a physical iPhone/iPad/Apple TV or a Mac app, installing or launching an app, setting up the web driver, attaching to an already-running browser over CDP (e.g. an Electron app / its webviews), keeping the driver warm, or coordinating multiple devices for parallel agents.
 ---
 
 # Conductor — device & app setup
@@ -21,9 +21,9 @@ conductor list-apps          # installed app ids / package names (--json adds ap
 
 | Command                                                               | Purpose                                                                    |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `conductor start-device --platform <ios\|android\|tvos\|web\|vega\|roku\|macos>` | Boot a simulator/emulator, start the web driver, attach to a Vega VVD, check a Roku device, or start the driver for this Mac |
+| `conductor start-device --platform <ios\|android\|tvos\|watchos\|web\|vega\|roku\|macos>` | Boot a simulator/emulator, start the web driver, attach to a Vega VVD, check a Roku device, or start the driver for this Mac |
 | `conductor start-device --os-version <n> --device-type <name>`        | Pick OS version + device type (creates if needed)                          |
-| `conductor start-device --device-name <name>`                          | Boot the existing device with that name (iOS/tvOS sim name, Android AVD, Vega serial, Roku host) |
+| `conductor start-device --device-name <name>`                          | Boot the existing device with that name (Apple sim name, Android AVD, Vega serial, Roku host) |
 | `conductor start-device --platform android --avd <name> --device-type <profile> --memory <mb>` | Create an Android AVD with a RAM floor (default 4096MB; only raises, creation-time only) |
 | `conductor stop-device [<name-or-id>] [--all]`                        | Shut down device(s)                                                        |
 | `conductor delete-device <name-or-id> [--all]`                        | Delete simulator(s)/AVD(s)/web session(s)                                  |
@@ -201,6 +201,15 @@ Unsupported on macOS (explicit error): `set-location`, `set-orientation`,
 and `launch-app --inject` / `native-*`. `record-video` and the live stream
 (`stream-server`) capture the target app's window and need the background
 driver.
+
+### watchOS simulators
+
+`start-device --platform watchos` boots an Apple Watch simulator (or creates one
+with `--device-type "Apple Watch Series 10 (46mm)"`); watchOS needs its runtime
+installed via Xcode → Settings → Components. The watch is driven standalone —
+no paired iPhone simulator is needed. Physical Apple Watches are unsupported: a
+watch reaches the Mac only through its paired iPhone. The first command takes a
+while as the XCTest runner starts on the watch.
 
 ### Physical iOS / tvOS devices
 

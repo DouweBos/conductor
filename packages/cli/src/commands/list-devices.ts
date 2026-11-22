@@ -4,7 +4,11 @@ import fs from 'fs';
 import { spawnCommand } from '../runner.js';
 import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { printData, printError, OutputOptions } from '../output.js';
-import { isPlaywrightBrowserInstalled, webBrowserName } from '../drivers/bootstrap.js';
+import {
+  isPlaywrightBrowserInstalled,
+  simRuntimePlatform,
+  webBrowserName,
+} from '../drivers/bootstrap.js';
 import { listDaemonSessions, daemonStatus } from '../daemon/client.js';
 import { nameFile } from '../daemon/protocol.js';
 import { VegaCli } from '../drivers/vega/cli.js';
@@ -103,7 +107,7 @@ export async function discoverBootedDevices(): Promise<Device[]> {
             devices.push({
               id: sim.udid,
               name: sim.name,
-              platform: runtime.includes('tvOS') ? 'tvos' : 'ios',
+              platform: simRuntimePlatform(runtime),
               status: 'booted',
             });
           }
@@ -212,7 +216,7 @@ export async function discoverAvailableDevices(): Promise<Device[]> {
             devices.push({
               id: sim.udid,
               name: sim.name,
-              platform: runtime.includes('tvOS') ? 'tvos' : 'ios',
+              platform: simRuntimePlatform(runtime),
               status: sim.state.toLowerCase(),
             });
           }
