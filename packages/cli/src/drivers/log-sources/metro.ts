@@ -123,6 +123,22 @@ export interface MetroTarget {
   };
 }
 
+/**
+ * Origin to present on a Metro debugger socket. RN's inspector proxy rejects a
+ * missing Origin (401), and Expo's dev server terminates one whose host is not
+ * exactly its base URL, which it builds from the loopback IP rather than `localhost`.
+ */
+export function metroWsOrigin(wsUrl: string): string | undefined {
+  try {
+    const u = new URL(wsUrl);
+    const scheme = u.protocol === 'wss:' ? 'https' : 'http';
+    const host = u.hostname === 'localhost' ? '127.0.0.1' : u.hostname;
+    return `${scheme}://${host}${u.port ? `:${u.port}` : ''}`;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Fetch the list of debugger targets from Metro's /json endpoint. */
 export async function fetchTargets(port: number, host: string): Promise<MetroTarget[]> {
   return new Promise((resolve, reject) => {
@@ -231,7 +247,7 @@ export class MetroLogSource implements LogSource {
 
   private async openSocket(wsUrl: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl, { origin: metroWsOrigin(wsUrl) });
       this.ws = ws;
 
       ws.on('open', () => {

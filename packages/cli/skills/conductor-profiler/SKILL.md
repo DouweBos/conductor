@@ -1,6 +1,6 @@
 ---
 name: conductor-profiler
-description: Profile a running app's frame timing, input latency, JS CPU, native CPU, memory and React renders with the conductor CLI, and read crash reports. Use when investigating jank or sluggishness, slow navigation, input lag on TV remotes, memory growth or leaks, GC pauses, excessive React re-renders, or when an app has crashed and you need the crash report.
+description: Profile a running app's frame timing, input latency, JS CPU, native CPU, memory and React renders (with why each component re-rendered and ranked findings) with the conductor CLI, and read crash reports. Use when investigating jank or sluggishness, slow navigation, input lag on TV remotes, memory growth or leaks, GC pauses, excessive React re-renders, profiling a recorded flow before/after a change, or when an app has crashed and you need the crash report.
 ---
 
 # Conductor — profiling & crashes
@@ -15,7 +15,9 @@ Measure a running app's performance and inspect crashes.
 | "I press a key and it takes a moment" | `press-key <key> --measure --repeat 20` |
 | "It's slow, where does the time go?" (JS) | `profile js record --duration 10` |
 | "It's slow, where does the time go?" (native) | `profile cpu --duration 10 --report` |
-| "Which component re-renders on every input?" | `profile react start` → interact → `profile react stop` |
+| "Which component re-renders, and why?" | `profile react start` → interact → `profile react stop` → `profile analyze` |
+| "Profile flow X" / before-vs-after a change | `run-flow x.yaml --profile [--repeat n]`, then `profile analyze --diff <baseline>` |
+| "Is it native?" (iOS/tvOS sim, Android) | `profile native start` → interact → `profile native stop` |
 | "Memory grows / it stutters periodically" | `profile memory --track 30` |
 
 Only `profile frames` and `profile memory` work on a **stock release build**.
@@ -90,7 +92,7 @@ bonus, never as something whose absence means no input occurred.
 Writes a raw `.cpuprofile` you can load in Chrome DevTools (Performance → Load
 profile) or convert with `npx hermes-profile-transformer`.
 
-## Native CPU
+## Native CPU (fixed duration)
 
 | Command | Purpose |
 |---|---|
@@ -100,20 +102,71 @@ profile) or convert with `npx hermes-profile-transformer`.
 Without `--report` on Android you get a binary `perf.data` you cannot read —
 pass `--report` when you need the answer rather than the artefact.
 
-## React renders
+## React renders + JS CPU (one recording)
 
 | Command | Purpose |
 |---|---|
-| `conductor profile react start [--max-commits n] [--max-components n]` | Install the commit-profiler hook |
-| `conductor profile react stop [--top n] [--timeline] [--json]` | Stop and rank components by self time |
+| `conductor profile react start [--no-cpu] [--out <dir>]` | Record React commits **and** Hermes CPU samples into a profile directory |
+| `conductor profile react stop [--top n]` | Stop both, save, and print a summary (components by self time, JS hotspots) |
+| `conductor profile react renders [<dir>] [--filter <regex>] [--hosts]` | Per component: renders, share of commits, self/max ms, **why** (mount / props / state / parent / context), changed props |
+| `conductor profile react cpu [<dir>] [--components-only]` | JS functions by self time, mapped to original `file:line` via Metro's source map |
+| `conductor profile analyze [<dir>]` | Ranked findings with a suggested fix each |
+| `conductor profile analyze --save-baseline <name\|path>` / `--diff <name\|path>` | Save a run / compare against one (flags ±20% changes that are also large in absolute terms) |
 
-Sort key is `selfMs`, which is additive across components; `totalMs` is
-subtree-inclusive and double-counts parents. `--json` includes the per-commit
-timeline (timestamps + durations) so you can line a jank spike up with an input;
-`--timeline` adds per-commit component detail. If either buffer overflows the
-output says `truncated: true` with the dropped counts — raise the limits rather
-than trusting the tail. On a release build it fails with a clear message instead
-of reporting zeroes.
+`renders`, `cpu` and `analyze` read the last finished profile for the device
+(or the `<dir>` you pass) — they work after the app is gone. `--json` on
+`renders` includes `commits: [indices]` per component and the commit list.
+
+Reading the reasons: `parent` means the component got a new props object whose
+values were all equal — only its parent re-rendered, and `React.memo` would
+have skipped it. `props` lists the changed props with their type; when they are
+all `fn`/`object`/`array`, the parent is recreating them inline (useCallback /
+useMemo). `context` means neither props nor state changed.
+
+Findings cover: commits over the 16ms frame budget (with the JS functions that
+ran during that commit), bursts of commits within 100ms (setState cascades),
+wasted `parent` renders, unstable function/object props, render hotspots,
+unvirtualized long lists, JS hotspots ≥5% of samples, GC ≥10%, and — when a
+native recording is in the same profile — native hotspots and main-thread hangs.
+
+Choosing the target: when several apps on the device share one Metro, the
+command fails listing the targets instead of guessing. Pass `--app <bundleId>`
+(or `--page <id>`). The recording is pinned to that app's logical device.
+
+Dropped debugger sessions: commit data lives in the app's JS runtime, so a CDP
+drop (some tvOS apps drop it on navigation) loses nothing — the sampler re-attaches
+itself and `stop` re-attaches too; gaps are reported. A JS reload does lose the
+recording, and `stop` says so.
+
+Needs a dev or profiling build. A release build fails with a clear message.
+
+## Native CPU (start / stop)
+
+| Command | Purpose |
+|---|---|
+| `conductor profile native start [<appId>]` | Start sampling the app (iOS/tvOS simulators + macOS: xctrace Time Profiler; Android: simpleperf) |
+| `conductor profile native stop [--top n]` | Stop, export and rank: per-thread split, hottest functions, deepest app frame per sample, hangs |
+| `conductor profile native analyze [<dir>]` | Re-print a saved native report |
+
+Started while `profile react` is recording, it writes into the same profile
+directory so `profile analyze` ranks React, JS and native findings together.
+Android needs a debuggable or `profileable` build. Physical iOS devices are not
+supported yet.
+
+## Repeatable profiles from a flow
+
+`conductor run-flow <file> --profile [react|native|all] [--repeat n] [--profile-out <dir>]`
+records a profile around the whole run and prints the findings. Record the
+flow once with `flow record start` / `flow record finish`, then re-run it under
+the profiler before and after a change:
+
+```
+conductor run-flow home-to-details.yaml --profile all
+conductor profile analyze --save-baseline home-to-details
+# …change code…
+conductor run-flow home-to-details.yaml --profile all
+conductor profile analyze --diff home-to-details
+```
 
 ## Memory & GC
 

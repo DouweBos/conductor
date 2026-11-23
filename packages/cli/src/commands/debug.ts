@@ -2,7 +2,8 @@ export const HELP = `  debug status [--port N]              Show RN debugger con
   debug evaluate <expr> [--port N]     Run JS in the app runtime (RN: Hermes/Fusebox; web: page context)
   debug component-tree [--port N]      Print the React component tree (on-screen)
   debug inspect-element <x,y>          Print the React component at a screen point
-  debug log-registry [--source metro]  Summarize recent Metro/Hermes console logs`;
+  debug log-registry [--source metro]  Summarize recent Metro/Hermes console logs
+    --app <bundleId> / --page <id>     Pick the Metro target when several apps share Metro`;
 
 import crypto from 'crypto';
 import { printError, printData, OutputOptions } from '../output.js';
@@ -30,6 +31,9 @@ function newRequestId(): string {
 export interface DebugOptions {
   port?: number;
   targetIndex?: number;
+  /** Pick this app's target when several apps share Metro. */
+  appId?: string;
+  pageId?: string;
 }
 
 function resolveSession(sessionName: string): {
@@ -57,7 +61,14 @@ export async function debugStatus(
     const targets = await fetchTargets(port, 'localhost');
 
     const client = new MetroCdpClient();
-    await client.connect({ port, deviceId, platform, targetIndex: debugOpts.targetIndex });
+    await client.connect({
+      port,
+      deviceId,
+      platform,
+      targetIndex: debugOpts.targetIndex,
+      appId: debugOpts.appId,
+      pageId: debugOpts.pageId,
+    });
     await client.enableDomain('Runtime');
     await client.enableDomain('Debugger');
 
@@ -136,7 +147,14 @@ export async function debugEvaluate(
     const platform = await platformPromise;
     const port = await resolveMetroPort({ port: debugOpts.port, deviceId, platform });
     const client = new MetroCdpClient();
-    await client.connect({ port, deviceId, platform, targetIndex: debugOpts.targetIndex });
+    await client.connect({
+      port,
+      deviceId,
+      platform,
+      targetIndex: debugOpts.targetIndex,
+      appId: debugOpts.appId,
+      pageId: debugOpts.pageId,
+    });
     const value = await client.evaluate(expr);
     client.close();
     if (opts.json) printData({ result: value }, opts);
@@ -183,7 +201,14 @@ export async function debugComponentTree(
     const platform = await platformPromise;
     const port = await resolveMetroPort({ port: debugOpts.port, deviceId, platform });
     const client = new MetroCdpClient();
-    await client.connect({ port, deviceId, platform, targetIndex: debugOpts.targetIndex });
+    await client.connect({
+      port,
+      deviceId,
+      platform,
+      targetIndex: debugOpts.targetIndex,
+      appId: debugOpts.appId,
+      pageId: debugOpts.pageId,
+    });
     const awaitCallback = await client.installCallbackBinding();
     const requestId = newRequestId();
     const pending = awaitCallback(requestId, 15_000);
@@ -285,7 +310,14 @@ export async function debugInspectElement(
     const platform = await platformPromise;
     const port = await resolveMetroPort({ port: debugOpts.port, deviceId, platform });
     const client = new MetroCdpClient();
-    await client.connect({ port, deviceId, platform, targetIndex: debugOpts.targetIndex });
+    await client.connect({
+      port,
+      deviceId,
+      platform,
+      targetIndex: debugOpts.targetIndex,
+      appId: debugOpts.appId,
+      pageId: debugOpts.pageId,
+    });
     const awaitCallback = await client.installCallbackBinding();
     const requestId = newRequestId();
     const pending = awaitCallback(requestId, 8_000);

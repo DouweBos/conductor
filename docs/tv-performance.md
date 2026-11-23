@@ -33,7 +33,8 @@ rows below are genuinely unavailable there rather than merely unimplemented.
 | `press-key --measure` device-side press→frame  | ✅                             | ❌    | ❌          |
 | gfxinfo `inputLatency` (NewestInputEvent)      | device-dependent — see below  | ❌    | ❌          |
 | `profile js` (Hermes sampler)                  | ✅ via Metro                   | ✅ via Metro | ✅ via Metro |
-| `profile react` (commit profiler)              | ✅ via Metro                   | ✅ via Metro | ✅ via Metro |
+| `profile react` (commit profiler)              | ✅ via Metro                   | ✅ via Metro | ✅ via Metro; re-attaches if the debugger session drops |
+| `profile native` (start/stop native CPU)       | ✅ simpleperf                  | ❌    | ✅ xctrace (simulators) |
 | `memory --leaks`                               | ❌                             | ❌    | ✅          |
 
 ## What works on a release build
@@ -67,6 +68,12 @@ That is the whole list. Everything else needs the build to permit it.
   not a configuration you can turn on — there is simply no CDP target to attach
   to. One consequence worth planning around: the Hermes GC share is not
   measurable on a release build, so it cannot be compared across build types.
+- On tvOS, a dropped Metro debugger session (Argent's profiler loses it on the
+  first navigation in some apps) does not lose the recording: commit data
+  lives in the JS runtime, the Hermes sampler re-attaches by itself, and the
+  gap is reported. Verified by restarting Metro mid-recording on a tvOS 27.2
+  simulator: Hermes kept sampling through a 15.7s outage and commits from both
+  sides survived. A JS reload still loses it.
 - `profile react` additionally needs React's profiling instrumentation
   (`actualDuration` on fibers), which release builds strip. It says so
   explicitly rather than reporting zeroes.

@@ -99,13 +99,19 @@ import {
 } from './commands/debug.js';
 import { networkLogs, networkRequest, HELP as networkHelp } from './commands/network.js';
 import { flowRecord, HELP as flowRecordHelp } from './commands/flow-record.js';
+import { profileCpu, profileMemory, HELP as profileHelp } from './commands/profile.js';
 import {
-  profileCpu,
-  profileMemory,
   profileReactStart,
   profileReactStop,
-  HELP as profileHelp,
-} from './commands/profile.js';
+  profileReactRenders,
+  profileReactCpu,
+  profileAnalyze,
+} from './commands/profile-session.js';
+import {
+  profileNativeStart,
+  profileNativeStop,
+  profileNativeAnalyze,
+} from './commands/profile-native.js';
 import { profileFramesReset, profileFramesReport } from './commands/profile-frames.js';
 import {
   profileJsRecord,
@@ -330,6 +336,9 @@ async function main(): Promise<void> {
       'timeline',
       'baselines',
       'reset',
+      // --no-cpu / --no-symbolicate are parsed by minimist without being declared, so absent stays undefined.
+      'hosts',
+      'components-only',
     ],
     string: [
       'device',
@@ -402,6 +411,9 @@ async function main(): Promise<void> {
       'speed',
       'threshold',
       'reference',
+      'page',
+      'profile',
+      'profile-out',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version', o: 'output', y: 'yes' },
   });
@@ -1169,6 +1181,17 @@ async function main(): Promise<void> {
 
     case 'run-flow': {
       const file = rest[0] ?? '';
+      if (
+        argv['profile'] !== undefined &&
+        !['', 'react', 'native', 'all'].includes(String(argv['profile']))
+      ) {
+        console.error(
+          `run-flow: --profile takes react|native|all, got "${argv['profile']}" ` +
+            '(put the flow file before --profile)'
+        );
+        exitCode = 1;
+        break;
+      }
       const rawEnv = argv['env'];
       const envPairs: string[] = Array.isArray(rawEnv) ? rawEnv : rawEnv ? [rawEnv] : [];
       const flowEnv = Object.fromEntries(
@@ -1180,7 +1203,16 @@ async function main(): Promise<void> {
         sessionName,
         flowEnv,
         argv['benchmark'] as boolean,
-        argv['repeat'] !== undefined ? Number(argv['repeat']) : 1
+        argv['repeat'] !== undefined ? Number(argv['repeat']) : 1,
+        argv['profile'] !== undefined
+          ? {
+              mode: (String(argv['profile']) || 'react') as 'react' | 'native' | 'all',
+              out: argv['profile-out'] as string | undefined,
+              appId: argv['app'] as string | undefined,
+              pageId: argv['page'] as string | undefined,
+              port: argv['port'] !== undefined ? Number(argv['port']) : undefined,
+            }
+          : undefined
       );
       break;
     }
@@ -1323,9 +1355,12 @@ async function main(): Promise<void> {
         const jsOpts = {
           port,
           targetIndex,
+          appId: argv['app'] as string | undefined,
+          pageId: argv['page'] as string | undefined,
           out: argv['out'] as string | undefined,
           top,
           durationSec: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
+          symbolicate: argv['symbolicate'] as boolean | undefined,
         };
         if (sub2 === 'record') {
           exitCode = await profileJsRecord(opts, sessionName, jsOpts);
@@ -1341,24 +1376,75 @@ async function main(): Promise<void> {
         }
       } else if (sub === 'react') {
         const sub2 = (rest[1] ?? '').toLowerCase();
-        const reactOpts = {
-          port,
-          targetIndex,
-          maxCommits: argv['max-commits'] !== undefined ? Number(argv['max-commits']) : undefined,
-          maxComponents:
-            argv['max-components'] !== undefined ? Number(argv['max-components']) : undefined,
-          timeline: argv['timeline'] as boolean,
-        };
         if (sub2 === 'start') {
-          exitCode = await profileReactStart(opts, sessionName, reactOpts);
+          exitCode = await profileReactStart(opts, sessionName, {
+            port,
+            targetIndex,
+            appId: argv['app'] as string | undefined,
+            pageId: argv['page'] as string | undefined,
+            maxCommits: argv['max-commits'] !== undefined ? Number(argv['max-commits']) : undefined,
+            maxComponents:
+              argv['max-components'] !== undefined ? Number(argv['max-components']) : undefined,
+            cpu: argv['cpu'] as boolean | undefined,
+            includeHosts: argv['hosts'] as boolean,
+            out: argv['out'] as string | undefined,
+          });
         } else if (sub2 === 'stop') {
-          exitCode = await profileReactStop(opts, sessionName, reactOpts, top ?? 20);
+          exitCode = await profileReactStop(opts, sessionName, {
+            top,
+            timeline: argv['timeline'] as boolean,
+            symbolicate: argv['symbolicate'] as boolean | undefined,
+          });
+        } else if (sub2 === 'renders') {
+          exitCode = await profileReactRenders(opts, sessionName, {
+            dir: rest[2],
+            top,
+            filter: argv['filter'] as string | undefined,
+            includeHost: argv['hosts'] as boolean,
+          });
+        } else if (sub2 === 'cpu') {
+          exitCode = await profileReactCpu(opts, sessionName, {
+            dir: rest[2],
+            top,
+            componentsOnly: argv['components-only'] as boolean,
+          });
+        } else if (sub2 === 'analyze') {
+          exitCode = await profileAnalyze(opts, sessionName, {
+            dir: rest[2],
+            top,
+            saveBaseline: argv['save-baseline'] as string | undefined,
+            diff: argv['diff'] as string | undefined,
+          });
         } else {
-          console.error('Usage: conductor profile react <start|stop>');
+          console.error('Usage: conductor profile react <start|stop|renders|cpu|analyze>');
           exitCode = 1;
         }
+      } else if (sub === 'native') {
+        const sub2 = (rest[1] ?? '').toLowerCase();
+        if (sub2 === 'start') {
+          exitCode = await profileNativeStart(opts, sessionName, {
+            appId: rest[2] ?? (argv['app'] as string | undefined),
+            out: argv['out'] as string | undefined,
+          });
+        } else if (sub2 === 'stop') {
+          exitCode = await profileNativeStop(opts, sessionName, { top });
+        } else if (sub2 === 'analyze') {
+          exitCode = await profileNativeAnalyze(opts, sessionName, { dir: rest[2], top });
+        } else {
+          console.error('Usage: conductor profile native <start|stop|analyze>');
+          exitCode = 1;
+        }
+      } else if (sub === 'analyze') {
+        exitCode = await profileAnalyze(opts, sessionName, {
+          dir: rest[1],
+          top,
+          saveBaseline: argv['save-baseline'] as string | undefined,
+          diff: argv['diff'] as string | undefined,
+        });
       } else {
-        console.error('Usage: conductor profile <cpu|memory|frames|js|react> [args]');
+        console.error(
+          'Usage: conductor profile <cpu|memory|frames|js|react|native|analyze> [args]'
+        );
         exitCode = 1;
       }
       break;
@@ -1416,6 +1502,8 @@ async function main(): Promise<void> {
       const debugOpts = {
         port: argv['port'] !== undefined ? Number(argv['port']) : undefined,
         targetIndex: argv['target'] !== undefined ? Number(argv['target']) : undefined,
+        appId: argv['app'] as string | undefined,
+        pageId: argv['page'] as string | undefined,
       };
       if (sub === 'status') {
         exitCode = await debugStatus(opts, sessionName, debugOpts);

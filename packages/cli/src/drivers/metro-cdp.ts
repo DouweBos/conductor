@@ -9,9 +9,9 @@
  * `metro-discovery.ts` — do not duplicate discovery logic here.
  */
 import WebSocket from 'ws';
-import { fetchTargets, type MetroTarget } from './log-sources/metro.js';
+import { fetchTargets, metroWsOrigin, type MetroTarget } from './log-sources/metro.js';
 import {
-  selectTargetForDevice,
+  deviceNameMatches,
   getDeviceDisplayName,
   discoverMetroPortForDevice,
 } from './log-sources/metro-discovery.js';
@@ -27,6 +27,12 @@ export interface CdpCallOptions {
   platform?: string;
   /** Index into the unfiltered target list — overrides device-based selection. */
   targetIndex?: number;
+  /** Bundle/package id: keep only targets of this app (several apps can share one Metro). */
+  appId?: string;
+  /** Exact Metro page id (`id` in /json) — overrides every other selector. */
+  pageId?: string;
+  /** Metro's `reactNative.logicalDeviceId`: stable across reloads, used to re-attach. */
+  logicalDeviceId?: string;
   /** Per-call timeout (ms). Default 10s. */
   timeoutMs?: number;
 }
@@ -43,18 +49,50 @@ interface CdpRequest {
   params?: Record<string, unknown>;
 }
 
+/** The app a Metro target belongs to. Older Metro only reports it in `description`. */
+export function targetAppId(t: MetroTarget): string | undefined {
+  return t.appId ?? t.description ?? undefined;
+}
+
+function describeTargets(targets: MetroTarget[]): string {
+  return targets
+    .map(
+      (t, i) =>
+        `  [${i}] ${t.deviceName ?? t.title ?? '(unnamed)'}` +
+        (targetAppId(t) ? `  app=${targetAppId(t)}` : '') +
+        (t.id ? `  page=${t.id}` : '') +
+        (t.reactNative?.logicalDeviceId ? `  device=${t.reactNative.logicalDeviceId}` : '')
+    )
+    .join('\n');
+}
+
+function preferRuntime(targets: MetroTarget[]): MetroTarget {
+  return (
+    targets.find((t) => t.reactNative?.capabilities?.prefersFuseboxFrontend) ??
+    // Reanimated registers worklet runtimes as extra targets; their titles do not say Hermes/React.
+    targets.find((t) => t.title && /hermes|react/i.test(t.title)) ??
+    targets[0]
+  );
+}
+
 /**
- * Pick a debugger `webSocketDebuggerUrl` from an already-fetched target list.
+ * Pick a Metro debugger target from an already-fetched target list.
+ *
  * Pure — the async `fetchTargets` / `getDeviceDisplayName` calls happen in
- * `resolveDebuggerUrl`. `displayName` is the device's resolved display name,
- * used for device-scoped selection when present. Throws with a clear message
- * when no target matches.
+ * `resolveTarget`. `displayName` is the device's resolved display name, used for
+ * device-scoped selection when present. Throws with a clear message when no
+ * target matches, or when a device-scoped match is ambiguous (several apps, or
+ * several devices sharing one name, on the same Metro) — guessing there
+ * attaches to the wrong session and reports its data as this one's.
  */
-export function selectDebuggerUrl(
+export function selectTarget(
   targets: MetroTarget[],
-  opts: Pick<CdpCallOptions, 'port' | 'host' | 'targetIndex' | 'deviceId'>,
+  opts: Pick<
+    CdpCallOptions,
+    'port' | 'host' | 'targetIndex' | 'deviceId' | 'appId' | 'pageId' | 'logicalDeviceId'
+  >,
   displayName?: string
-): string {
+): MetroTarget {
   const port = opts.port ?? 8081;
   const host = opts.host ?? 'localhost';
   const withWs = targets.filter((t) => t.webSocketDebuggerUrl);
@@ -75,31 +113,96 @@ export function selectDebuggerUrl(
     );
   }
 
+  if (opts.pageId !== undefined) {
+    const t = withWs.find((x) => x.id === opts.pageId);
+    if (t) return t;
+    throw new Error(
+      `No Metro debugger target with page id ${opts.pageId}.\nAvailable targets:\n${describeTargets(withWs)}`
+    );
+  }
+
   if (opts.targetIndex !== undefined) {
     if (opts.targetIndex < 0 || opts.targetIndex >= withWs.length) {
       throw new Error(`--target ${opts.targetIndex} is out of range (have ${withWs.length}).`);
     }
-    return withWs[opts.targetIndex].webSocketDebuggerUrl!;
+    return withWs[opts.targetIndex];
   }
 
-  // Device-scoped: must resolve to that device's own target. Never silently
-  // fall back to another device — that reloads the wrong app and reports success.
-  if (opts.deviceId) {
-    const target = displayName ? selectTargetForDevice(withWs, displayName) : undefined;
-    if (target) return target.webSocketDebuggerUrl!;
-    const available = withWs
-      .map((t, i) => `  [${i}] ${t.deviceName ?? t.title ?? '(unnamed)'}`)
-      .join('\n');
-    throw new Error(
-      `No Metro debugger target for device ${opts.deviceId}` +
-        (displayName ? ` (${displayName})` : '') +
-        `.\nAvailable targets:\n${available}\nPass --target <index> to pick one explicitly.`
-    );
+  let candidates = withWs;
+  let scoped = false;
+  if (opts.logicalDeviceId) {
+    scoped = true;
+    candidates = withWs.filter((t) => t.reactNative?.logicalDeviceId === opts.logicalDeviceId);
+    if (candidates.length === 0) {
+      throw new Error(
+        `No Metro debugger target for logical device ${opts.logicalDeviceId} (the app may be ` +
+          `reloading or disconnected).\nAvailable targets:\n${describeTargets(withWs)}`
+      );
+    }
+  } else if (opts.deviceId) {
+    // Device-scoped: must resolve to that device's own target. Never silently
+    // fall back to another device — that reloads the wrong app and reports success.
+    scoped = true;
+    candidates = displayName
+      ? withWs.filter((t) => deviceNameMatches(t.deviceName, displayName))
+      : [];
+    if (candidates.length === 0) {
+      throw new Error(
+        `No Metro debugger target for device ${opts.deviceId}` +
+          (displayName ? ` (${displayName})` : '') +
+          `.\nAvailable targets:\n${describeTargets(withWs)}\nPass --target <index> to pick one explicitly.`
+      );
+    }
   }
 
-  // No device requested: prefer the Hermes/React target by title, otherwise first.
-  const target = withWs.find((t) => t.title && /hermes|react/i.test(t.title)) ?? withWs[0];
-  return target.webSocketDebuggerUrl!;
+  if (opts.appId) {
+    scoped = true;
+    const forApp = candidates.filter((t) => {
+      const app = targetAppId(t);
+      return app === opts.appId || (app !== undefined && app.startsWith(`${opts.appId} `));
+    });
+    if (forApp.length === 0) {
+      throw new Error(
+        `No Metro debugger target for app ${opts.appId}` +
+          (opts.deviceId ? ` on device ${opts.deviceId}` : '') +
+          `.\nAvailable targets:\n${describeTargets(candidates)}`
+      );
+    }
+    candidates = forApp;
+  }
+
+  if (scoped) {
+    const apps = new Set(candidates.map(targetAppId).filter(Boolean));
+    if (apps.size > 1) {
+      throw new Error(
+        `Several apps on this device are attached to Metro on port ${port} ` +
+          `(${[...apps].join(', ')}), so the target is ambiguous.\n` +
+          `Pass --app <bundleId> (or --page <id>) to pick one:\n${describeTargets(candidates)}`
+      );
+    }
+    const devices = new Set(candidates.map((t) => t.reactNative?.logicalDeviceId).filter(Boolean));
+    if (devices.size > 1) {
+      throw new Error(
+        `Several devices named "${candidates[0].deviceName}" run this app against Metro on ` +
+          `port ${port}, so the target is ambiguous.\nPass --page <id> to pick one:\n` +
+          describeTargets(candidates)
+      );
+    }
+  }
+
+  return preferRuntime(candidates);
+}
+
+/** Back-compat wrapper over `selectTarget` that returns only the socket URL. */
+export function selectDebuggerUrl(
+  targets: MetroTarget[],
+  opts: Pick<
+    CdpCallOptions,
+    'port' | 'host' | 'targetIndex' | 'deviceId' | 'appId' | 'pageId' | 'logicalDeviceId'
+  >,
+  displayName?: string
+): string {
+  return selectTarget(targets, opts, displayName).webSocketDebuggerUrl!;
 }
 
 /**
@@ -107,6 +210,11 @@ export function selectDebuggerUrl(
  * Throws with a clear message if Metro is unreachable or no target matches.
  */
 export async function resolveDebuggerUrl(opts: CdpCallOptions): Promise<string> {
+  return (await resolveTarget(opts)).webSocketDebuggerUrl!;
+}
+
+/** Like `resolveDebuggerUrl`, but returns the whole target so callers can pin it. */
+export async function resolveTarget(opts: CdpCallOptions): Promise<MetroTarget> {
   const port = await resolveMetroPort(opts);
   const host = opts.host ?? 'localhost';
 
@@ -127,7 +235,7 @@ export async function resolveDebuggerUrl(opts: CdpCallOptions): Promise<string> 
     displayName = (await getDeviceDisplayName(opts.platform, opts.deviceId)) ?? undefined;
   }
 
-  return selectDebuggerUrl(targets, { ...opts, port }, displayName);
+  return selectTarget(targets, { ...opts, port }, displayName);
 }
 
 /**
@@ -166,7 +274,7 @@ async function cdpCallOnUrl<T>(
   timeoutMs: number
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, { origin: metroWsOrigin(wsUrl) });
     let settled = false;
 
     const timer = setTimeout(() => {
@@ -238,10 +346,15 @@ export class MetroCdpClient {
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
 
+  /** The Metro target this client attached to, for pinning a later reconnect. */
+  target: MetroTarget | null = null;
+
   async connect(opts: CdpCallOptions): Promise<void> {
-    const wsUrl = await resolveDebuggerUrl(opts);
+    const target = await resolveTarget(opts);
+    this.target = target;
+    const wsUrl = target.webSocketDebuggerUrl!;
     await new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl, { origin: metroWsOrigin(wsUrl) });
       ws.on('open', () => {
         this.ws = ws;
         resolve();

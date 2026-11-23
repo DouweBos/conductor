@@ -134,12 +134,20 @@ metroCdp.test('falls back to the first target when nothing else matches', async 
 // relying on the old fixed default.
 
 metroCdp.test('an explicit port wins and is never second-guessed', async () => {
-  const port = await resolveMetroPort({ port: 8082, deviceId: 'emulator-5554', platform: 'android' });
+  const port = await resolveMetroPort({
+    port: 8082,
+    deviceId: 'emulator-5554',
+    platform: 'android',
+  });
   assert(port === 8082, `expected 8082, got ${port}`);
 });
 
 metroCdp.test('an explicit port is honoured even when it is the old default', async () => {
-  const port = await resolveMetroPort({ port: 8081, deviceId: 'emulator-5554', platform: 'android' });
+  const port = await resolveMetroPort({
+    port: 8081,
+    deviceId: 'emulator-5554',
+    platform: 'android',
+  });
   assert(port === 8081, `expected 8081, got ${port}`);
 });
 
@@ -153,4 +161,99 @@ metroCdp.test('falls back to 8081 when discovery finds nothing', async () => {
   // A device id that cannot resolve: discovery must fail soft, not throw.
   const port = await resolveMetroPort({ deviceId: 'no-such-device-9999', platform: 'android' });
   assert(port === 8081, `expected the 8081 fallback, got ${port}`);
+});
+
+// ── App / page / logical-device pinning ───────────────────────────────────────
+
+metroCdp.test('appId narrows a device with several apps attached', async () => {
+  const targets = [
+    target({ webSocketDebuggerUrl: 'ws://plex', deviceName: 'iPhone 17', appId: 'tv.plex.app' }),
+    target({ webSocketDebuggerUrl: 'ws://other', deviceName: 'iPhone 17', appId: 'com.other' }),
+  ];
+  assert(
+    selectDebuggerUrl(targets, { deviceId: 'udid', appId: 'com.other' }, 'iPhone 17') ===
+      'ws://other',
+    'should pick the requested app'
+  );
+});
+
+metroCdp.test('several apps on one device without appId is an error, not a guess', async () => {
+  const targets = [
+    target({
+      webSocketDebuggerUrl: 'ws://plex',
+      deviceName: 'iPhone 17',
+      description: 'tv.plex.app',
+    }),
+    target({
+      webSocketDebuggerUrl: 'ws://other',
+      deviceName: 'iPhone 17',
+      description: 'com.other',
+    }),
+  ];
+  let msg = '';
+  try {
+    selectDebuggerUrl(targets, { deviceId: 'udid' }, 'iPhone 17');
+  } catch (err) {
+    msg = err instanceof Error ? err.message : String(err);
+  }
+  assert(/Several apps/.test(msg) && /--app/.test(msg), `message: ${msg}`);
+});
+
+metroCdp.test('one app exposing two targets is not ambiguous; Fusebox wins', async () => {
+  const targets = [
+    target({
+      webSocketDebuggerUrl: 'ws://legacy',
+      deviceName: 'iPhone 17',
+      appId: 'a',
+      title: 'React Native',
+    }),
+    target({
+      webSocketDebuggerUrl: 'ws://fusebox',
+      deviceName: 'iPhone 17',
+      appId: 'a',
+      reactNative: { capabilities: { prefersFuseboxFrontend: true } },
+    }),
+  ];
+  assert(selectDebuggerUrl(targets, { deviceId: 'u' }, 'iPhone 17') === 'ws://fusebox', 'fusebox');
+});
+
+metroCdp.test('two devices with the same name running the same app need --page', async () => {
+  const targets = [
+    target({
+      webSocketDebuggerUrl: 'ws://1',
+      deviceName: 'iPhone 17',
+      appId: 'a',
+      id: 'p1',
+      reactNative: { logicalDeviceId: 'L1' },
+    }),
+    target({
+      webSocketDebuggerUrl: 'ws://2',
+      deviceName: 'iPhone 17',
+      appId: 'a',
+      id: 'p2',
+      reactNative: { logicalDeviceId: 'L2' },
+    }),
+  ];
+  let msg = '';
+  try {
+    selectDebuggerUrl(targets, { deviceId: 'u' }, 'iPhone 17');
+  } catch (err) {
+    msg = err instanceof Error ? err.message : String(err);
+  }
+  assert(/--page/.test(msg), `message: ${msg}`);
+  assert(selectDebuggerUrl(targets, { pageId: 'p2' }) === 'ws://2', 'pageId picks exactly');
+  assert(selectDebuggerUrl(targets, { logicalDeviceId: 'L1' }) === 'ws://1', 'logical device pins');
+});
+
+metroCdp.test('an unknown logical device throws so a reconnect loop can retry', async () => {
+  const targets = [
+    target({ webSocketDebuggerUrl: 'ws://1', reactNative: { logicalDeviceId: 'L1' } }),
+  ];
+  let threw = false;
+  try {
+    selectDebuggerUrl(targets, { logicalDeviceId: 'gone' });
+  } catch {
+    threw = true;
+  }
+  assert(threw, 'must not fall back to another device');
 });

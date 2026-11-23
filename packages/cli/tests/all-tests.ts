@@ -47,6 +47,7 @@ import { videoStreaming } from './video-streaming.test.js';
 import { maestroParity } from './maestro-parity.test.js';
 import { pathAliases } from './path-aliases.test.js';
 import { profiling } from './profiling.test.js';
+import { profilingSession } from './profile-session.test.js';
 import { logCollector } from './log-collector.test.js';
 import { webServer } from './web-server.test.js';
 import { xctestAttachments } from './xctest-attachments.test.js';
@@ -92,7 +93,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, metroUse, cdpDiscovery, deviceSelection, devicectlSuite, foldSuite, displaysSuite, pressKeyRemote, snapshotRef, flowRecorder, vega, roku, macos, inputStreaming, videoStreaming, maestroParity, pathAliases, profiling, logCollector, webServer, xctestAttachments];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, metroUse, cdpDiscovery, deviceSelection, devicectlSuite, foldSuite, displaysSuite, pressKeyRemote, snapshotRef, flowRecorder, vega, roku, macos, inputStreaming, videoStreaming, maestroParity, pathAliases, profiling, profilingSession, logCollector, webServer, xctestAttachments];
 
   if (device) {
     console.log(`\nDevice: ${device}`);

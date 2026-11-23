@@ -2,13 +2,33 @@ export const HELP = `  run-flow <file> [--device <id>]     Run a Maestro YAML fl
     --env KEY=VALUE                   Inject env var (repeatable; overrides flow env block)
     --benchmark                       Print elapsed time for each command and total flow time
     --repeat <n>                      With --benchmark, run the flow n times and report p50/p90/σ
-    --json                            With --benchmark --repeat, emit the aggregate as JSON`;
+    --json                            With --benchmark --repeat, emit the aggregate as JSON
+    --profile [react|native|all]      Record a profile around the whole run (default react:
+                                      React commits + Hermes CPU), then print ranked findings
+      --profile-out <dir>             Profile directory (default ~/.conductor/profiles/…)
+      --app <id> / --page <id>        Metro target when several apps share Metro`;
 
 import path from 'path';
 import { getDriver } from '../runner.js';
 import { parseFlowFile, executeFlow, BenchmarkEntry } from '../drivers/flow-runner.js';
 import { printSuccess, printError, printData, OutputOptions } from '../output.js';
 import { describe, round, fmt, Distribution } from '../stats.js';
+import {
+  startReactProfile,
+  stopReactProfile,
+  analyzeProfile,
+  printFindings,
+} from './profile-session.js';
+import { startNativeProfile, stopNativeProfile, printNativeReport } from './profile-native.js';
+import { readMeta, writeMeta } from './profile-store.js';
+
+export interface FlowProfileOptions {
+  mode: 'react' | 'native' | 'all';
+  out?: string;
+  appId?: string;
+  pageId?: string;
+  port?: number;
+}
 
 export interface CommandBenchmark extends Distribution {
   label: string;
@@ -75,7 +95,8 @@ export async function runFlow(
   sessionName = 'default',
   env: Record<string, string> = {},
   benchmark = false,
-  repeat = 1
+  repeat = 1,
+  profile?: FlowProfileOptions
 ): Promise<number> {
   if (!file) {
     printError('run-flow requires <file>', opts);
@@ -83,41 +104,141 @@ export async function runFlow(
   }
 
   const resolvedFile = path.resolve(process.cwd(), file);
+  const runs = Math.max(1, repeat);
+
+  let profileDir: string | undefined;
+  const react = profile && profile.mode !== 'native';
+  const native = profile && profile.mode !== 'react';
+  let flowError: unknown;
+  let agg: BenchmarkAggregate | undefined;
 
   try {
     const driver = await getDriver(sessionName);
     const flow = await parseFlowFile(resolvedFile, env);
 
-    if (repeat <= 1) {
-      await executeFlow(flow, driver, { cwd: path.dirname(resolvedFile), env, benchmark });
-      printSuccess(`run-flow "${file}" — done`, opts);
-      return 0;
-    }
-
-    const runs: Array<{ totalMs: number; entries: BenchmarkEntry[] }> = [];
-    for (let i = 0; i < repeat; i++) {
-      const entries: BenchmarkEntry[] = [];
-      console.log(`\n── run ${i + 1}/${repeat} ─────────────────────────────`);
-      const started = performance.now();
-      await executeFlow(flow, driver, {
-        cwd: path.dirname(resolvedFile),
-        env,
-        benchmark,
-        benchmarkSink: (e) => entries.push(e),
+    // Start profilers only once the flow parsed, so a typo does not leave one running.
+    if (react) {
+      const { meta } = await startReactProfile(sessionName, {
+        out: profile!.out,
+        appId: profile!.appId,
+        pageId: profile!.pageId,
+        port: profile!.port,
       });
-      runs.push({ totalMs: round(performance.now() - started), entries });
+      profileDir = meta.dir;
+    }
+    if (native) {
+      try {
+        const meta = await startNativeProfile(sessionName, {
+          appId: profile!.appId,
+          out: profile!.out,
+        });
+        profileDir = meta.dir;
+      } catch (err) {
+        if (react) await stopReactProfile(sessionName).catch(() => undefined);
+        throw err;
+      }
     }
 
-    const agg = aggregateRuns(runs);
-    if (opts.json) printData({ status: 'ok', benchmark: agg }, opts);
-    else {
-      printAggregate(agg);
-      printSuccess(`run-flow "${file}" — ${repeat} runs done`, opts);
+    try {
+      if (runs <= 1) {
+        await executeFlow(flow, driver, { cwd: path.dirname(resolvedFile), env, benchmark });
+      } else {
+        const results: Array<{ totalMs: number; entries: BenchmarkEntry[] }> = [];
+        for (let i = 0; i < runs; i++) {
+          const entries: BenchmarkEntry[] = [];
+          console.log(`\n── run ${i + 1}/${runs} ─────────────────────────────`);
+          const started = performance.now();
+          await executeFlow(flow, driver, {
+            cwd: path.dirname(resolvedFile),
+            env,
+            benchmark,
+            benchmarkSink: (e) => entries.push(e),
+          });
+          results.push({ totalMs: round(performance.now() - started), entries });
+        }
+        agg = aggregateRuns(results);
+      }
+    } catch (err) {
+      flowError = err;
     }
-    return 0;
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     printError(`run-flow "${file}" — failed\n${detail}`, opts);
     return 1;
   }
+
+  // Always stop what was started, even when the flow failed part-way.
+  let profileResult: Awaited<ReturnType<typeof analyzeProfile>> | undefined;
+  const profileErrors: string[] = [];
+  if (profile) {
+    let nativeReport: Awaited<ReturnType<typeof stopNativeProfile>>['report'] | undefined;
+    if (native) {
+      try {
+        nativeReport = (await stopNativeProfile(sessionName)).report;
+      } catch (err) {
+        profileErrors.push(`native: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (react) {
+      try {
+        const r = await stopReactProfile(sessionName);
+        if (r.reactError) profileErrors.push(`react: ${r.reactError}`);
+        if (r.cpuError) profileErrors.push(`Hermes CPU: ${r.cpuError}`);
+      } catch (err) {
+        profileErrors.push(`react: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (profileDir) {
+      const meta = await readMeta(profileDir);
+      if (meta) {
+        meta.flow = { file: resolvedFile, runs, ok: !flowError };
+        await writeMeta(meta);
+      }
+      try {
+        profileResult = await analyzeProfile(sessionName, { dir: profileDir });
+      } catch (err) {
+        profileErrors.push(`analyze: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (!opts.json && nativeReport && profile.mode === 'native')
+      printNativeReport(nativeReport, 10);
+  }
+
+  if (opts.json && (agg || profile)) {
+    printData(
+      {
+        status: flowError ? 'error' : 'ok',
+        error: flowError
+          ? flowError instanceof Error
+            ? flowError.message
+            : String(flowError)
+          : undefined,
+        benchmark: agg,
+        profile: profile
+          ? {
+              dir: profileDir,
+              findings: profileResult?.findings.slice(0, 20),
+              findingsTotal: profileResult?.findings.length,
+              errors: profileErrors.length ? profileErrors : undefined,
+            }
+          : undefined,
+      },
+      opts
+    );
+    return flowError ? 1 : 0;
+  }
+
+  if (agg) printAggregate(agg);
+  if (profileResult) {
+    console.log('');
+    printFindings(profileResult, 10);
+  }
+  for (const e of profileErrors) console.error(`  profile ${e}`);
+  if (flowError) {
+    const detail = flowError instanceof Error ? flowError.message : String(flowError);
+    printError(`run-flow "${file}" — failed\n${detail}`, opts);
+    return 1;
+  }
+  printSuccess(`run-flow "${file}" — ${runs > 1 ? `${runs} runs ` : ''}done`, opts);
+  return 0;
 }

@@ -62,6 +62,9 @@ All commands accept `--session <name>` to scope to a named session and
 | `memory`           | Print memory usage / capture a heap profile (Android `hprof`).                                |
 | `profile frames`   | Android jank / frame-timing report from `dumpsys gfxinfo`. See [TV performance](/conductor/docs/tv-performance). |
 | `profile js`       | Hermes JS CPU sampling profiler, ranked by self time.                                         |
+| `profile react`    | React render profiler + Hermes CPU (`start`/`stop`), then `renders`, `cpu`.                   |
+| `profile native`   | Native CPU profiler (`start`/`stop`/`analyze`): xctrace on iOS/tvOS sims, simpleperf on Android. |
+| `profile analyze`  | Ranked findings across React, JS and native for a saved profile; baseline diffs.              |
 | `press-key --measure` | Time input-to-response latency; `--repeat n` for a distribution.                           |
 
 ---
@@ -106,7 +109,7 @@ Both accept the same disambiguators as `tap-on`: `--id`, `--text`,
 
 | Command                   | What it does                                                                                                                                                                        |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run-flow`                | Run a YAML flow file against the current session's device.                                                                                                                          |
+| `run-flow`                | Run a YAML flow file against the current session's device. `--profile [react\|native\|all]` records a profile around the run and prints ranked findings.                            |
 | `run-flow-inline`         | Run a YAML flow string passed on the command line (great for one-off agent calls).                                                                                                  |
 | `run-parallel`            | Shard a directory of flow files round-robin across every booted device.                                                                                                             |
 | `run-sequence`            | Run a batch of commands serially against one session, stopping on first failure. Reads `{"steps":[{"cmd":"tap-on","args":["Login"]}, ...]}` from `--file path.json` or stdin.       |

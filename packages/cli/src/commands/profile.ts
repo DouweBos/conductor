@@ -12,11 +12,29 @@ export const HELP = `  profile cpu --duration <s> [--out <path>] [<appId>]
   profile js record --duration <s>     Sample Hermes JS CPU and rank functions
   profile js start / stop [--top N]    Same, bracketing a flow you drive yourself
     --out <path>                       Where to write the raw .cpuprofile
-  profile react start                  Install a React commit-profiler hook in the JS runtime
-    --max-commits <n>                  Commit ring-buffer size (default 500)
-    --max-components <n>               Component records kept per commit (default 200)
-  profile react stop [--top N]         Stop and summarise captured React commits
-    --timeline                         Include per-commit component detail in --json`;
+    --app <bundleId> / --page <id>     Pick the Metro target when several apps share Metro
+  profile react start                  Record React commits + Hermes CPU samples over Metro
+    --no-cpu                           React commits only (skip the Hermes sampler)
+    --out <dir>                        Profile directory (default ~/.conductor/profiles/<device>/<ts>)
+    --app <bundleId> / --page <id>     Pick the Metro target when several apps share Metro
+    --max-commits <n>                  Commit ring-buffer size (default 2000)
+    --max-components <n>               Component records kept per commit (default 1000)
+    --hosts                            Also record host elements (View, Text…)
+  profile react stop [--top N]         Stop, save the profile and summarise it
+    --timeline                         Include per-commit component detail in --json
+    --no-symbolicate                   Skip mapping JS functions to sources via Metro's source map
+  profile react renders [<dir>]        Per-component render counts, why they rendered, and
+                                       which commits they rendered in (--json)
+    --filter <regex> / --hosts         Narrow by name / show host elements (if recorded with --hosts)
+  profile react cpu [<dir>]            Hermes CPU hotspots by JS function (self/total, source)
+    --components-only                  Only PascalCase functions (component renders)
+  profile analyze [<dir>]              Ranked findings across React, JS CPU and native
+    --save-baseline <name|path>        Save this run as a baseline
+    --diff <name|path>                 Compare against a baseline (flags ±20% changes)
+  profile native start [<appId>]       Start native CPU sampling (iOS/tvOS sim + macOS: xctrace
+                                       Time Profiler, Android: simpleperf)
+  profile native stop [--top N]        Stop, export and rank (threads, hot functions, hangs)
+  profile native analyze [<dir>]       Re-print a saved native report`;
 
 import { spawn } from 'child_process';
 import os from 'os';
@@ -28,7 +46,6 @@ import { spawnCommand, getDriver } from '../runner.js';
 import { MacDriver, macAppPid } from '../drivers/macos.js';
 import { adbShell } from '../android/device.js';
 import { memory } from './memory.js';
-import { MetroCdpClient } from '../drivers/metro-cdp.js';
 import { collectGcSince, deviceLogcatTimestamp, summariseGc, GcReport } from './profile-gc.js';
 
 export interface SimpleperfEntry {
@@ -637,7 +654,11 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
  * additive across components, `totalMs` is subtree-inclusive and double-counts
  * by design.
  */
-export const REACT_PROFILER_INSTALL = (maxCommits: number, maxComponents: number): string => `
+export const REACT_PROFILER_INSTALL = (
+  maxCommits: number,
+  maxComponents: number,
+  includeHosts = false
+): string => `
 (() => {
   if (globalThis.__CONDUCTOR_REACT_PROFILER__) {
     return { installed: true, already: true };
@@ -646,6 +667,7 @@ export const REACT_PROFILER_INSTALL = (maxCommits: number, maxComponents: number
   if (!hook) return { installed: false, error: 'No React DevTools hook on this runtime' };
 
   var state = {
+    startedAt: Date.now(),
     commits: [],
     maxCommits: ${maxCommits},
     maxComponents: ${maxComponents},
@@ -673,6 +695,58 @@ export const REACT_PROFILER_INSTALL = (maxCommits: number, maxComponents: number
     }
   } catch (e) {}
 
+  // Why a composite rendered, from the committed fiber vs its previous version
+  // (alternate). Only state/reducer hooks (those with a queue) count as state:
+  // effect and memo hooks get fresh objects on every render.
+  var describe = function (v) {
+    var t = typeof v;
+    if (t === 'function') return 'fn';
+    if (v === null) return 'null';
+    if (Array.isArray(v)) return 'array';
+    return t;
+  };
+  var renderReason = function (fiber) {
+    var alt = fiber.alternate;
+    if (!alt) return { reason: 'mount' };
+    var stateChanged = false;
+    if (fiber.tag === 1) {
+      stateChanged = fiber.memoizedState !== alt.memoizedState;
+    } else {
+      var h = fiber.memoizedState;
+      var ph = alt.memoizedState;
+      var guard = 0;
+      while (h && ph && guard++ < 100) {
+        if (h.queue && h.memoizedState !== ph.memoizedState) { stateChanged = true; break; }
+        h = h.next;
+        ph = ph.next;
+      }
+    }
+    var np = fiber.memoizedProps;
+    var op = alt.memoizedProps;
+    var changed = null;
+    if (np !== op && np && op && typeof np === 'object' && typeof op === 'object') {
+      changed = [];
+      var keys = Object.keys(np);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (k === 'children') continue;
+        if (np[k] !== op[k] && changed.length < 8) changed.push(k + ':' + describe(np[k]));
+      }
+      var oldKeys = Object.keys(op);
+      for (var j = 0; j < oldKeys.length; j++) {
+        if (!(oldKeys[j] in np) && changed.length < 8) changed.push(oldKeys[j] + ':removed');
+      }
+    }
+    if (stateChanged) return changed && changed.length ? { reason: 'state', changed: changed } : { reason: 'state' };
+    if (changed && changed.length) return { reason: 'props', changed: changed };
+    if (np !== op) {
+      // New props object, every prop shallow-equal: only the parent re-rendered.
+      // React.memo (or a stable parent) would have skipped this render.
+      return { reason: 'parent' };
+    }
+    return { reason: 'context' };
+  };
+
   var orig = hook.onCommitFiberRoot;
   hook.onCommitFiberRoot = function (rendererID, root, priorityLevel) {
     try {
@@ -689,29 +763,39 @@ export const REACT_PROFILER_INSTALL = (maxCommits: number, maxComponents: number
         var components = [];
         var droppedHere = 0;
 
-        var visit = function (fiber, depth) {
+        var visit = function (fiber, depth, parentName) {
           var start = fiber.actualStartTime;
           if (!(typeof start === 'number' && start >= passStart)) return 0;
 
+          var name =
+            (fiber.type && (fiber.type.displayName || fiber.type.name)) ||
+            (typeof fiber.type === 'string' ? fiber.type : null);
+          var host = typeof fiber.type === 'string';
           var childSum = 0;
           var child = fiber.child;
           while (child) {
-            childSum += visit(child, depth + 1);
+            childSum += visit(child, depth + 1, name && !host ? name : parentName);
             child = child.sibling;
           }
 
           var dur = fiber.actualDuration || 0;
-          var name =
-            (fiber.type && (fiber.type.displayName || fiber.type.name)) ||
-            (typeof fiber.type === 'string' ? fiber.type : null);
-          if (name) {
+          // Host elements (View, Text…) would crowd components out of the per-commit cap.
+          if (name && (!host || ${includeHosts ? 'true' : 'false'})) {
             if (components.length < state.maxComponents) {
-              components.push({
+              var rec = {
                 name: name,
                 depth: depth,
                 actualDuration: dur,
                 selfDuration: Math.max(0, dur - childSum)
-              });
+              };
+              if (host) rec.host = true;
+              else {
+                if (parentName) rec.parent = parentName;
+                var why = renderReason(fiber);
+                rec.reason = why.reason;
+                if (why.changed) rec.changed = why.changed;
+              }
+              components.push(rec);
             } else {
               droppedHere++;
             }
@@ -719,10 +803,11 @@ export const REACT_PROFILER_INSTALL = (maxCommits: number, maxComponents: number
           return dur;
         };
 
-        visit(rootFiber, 0);
+        visit(rootFiber, 0, null);
         state.droppedComponents += droppedHere;
         state.commits.push({
           at: Date.now(),
+          index: state.commits.length + state.droppedCommits,
           rendererID: rendererID,
           durationMs: rootFiber.actualDuration || 0,
           truncated: droppedHere > 0,
@@ -772,6 +857,7 @@ export const REACT_PROFILER_READ = (top: number, timeline: boolean): string => `
     .sort(function (a, b) { return b.selfMs - a.selfMs; });
   const commits = s.commits.map(function (c) {
     const out = {
+      index: c.index,
       at: c.at,
       durationMs: c.durationMs,
       componentCount: c.components.length,
@@ -783,6 +869,8 @@ export const REACT_PROFILER_READ = (top: number, timeline: boolean): string => `
   return {
     installed: true,
     profilingSupported: s.profilingSupported,
+    startedAt: s.startedAt,
+    readAt: Date.now(),
     totalCommits: s.commits.length,
     droppedCommits: s.droppedCommits,
     skippedCommits: s.skippedCommits,
@@ -807,7 +895,7 @@ export const REACT_PROFILER_STOP = `
 })()
 `;
 
-interface ReactProfilerStartResult {
+export interface ReactProfilerStartResult {
   installed: boolean;
   already?: boolean;
   error?: string;
@@ -822,22 +910,39 @@ export interface ReactComponentStat {
   renders: number;
 }
 
+export type RenderReason = 'mount' | 'props' | 'state' | 'parent' | 'context';
+
+export interface ReactCommitComponent {
+  name: string;
+  depth: number;
+  actualDuration: number;
+  selfDuration: number;
+  /** Host element (View, Text…) rather than a component. */
+  host?: boolean;
+  /** Nearest composite ancestor. */
+  parent?: string;
+  /** Why it rendered. `parent` = new props object but every prop shallow-equal. */
+  reason?: RenderReason;
+  /** Changed props as `name:type`, for `props` (and `state` when props also changed). */
+  changed?: string[];
+}
+
 export interface ReactCommitEntry {
+  /** Monotonic commit index since start, stable even when early commits were dropped. */
+  index?: number;
   at: number;
   durationMs: number;
   componentCount: number;
   droppedComponents: number;
-  components?: Array<{
-    name: string;
-    depth: number;
-    actualDuration: number;
-    selfDuration: number;
-  }>;
+  components?: ReactCommitComponent[];
 }
 
 export interface ReactProfilerReadResult {
   installed: boolean;
   profilingSupported?: boolean | null;
+  /** Runtime `Date.now()` when the hook was installed / read. */
+  startedAt?: number;
+  readAt?: number;
   totalCommits?: number;
   droppedCommits?: number;
   /** Commits whose root carried no start stamp, so their work could not be isolated. */
@@ -851,118 +956,13 @@ export interface ReactProfilerReadResult {
   commits?: ReactCommitEntry[];
 }
 
-export interface ProfileReactOptions {
-  port?: number;
-  targetIndex?: number;
-  maxCommits?: number;
-  maxComponents?: number;
-  timeline?: boolean;
-}
-
-const NO_PROFILING_BUILD =
+export const NO_PROFILING_BUILD =
   'this build has no React profiling data (fibers carry no actualDuration). ' +
   'The React commit profiler needs a dev or profiling build; a release build ' +
   'strips the timing instrumentation. Use `profile js` or `profile frames` to ' +
   'measure a release build.';
 
-async function connectCdp(
-  sessionName: string,
-  cdpOpts: { port?: number; targetIndex?: number }
-): Promise<MetroCdpClient> {
-  const platform = await detectPlatform(sessionName).catch(() => undefined);
-  const client = new MetroCdpClient();
-  await client.connect({
-    port: cdpOpts.port,
-    deviceId: sessionName !== 'default' ? sessionName : undefined,
-    platform,
-    targetIndex: cdpOpts.targetIndex,
-  });
-  return client;
-}
-
-export async function profileReactStart(
-  opts: OutputOptions,
-  sessionName: string,
-  reactOpts: ProfileReactOptions
-): Promise<number> {
-  let client: MetroCdpClient | undefined;
-  try {
-    client = await connectCdp(sessionName, reactOpts);
-    const result = await client.evaluate<ReactProfilerStartResult>(
-      REACT_PROFILER_INSTALL(reactOpts.maxCommits ?? 500, reactOpts.maxComponents ?? 200)
-    );
-    if (!result.installed) {
-      printError(`profile react start — ${result.error ?? 'install failed'}`, opts);
-      return 1;
-    }
-    if (result.profilingSupported === false) {
-      await client.evaluate(REACT_PROFILER_STOP);
-      printError(`profile react start — ${NO_PROFILING_BUILD}`, opts);
-      return 1;
-    }
-    if (opts.json) printData({ status: 'ok', ...result }, opts);
-    else {
-      printSuccess(
-        `profile react start — ${result.already ? 'already installed' : 'installed'}`,
-        opts
-      );
-      if (result.profilingSupported === null) {
-        console.log(
-          '  note: nothing has rendered yet, so the build could not be checked for profiling ' +
-            'support. `profile react stop` will say so if it turns out to be a release build.'
-        );
-      }
-    }
-    return 0;
-  } catch (err) {
-    printError(`profile react start — ${err instanceof Error ? err.message : String(err)}`, opts);
-    return 1;
-  } finally {
-    client?.close();
-  }
-}
-
-export async function profileReactStop(
-  opts: OutputOptions,
-  sessionName: string,
-  reactOpts: ProfileReactOptions,
-  top: number
-): Promise<number> {
-  let client: MetroCdpClient | undefined;
-  try {
-    client = await connectCdp(sessionName, reactOpts);
-    const read = await client.evaluate<ReactProfilerReadResult>(
-      REACT_PROFILER_READ(top, reactOpts.timeline ?? false)
-    );
-    await client.evaluate(REACT_PROFILER_STOP);
-    if (!read.installed) {
-      printError('profile react stop — profiler was not installed', opts);
-      return 1;
-    }
-    if (read.profilingSupported === false) {
-      printError(`profile react stop — ${NO_PROFILING_BUILD}`, opts);
-      return 1;
-    }
-    if (read.profilingSupported === null || (read.totalCommits ?? 0) === 0) {
-      printError(
-        'profile react stop — no commits were captured. Either nothing re-rendered while the ' +
-          'profiler was installed, or the app reloaded (which drops the hook).',
-        opts
-      );
-      return 1;
-    }
-    if (opts.json) printData({ status: 'ok', ...read }, opts);
-    else printReactReport(read);
-    return 0;
-  } catch (err) {
-    printError(`profile react stop — ${err instanceof Error ? err.message : String(err)}`, opts);
-    return 1;
-  } finally {
-    client?.close();
-  }
-}
-
-function printReactReport(read: ReactProfilerReadResult): void {
+export function printReactReport(read: ReactProfilerReadResult): void {
   console.log(`profile react — ${read.totalCommits ?? 0} commit(s)`);
   console.log(`  ${'self'.padStart(9)} ${'total'.padStart(9)}  renders  component`);
   for (const t of read.top ?? []) {

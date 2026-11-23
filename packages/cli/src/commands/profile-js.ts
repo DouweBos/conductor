@@ -16,7 +16,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { printError, printData, printSuccess, OutputOptions } from '../output.js';
 import { detectPlatform } from '../drivers/bootstrap.js';
-import { MetroCdpClient, resolveMetroPort } from '../drivers/metro-cdp.js';
+import { MetroCdpClient, resolveMetroPort, targetAppId } from '../drivers/metro-cdp.js';
+import { getSession } from '../session.js';
+import {
+  scriptFileName,
+  SourceMapLookup,
+  RawSourceMap,
+  metroSourceMapUrl,
+  shortSourcePath,
+} from '../source-map.js';
 import { round } from '../stats.js';
 
 // ── cpuprofile analysis ───────────────────────────────────────────────────────
@@ -47,6 +55,12 @@ export interface CpuProfile {
 export interface FunctionStat {
   name: string;
   location: string;
+  /** Raw frame position (bundle URL, 0-based line/column) for source-map lookup. */
+  url?: string;
+  lineNumber?: number;
+  columnNumber?: number;
+  /** Original source `file:line`, when the bundle's source map was available. */
+  source?: string;
   selfMs: number;
   totalMs: number;
   selfPercent: number;
@@ -100,14 +114,12 @@ function classifyFrame(name: string): 'gc' | 'idle' | 'named' {
   return name.startsWith('[') || name.startsWith('(') ? 'idle' : 'named';
 }
 
-function shortFile(url: string | undefined): string {
-  const u = url ?? '';
-  return u.includes('/') ? u.slice(u.lastIndexOf('/') + 1) : u;
-}
+const shortFile = scriptFileName;
 
 function frameKey(frame: CallFrame): string {
   const line = frame.lineNumber !== undefined ? `:${frame.lineNumber + 1}` : '';
-  return `${frame.functionName || '(anonymous)'} ${shortFile(frame.url)}${line}`;
+  const col = frame.columnNumber !== undefined ? `:${frame.columnNumber}` : '';
+  return `${frame.functionName || '(anonymous)'} ${shortFile(frame.url)}${line}${col}`;
 }
 
 /**
@@ -116,45 +128,63 @@ function frameKey(frame: CallFrame): string {
  * same sample.
  */
 export function analyzeCpuProfile(profile: CpuProfile, top: number): JsProfileSummary {
-  const byId = new Map<number, ProfileNode>();
-  const parentOf = new Map<number, number>();
-  for (const node of profile.nodes) {
-    byId.set(node.id, node);
-    for (const child of node.children ?? []) parentOf.set(child, node.id);
-  }
+  return analyzeCpuProfiles([profile], top);
+}
 
-  const samples = profile.samples ?? [];
-  const deltas = profile.timeDeltas ?? [];
+/**
+ * Same as `analyzeCpuProfile` over several segments of one recording — the
+ * sampler restarts after a dropped debugger session, and each restart is its
+ * own profile. Gaps between segments are not credited to any function.
+ */
+export function analyzeCpuProfiles(profiles: CpuProfile[], top: number): JsProfileSummary {
   const self = new Map<string, number>();
   const total = new Map<string, number>();
   const hits = new Map<string, number>();
   const label = new Map<string, CallFrame>();
+  const allDeltas: number[] = [];
+  let sampleCount = 0;
+  let durationUs = 0;
 
   const add = (map: Map<string, number>, key: string, v: number): void => {
     map.set(key, (map.get(key) ?? 0) + v);
   };
 
-  for (let i = 0; i < samples.length; i++) {
-    const node = byId.get(samples[i]);
-    if (!node) continue;
-    const deltaUs = deltas[i] ?? 0;
-    const key = frameKey(node.callFrame);
-    label.set(key, node.callFrame);
-    add(self, key, deltaUs);
-    add(hits, key, 1);
+  for (const profile of profiles) {
+    const byId = new Map<number, ProfileNode>();
+    const parentOf = new Map<number, number>();
+    for (const node of profile.nodes) {
+      byId.set(node.id, node);
+      for (const child of node.children ?? []) parentOf.set(child, node.id);
+    }
 
-    const seen = new Set<string>();
-    let cursor: number | undefined = node.id;
-    while (cursor !== undefined) {
-      const cur = byId.get(cursor);
-      if (!cur) break;
-      const k = frameKey(cur.callFrame);
-      label.set(k, cur.callFrame);
-      if (!seen.has(k)) {
-        seen.add(k);
-        add(total, k, deltaUs);
+    const samples = profile.samples ?? [];
+    const deltas = profile.timeDeltas ?? [];
+    sampleCount += samples.length;
+    durationUs += profile.endTime - profile.startTime;
+    allDeltas.push(...deltas);
+
+    for (let i = 0; i < samples.length; i++) {
+      const node = byId.get(samples[i]);
+      if (!node) continue;
+      const deltaUs = deltas[i] ?? 0;
+      const key = frameKey(node.callFrame);
+      label.set(key, node.callFrame);
+      add(self, key, deltaUs);
+      add(hits, key, 1);
+
+      const seen = new Set<string>();
+      let cursor: number | undefined = node.id;
+      while (cursor !== undefined) {
+        const cur = byId.get(cursor);
+        if (!cur) break;
+        const k = frameKey(cur.callFrame);
+        label.set(k, cur.callFrame);
+        if (!seen.has(k)) {
+          seen.add(k);
+          add(total, k, deltaUs);
+        }
+        cursor = parentOf.get(cursor);
       }
-      cursor = parentOf.get(cursor);
     }
   }
 
@@ -197,6 +227,9 @@ export function analyzeCpuProfile(profile: CpuProfile, top: number): JsProfileSu
       return {
         name: frame.functionName || '(anonymous)',
         location: frame.lineNumber !== undefined ? `${file}:${frame.lineNumber + 1}` : file,
+        url: frame.url || undefined,
+        lineNumber: frame.lineNumber,
+        columnNumber: frame.columnNumber,
         selfMs: round(selfUs / 1000),
         totalMs: round((total.get(key) ?? 0) / 1000),
         selfPercent: totalUs > 0 ? round((selfUs / totalUs) * 100) : 0,
@@ -205,10 +238,10 @@ export function analyzeCpuProfile(profile: CpuProfile, top: number): JsProfileSu
     })
     .sort((a, b) => b.selfMs - a.selfMs);
 
-  const sortedDeltas = deltas.filter((d) => d > 0).sort((a, b) => a - b);
+  const sortedDeltas = allDeltas.filter((d) => d > 0).sort((a, b) => a - b);
   return {
-    durationMs: round((profile.endTime - profile.startTime) / 1000),
-    sampleCount: samples.length,
+    durationMs: round(durationUs / 1000),
+    sampleCount,
     medianSampleIntervalMs:
       sortedDeltas.length > 0 ? round(sortedDeltas[Math.floor(sortedDeltas.length / 2)] / 1000) : 0,
     attribution,
@@ -220,17 +253,47 @@ export function analyzeCpuProfile(profile: CpuProfile, top: number): JsProfileSu
 
 // ── CDP plumbing ──────────────────────────────────────────────────────────────
 
-interface CdpOpts {
+export interface CdpOpts {
   port?: number;
   targetIndex?: number;
+  /** Bundle/package id — required when several apps on one device share Metro. */
+  appId?: string;
+  /** Exact Metro page id. */
+  pageId?: string;
+  /** Re-attach to this Metro logical device (internal, used across reconnects). */
+  logicalDeviceId?: string;
 }
 
-async function connect(sessionName: string, cdpOpts: CdpOpts): Promise<MetroCdpClient> {
+/**
+ * Connect to the session device's Metro target. When the device has several
+ * apps attached and no `--app` was given, fall back to the app conductor last
+ * launched on this session rather than failing.
+ */
+export async function connectMetro(sessionName: string, cdpOpts: CdpOpts): Promise<MetroCdpClient> {
   const platform = await detectPlatform(sessionName).catch(() => undefined);
   const deviceId = sessionName !== 'default' ? sessionName : undefined;
   const port = await resolveMetroPort({ port: cdpOpts.port, deviceId, platform });
+  const base = {
+    port,
+    deviceId: cdpOpts.logicalDeviceId ? undefined : deviceId,
+    platform,
+    targetIndex: cdpOpts.targetIndex,
+    appId: cdpOpts.appId,
+    pageId: cdpOpts.pageId,
+    logicalDeviceId: cdpOpts.logicalDeviceId,
+  };
   const client = new MetroCdpClient();
-  await client.connect({ port, deviceId, platform, targetIndex: cdpOpts.targetIndex });
+  try {
+    await client.connect(base);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const sessionApp = await getSession(sessionName)
+      .then((s) => s.appId)
+      .catch(() => undefined);
+    if (!cdpOpts.appId && sessionApp && /Several apps/.test(msg)) {
+      await client.connect({ ...base, appId: sessionApp });
+    } else throw err;
+  }
   return client;
 }
 
@@ -261,9 +324,89 @@ async function writeProfile(out: string, profile: CpuProfile): Promise<void> {
   await fs.writeFile(out, JSON.stringify(profile));
 }
 
-function printSummary(summary: JsProfileSummary, out: string): void {
+/**
+ * Stitch segments into one profile for Chrome DevTools. Each segment's root
+ * hangs off a new root; the gap between segments lands in the first delta of
+ * the next one, so the timeline stays truthful.
+ */
+export function mergeCpuProfiles(profiles: CpuProfile[]): CpuProfile {
+  if (profiles.length === 1) return profiles[0];
+  const nodes: ProfileNode[] = [{ id: 1, callFrame: { functionName: '(root)' }, children: [] }];
+  const samples: number[] = [];
+  const timeDeltas: number[] = [];
+  let offset = 1;
+  let prevEnd: number | undefined;
+  for (const p of profiles) {
+    const maxId = p.nodes.reduce((m, n) => Math.max(m, n.id), 0);
+    const childIds = new Set(p.nodes.flatMap((n) => n.children ?? []));
+    for (const n of p.nodes) {
+      nodes.push({ ...n, id: n.id + offset, children: (n.children ?? []).map((c) => c + offset) });
+      if (!childIds.has(n.id)) nodes[0].children!.push(n.id + offset);
+    }
+    const ps = p.samples ?? [];
+    const pd = p.timeDeltas ?? [];
+    for (let i = 0; i < ps.length; i++) {
+      samples.push(ps[i] + offset);
+      const gap = i === 0 && prevEnd !== undefined ? Math.max(0, p.startTime - prevEnd) : 0;
+      timeDeltas.push((pd[i] ?? 0) + gap);
+    }
+    prevEnd = p.endTime;
+    offset += maxId;
+  }
+  return {
+    nodes,
+    startTime: profiles[0].startTime,
+    endTime: profiles[profiles.length - 1].endTime,
+    samples,
+    timeDeltas,
+  };
+}
+
+// ── Source maps ───────────────────────────────────────────────────────────────
+
+/**
+ * Map each function's bundle position to its original `file:line` using the
+ * source map Metro serves next to the bundle. Best effort: any failure leaves
+ * `source` unset. `cache` is updated with `url:line:col → file:line`.
+ */
+export async function symbolicateStats(
+  stats: FunctionStat[],
+  cache: Record<string, string | null> = {},
+  timeoutMs = 60_000
+): Promise<Record<string, string | null>> {
+  const key = (f: FunctionStat): string => `${f.url}:${f.lineNumber}:${f.columnNumber}`;
+  const pending = stats.filter(
+    (f) => f.url && f.lineNumber !== undefined && cache[key(f)] === undefined
+  );
+  const urls = [...new Set(pending.map((f) => f.url!))];
+  for (const url of urls) {
+    const mapUrl = metroSourceMapUrl(url);
+    let lookup: SourceMapLookup | undefined;
+    if (mapUrl) {
+      try {
+        const res = await fetch(mapUrl, { signal: AbortSignal.timeout(timeoutMs) });
+        if (res.ok) lookup = new SourceMapLookup((await res.json()) as RawSourceMap);
+      } catch {
+        // Metro gone or map too large: leave these unsymbolicated.
+      }
+    }
+    // No map (Metro gone): leave uncached so a later run can retry.
+    if (!lookup) continue;
+    for (const f of pending.filter((p) => p.url === url)) {
+      const pos = lookup.originalPositionFor(f.lineNumber! + 1, f.columnNumber ?? 0);
+      cache[key(f)] = pos ? `${shortSourcePath(pos.source)}:${pos.line}` : null;
+    }
+  }
+  for (const f of stats) {
+    const v = f.url ? cache[key(f)] : undefined;
+    if (v) f.source = v;
+  }
+  return cache;
+}
+
+export function printSummary(summary: JsProfileSummary, out: string, title = 'profile js'): void {
   console.log(
-    `profile js — ${summary.durationMs}ms, ${summary.sampleCount} samples ` +
+    `${title} — ${summary.durationMs}ms, ${summary.sampleCount} samples ` +
       `(~${summary.medianSampleIntervalMs}ms apart)`
   );
   const a = summary.attribution;
@@ -275,7 +418,7 @@ function printSummary(summary: JsProfileSummary, out: string): void {
   for (const f of summary.top) {
     console.log(
       `  ${`${f.selfMs}ms`.padStart(9)} ${`${f.totalMs}ms`.padStart(9)}  ` +
-        `${f.selfPercent.toFixed(1).padStart(5)}  ${f.name}  ${f.location}`
+        `${f.selfPercent.toFixed(1).padStart(5)}  ${f.name}  ${f.source ?? f.location}`
     );
   }
   if (summary.omitted > 0) console.log(`  ... ${summary.omitted} more (raise --top)`);
@@ -293,6 +436,8 @@ export interface ProfileJsOptions extends CdpOpts {
   durationSec?: number;
   out?: string;
   top?: number;
+  /** Map functions to original sources via Metro's source map (default on). */
+  symbolicate?: boolean;
 }
 
 export async function profileJsRecord(
@@ -303,12 +448,13 @@ export async function profileJsRecord(
   const out = jsOpts.out ?? defaultOut();
   let client: MetroCdpClient | undefined;
   try {
-    client = await connect(sessionName, jsOpts);
+    client = await connectMetro(sessionName, jsOpts);
     await startSampling(client);
     await new Promise((r) => setTimeout(r, (jsOpts.durationSec ?? 10) * 1000));
     const profile = await stopSampling(client);
     await writeProfile(out, profile);
     const summary = analyzeCpuProfile(profile, jsOpts.top ?? 20);
+    if (jsOpts.symbolicate !== false) await symbolicateStats(summary.top);
     if (opts.json) printData({ status: 'ok', out, ...summary }, opts);
     else printSummary(summary, out);
     return 0;
@@ -326,11 +472,49 @@ function stateDir(): string {
   return path.join(os.homedir(), '.conductor', 'js-profiles');
 }
 
-interface HolderState {
+export interface HolderState {
   pid: number;
   session: string;
   out: string;
   startedAt: string;
+  /** Host and runtime clocks at the moment sampling started, for lining up with commits. */
+  startedAtHostMs?: number;
+  startedAtRuntimeMs?: number;
+  target?: PinnedTarget;
+}
+
+export interface PinnedTarget {
+  port: number;
+  pageId?: string;
+  appId?: string;
+  logicalDeviceId?: string;
+  deviceName?: string;
+  title?: string;
+}
+
+/** A stretch of the recording during which the debugger session was gone. */
+export interface SamplingGap {
+  /** Offset from the start of sampling. */
+  atMs: number;
+  durationMs: number;
+  /**
+   * `continued`: Hermes kept sampling through the drop and the samples were
+   * recovered. `restarted`: they were lost and sampling started again.
+   * `lost`: the app never came back.
+   */
+  resumed: 'continued' | 'restarted' | 'lost';
+}
+
+export interface HolderDone {
+  error?: string;
+  out?: string;
+  /** Segment files, in order. One entry unless the session dropped mid-recording. */
+  segments?: string[];
+  gaps?: SamplingGap[];
+  stoppedByRequest?: boolean;
+  startedAtHostMs?: number;
+  startedAtRuntimeMs?: number;
+  target?: PinnedTarget;
 }
 
 const paths = (session: string): { state: string; stop: string; done: string } => ({
@@ -347,22 +531,34 @@ async function readJson<T>(file: string): Promise<T | null> {
   }
 }
 
-export async function profileJsStart(
-  opts: OutputOptions,
+/** The running holder for this session, if any. */
+export async function activeJsHolder(sessionName: string): Promise<HolderState | null> {
+  const state = await readJson<HolderState>(paths(sessionName).state);
+  if (!state) return null;
+  try {
+    process.kill(state.pid, 0);
+    return state;
+  } catch {
+    // Holder died without cleaning up (machine slept, killed): stale.
+    await fs.rm(paths(sessionName).state, { force: true });
+    return null;
+  }
+}
+
+/** Spawn the holder and wait until Hermes is actually sampling. Throws on failure. */
+export async function startJsHolder(
   sessionName: string,
   jsOpts: ProfileJsOptions
-): Promise<number> {
+): Promise<HolderState> {
   const p = paths(sessionName);
   await fs.mkdir(stateDir(), { recursive: true });
 
-  const existing = await readJson<HolderState>(p.state);
+  const existing = await activeJsHolder(sessionName);
   if (existing) {
-    printError(
-      `profile js start — already sampling (holder pid ${existing.pid}, since ${existing.startedAt}). ` +
-        'Run `conductor profile js stop` first.',
-      opts
+    throw new Error(
+      `already sampling (holder pid ${existing.pid}, since ${existing.startedAt}). ` +
+        'Stop that recording first (`conductor profile js stop` or `conductor profile react stop`).'
     );
-    return 1;
   }
 
   const out = jsOpts.out ?? defaultOut();
@@ -373,6 +569,8 @@ export async function profileJsStart(
   if (sessionName !== 'default') args.push('--device', sessionName);
   if (jsOpts.port !== undefined) args.push('--port', String(jsOpts.port));
   if (jsOpts.targetIndex !== undefined) args.push('--target', String(jsOpts.targetIndex));
+  if (jsOpts.appId) args.push('--app', jsOpts.appId);
+  if (jsOpts.pageId) args.push('--page', jsOpts.pageId);
 
   const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore' });
   child.unref();
@@ -382,21 +580,73 @@ export async function profileJsStart(
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     const state = await readJson<HolderState>(p.state);
-    if (state) {
-      if (opts.json) printData({ status: 'ok', ...state }, opts);
-      else printSuccess(`profile js start — sampling (holder pid ${state.pid})`, opts);
-      return 0;
-    }
+    if (state) return state;
     const done = await readJson<{ error?: string }>(p.done);
     if (done?.error) {
-      printError(`profile js start — ${done.error}`, opts);
       await fs.rm(p.done, { force: true });
-      return 1;
+      throw new Error(done.error);
     }
     await new Promise((r) => setTimeout(r, 100));
   }
-  printError('profile js start — holder did not report back within 15s', opts);
-  return 1;
+  throw new Error('holder did not report back within 15s');
+}
+
+/** Ask the holder to stop and wait for its result. Throws when nothing is sampling. */
+export async function stopJsHolder(sessionName: string): Promise<HolderDone> {
+  const p = paths(sessionName);
+  const state = await readJson<HolderState>(p.state);
+  const done0 = await readJson<HolderDone>(p.done);
+  if (!state && !done0) throw new Error('not sampling (run `conductor profile js start` first)');
+
+  if (state) await fs.writeFile(p.stop, '');
+  // Generous: after a drop the holder may still be waiting for the app to come back.
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    const done = await readJson<HolderDone>(p.done);
+    if (done) {
+      await fs.rm(p.done, { force: true });
+      await fs.rm(p.state, { force: true });
+      if (done.error && !(done.segments && done.segments.length > 0)) throw new Error(done.error);
+      return done;
+    }
+    if (state) {
+      try {
+        process.kill(state.pid, 0);
+      } catch {
+        await fs.rm(p.state, { force: true });
+        throw new Error(`holder pid ${state.pid} exited without writing a result`);
+      }
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error('holder did not finish within 90s');
+}
+
+export async function loadSegments(done: HolderDone): Promise<CpuProfile[]> {
+  const files = done.segments && done.segments.length > 0 ? done.segments : [done.out!];
+  const profiles: CpuProfile[] = [];
+  for (const f of files) {
+    const prof = await readJson<CpuProfile>(f);
+    if (!prof) throw new Error(`could not read ${f}`);
+    profiles.push(prof);
+  }
+  return profiles;
+}
+
+export async function profileJsStart(
+  opts: OutputOptions,
+  sessionName: string,
+  jsOpts: ProfileJsOptions
+): Promise<number> {
+  try {
+    const state = await startJsHolder(sessionName, jsOpts);
+    if (opts.json) printData({ status: 'ok', ...state }, opts);
+    else printSuccess(`profile js start — sampling (holder pid ${state.pid})`, opts);
+    return 0;
+  } catch (err) {
+    printError(`profile js start — ${err instanceof Error ? err.message : String(err)}`, opts);
+    return 1;
+  }
 }
 
 export async function profileJsStop(
@@ -404,43 +654,48 @@ export async function profileJsStop(
   sessionName: string,
   jsOpts: ProfileJsOptions
 ): Promise<number> {
-  const p = paths(sessionName);
-  const state = await readJson<HolderState>(p.state);
-  if (!state) {
-    printError('profile js stop — not sampling (run `conductor profile js start` first)', opts);
+  try {
+    const done = await stopJsHolder(sessionName);
+    const summary = analyzeCpuProfiles(await loadSegments(done), jsOpts.top ?? 20);
+    if (jsOpts.symbolicate !== false) await symbolicateStats(summary.top);
+    if (opts.json) printData({ status: 'ok', out: done.out, gaps: done.gaps, ...summary }, opts);
+    else {
+      printSummary(summary, done.out!);
+      printGaps(done.gaps ?? []);
+    }
+    return 0;
+  } catch (err) {
+    printError(`profile js stop — ${err instanceof Error ? err.message : String(err)}`, opts);
     return 1;
   }
-
-  await fs.writeFile(p.stop, '');
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const done = await readJson<{ error?: string; out?: string }>(p.done);
-    if (done) {
-      await fs.rm(p.done, { force: true });
-      await fs.rm(p.state, { force: true });
-      if (done.error) {
-        printError(`profile js stop — ${done.error}`, opts);
-        return 1;
-      }
-      const profile = await readJson<CpuProfile>(done.out!);
-      if (!profile) {
-        printError(`profile js stop — could not read ${done.out}`, opts);
-        return 1;
-      }
-      const summary = analyzeCpuProfile(profile, jsOpts.top ?? 20);
-      if (opts.json) printData({ status: 'ok', out: done.out, ...summary }, opts);
-      else printSummary(summary, done.out!);
-      return 0;
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  printError('profile js stop — holder did not finish within 30s', opts);
-  return 1;
 }
+
+export function printGaps(gaps: SamplingGap[]): void {
+  if (gaps.length === 0) return;
+  console.log(`\n  debugger session dropped ${gaps.length} time(s) and was re-attached:`);
+  for (const g of gaps) {
+    console.log(
+      `    t+${(g.atMs / 1000).toFixed(1)}s for ${g.durationMs}ms — ` +
+        (g.resumed === 'continued'
+          ? 'Hermes kept sampling, nothing lost'
+          : g.resumed === 'restarted'
+            ? 'samples in the gap were lost, sampling restarted'
+            : 'the app never came back')
+    );
+  }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Internal: hold the CDP socket open for the duration of a start/stop pair.
  * Not part of the public CLI surface.
+ *
+ * When the socket drops (some tvOS apps drop the debugger session on navigation; an app
+ * backgrounding can too), the holder re-attaches to the same logical device and
+ * app. Hermes may or may not have kept sampling through the drop; asking it to
+ * stop first recovers the samples when it did, and either way a new segment
+ * starts. The runtime itself is the same, so commit data held in JS survives.
  */
 export async function profileJsHold(
   sessionName: string,
@@ -450,14 +705,39 @@ export async function profileJsHold(
   await fs.mkdir(stateDir(), { recursive: true });
   const out = jsOpts.out ?? defaultOut();
   let client: MetroCdpClient | undefined;
+  let pin: PinnedTarget | undefined;
+  const startedAtHostMs = Date.now();
+  let startedAtRuntimeMs: number | undefined;
 
   try {
-    client = await connect(sessionName, jsOpts);
+    client = await connectMetro(sessionName, jsOpts);
+    const t = client.target;
+    pin = {
+      port: Number(new URL(t?.webSocketDebuggerUrl ?? 'ws://localhost:8081').port) || 8081,
+      pageId: t?.id,
+      appId: t ? targetAppId(t) : undefined,
+      logicalDeviceId: t?.reactNative?.logicalDeviceId,
+      deviceName: t?.deviceName,
+      title: t?.title,
+    };
+    if (jsOpts.port !== undefined) pin.port = jsOpts.port;
     await startSampling(client);
+    startedAtRuntimeMs = await client
+      .evaluate<number>('Date.now()')
+      .then((v) => (typeof v === 'number' ? v : undefined))
+      .catch(() => undefined);
     await fs.writeFile(
       p.state,
       JSON.stringify(
-        { pid: process.pid, session: sessionName, out, startedAt: new Date().toISOString() },
+        {
+          pid: process.pid,
+          session: sessionName,
+          out,
+          startedAt: new Date(startedAtHostMs).toISOString(),
+          startedAtHostMs,
+          startedAtRuntimeMs,
+          target: pin,
+        },
         null,
         2
       )
@@ -471,32 +751,111 @@ export async function profileJsHold(
     return 1;
   }
 
-  // Safety valve: never hold a debugger session open indefinitely.
-  const deadline = Date.now() + 15 * 60_000;
-  let stopped = false;
-  while (Date.now() < deadline) {
-    const stopRequested = await fs
+  const stopRequested = (): Promise<boolean> =>
+    fs
       .stat(p.stop)
       .then(() => true)
       .catch(() => false);
-    if (stopRequested) {
+
+  const reconnect = async (budgetMs: number): Promise<MetroCdpClient | undefined> => {
+    const until = Date.now() + budgetMs;
+    while (Date.now() < until) {
+      try {
+        return await connectMetro(sessionName, {
+          port: pin!.port,
+          appId: pin!.appId,
+          logicalDeviceId: pin!.logicalDeviceId,
+        });
+      } catch {
+        await sleep(500);
+      }
+    }
+    return undefined;
+  };
+
+  const segments: CpuProfile[] = [];
+  const gaps: SamplingGap[] = [];
+  // Safety valve: never hold a debugger session open indefinitely.
+  const deadline = Date.now() + 15 * 60_000;
+  let stopped = false;
+  let lost = false;
+  while (Date.now() < deadline) {
+    if (await stopRequested()) {
       stopped = true;
       break;
     }
-    if (!client.isConnected()) break;
-    await new Promise((r) => setTimeout(r, 200));
+    if (!client.isConnected()) {
+      const dropAt = Date.now();
+      client.close();
+      // Keep trying until the app is back or stop is requested (then a short final try).
+      let next: MetroCdpClient | undefined;
+      while (!next && Date.now() < deadline) {
+        next = await reconnect((await stopRequested()) ? 5_000 : 2_000);
+        if (!next && (await stopRequested())) break;
+      }
+      if (!next) {
+        gaps.push({
+          atMs: dropAt - startedAtHostMs,
+          durationMs: Date.now() - dropAt,
+          resumed: 'lost',
+        });
+        lost = true;
+        break;
+      }
+      client = next;
+      let resumed: SamplingGap['resumed'] = 'restarted';
+      try {
+        const prof = await stopSampling(client);
+        if ((prof.samples?.length ?? 0) > 0) {
+          segments.push(prof);
+          resumed = 'continued';
+        }
+      } catch {
+        // Sampler did not survive the drop.
+      }
+      try {
+        await startSampling(client);
+      } catch {
+        lost = true;
+      }
+      gaps.push({ atMs: dropAt - startedAtHostMs, durationMs: Date.now() - dropAt, resumed });
+      if (lost) break;
+      continue;
+    }
+    await sleep(200);
   }
 
   try {
-    if (!client.isConnected()) throw new Error('the app disconnected from Metro while sampling');
-    const profile = await stopSampling(client);
-    await writeProfile(out, profile);
-    await fs.writeFile(p.done, JSON.stringify({ out, stoppedByRequest: stopped }));
+    if (!lost && client.isConnected()) segments.push(await stopSampling(client));
+    if (segments.length === 0) throw new Error('the app disconnected from Metro while sampling');
+    const files: string[] = [];
+    if (segments.length === 1) {
+      await writeProfile(out, segments[0]);
+      files.push(out);
+    } else {
+      for (let i = 0; i < segments.length; i++) {
+        const f = out.replace(/(\.cpuprofile)?$/, `.seg${i}.cpuprofile`);
+        await writeProfile(f, segments[i]);
+        files.push(f);
+      }
+      await writeProfile(out, mergeCpuProfiles(segments));
+    }
+    const done: HolderDone = {
+      out,
+      segments: files,
+      gaps,
+      stoppedByRequest: stopped,
+      startedAtHostMs,
+      startedAtRuntimeMs,
+      target: pin,
+    };
+    if (lost) done.error = 'the app disconnected from Metro and did not come back';
+    await fs.writeFile(p.done, JSON.stringify(done));
     return 0;
   } catch (err) {
     await fs.writeFile(
       p.done,
-      JSON.stringify({ error: err instanceof Error ? err.message : String(err) })
+      JSON.stringify({ error: err instanceof Error ? err.message : String(err), gaps })
     );
     return 1;
   } finally {
