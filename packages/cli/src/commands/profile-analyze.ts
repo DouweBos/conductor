@@ -30,6 +30,14 @@ export interface ComponentRenders {
   changedProps: Array<{ prop: string; count: number }>;
   /** Most common nearest composite parents. */
   parents: Array<{ name: string; count: number }>;
+  /** State hooks that changed, with counts (`useState#2`). */
+  changedHooks: Array<{ hook: string; count: number }>;
+  /** Contexts whose value change re-rendered it. */
+  changedContexts: Array<{ context: string; count: number }>;
+  /** For `parent` renders: the ancestor that actually changed, with counts. */
+  rootCauses: Array<{ cause: string; count: number }>;
+  /** Compiled by the React Compiler. */
+  compiled: boolean;
   host: boolean;
 }
 
@@ -62,6 +70,9 @@ export function computeRenders(
       commitSet: Set<number>;
       props: Map<string, number>;
       parentMap: Map<string, number>;
+      hookMap: Map<string, number>;
+      ctxMap: Map<string, number>;
+      causeMap: Map<string, number>;
     }
   >();
   const commitSummaries: CommitSummary[] = [];
@@ -87,6 +98,13 @@ export function computeRenders(
           changedProps: [],
           parents: [],
           host: !!comp.host,
+          changedHooks: [],
+          changedContexts: [],
+          rootCauses: [],
+          compiled: false,
+          hookMap: new Map(),
+          ctxMap: new Map(),
+          causeMap: new Map(),
           commitSet: new Set(),
           props: new Map(),
           parentMap: new Map(),
@@ -100,6 +118,10 @@ export function computeRenders(
       e.maxSelfMs = Math.max(e.maxSelfMs, comp.selfDuration);
       if (comp.reason) e.reasons[comp.reason] = (e.reasons[comp.reason] ?? 0) + 1;
       for (const p of comp.changed ?? []) e.props.set(p, (e.props.get(p) ?? 0) + 1);
+      for (const h of comp.hooks ?? []) e.hookMap.set(h, (e.hookMap.get(h) ?? 0) + 1);
+      for (const x of comp.contexts ?? []) e.ctxMap.set(x, (e.ctxMap.get(x) ?? 0) + 1);
+      if (comp.cause) e.causeMap.set(comp.cause, (e.causeMap.get(comp.cause) ?? 0) + 1);
+      if (comp.compiled) e.compiled = true;
       if (comp.parent) e.parentMap.set(comp.parent, (e.parentMap.get(comp.parent) ?? 0) + 1);
       perCommit.set(comp.name, (perCommit.get(comp.name) ?? 0) + 1);
     }
@@ -123,7 +145,7 @@ export function computeRenders(
     [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
 
   const components: ComponentRenders[] = [...by.values()]
-    .map(({ commitSet, props, parentMap, ...e }) => ({
+    .map(({ commitSet, props, parentMap, hookMap, ctxMap, causeMap, ...e }) => ({
       ...e,
       commits: [...commitSet].sort((a, b) => a - b),
       commitShare: commits.length > 0 ? round(commitSet.size / commits.length, 3) : 0,
@@ -133,6 +155,9 @@ export function computeRenders(
       avgSelfMs: e.renders > 0 ? round(e.selfMs / e.renders, 3) : 0,
       changedProps: topN(props, 5).map(([prop, count]) => ({ prop, count })),
       parents: topN(parentMap, 3).map(([name, count]) => ({ name, count })),
+      changedHooks: topN(hookMap, 3).map(([hook, count]) => ({ hook, count })),
+      changedContexts: topN(ctxMap, 3).map(([context, count]) => ({ context, count })),
+      rootCauses: topN(causeMap, 3).map(([cause, count]) => ({ cause, count })),
     }))
     .sort((a, b) => b.renders - a.renders || b.selfMs - a.selfMs);
 
@@ -231,7 +256,10 @@ export interface NativeThread {
 }
 
 export interface NativeHang {
+  /** Since the first CPU sample (for display). */
   startMs: number;
+  /** Since the recording started, for lining up with React commits. */
+  traceMs?: number;
   durationMs: number;
   kind: string;
   /** Busiest functions on the main thread during the hang. */
@@ -250,6 +278,43 @@ export interface NativeReport {
   hangs?: NativeHang[];
   /** Deepest frame in the app's own binaries per sample (iOS). */
   appFrames?: NativeSymbol[];
+  /** iOS `--allocations`: live heap totals and biggest categories. */
+  allocations?: {
+    persistentBytes: number;
+    transientBytes: number;
+    persistentCount: number;
+    transientCount: number;
+    top: Array<{
+      category: string;
+      persistentBytes: number;
+      count: number;
+      transientCount: number;
+    }>;
+  };
+  /** iOS `--leaks`: leaked objects grouped by type and responsible frame. */
+  leaks?: Array<{
+    type: string;
+    responsible?: string;
+    library?: string;
+    count: number;
+    bytes: number;
+  }>;
+  /** Android: frame timing over the recording (from gfxinfo). */
+  frames?: {
+    totalFrames: number;
+    jankyPercent: number | null;
+    p50Ms?: number | null;
+    p95Ms?: number | null;
+    dominantPhase?: string | null;
+  };
+  /** Android: memory over the recording. */
+  memory?: {
+    startPssBytes?: number;
+    endPssBytes?: number;
+    javaHeapDeltaBytes?: number;
+    gcCollections?: number;
+    gcPauseMs?: number;
+  };
   notes: string[];
 }
 
@@ -265,12 +330,17 @@ export interface Finding {
     | 'wasted-renders'
     | 'unstable-props'
     | 'frequent-renders'
+    | 'context-churn'
+    | 'compiler-bailout'
     | 'render-hotspot'
     | 'many-instances'
     | 'js-hotspot'
     | 'gc-pressure'
     | 'native-hotspot'
-    | 'hang';
+    | 'hang'
+    | 'native-leak'
+    | 'jank'
+    | 'memory-growth';
   title: string;
   detail: string;
   suggestion: string;
@@ -293,6 +363,10 @@ export interface AnalyzeInput {
   /** Raw CPU segments + anchor, for attributing slow commits to JS functions. */
   cpuProfiles?: CpuProfile[];
   cpuAnchor?: CpuAnchor;
+  /** Actions taken while recording, on the runtime clock, to label what caused a commit. */
+  steps?: Array<{ label: string; atMs: number; ok: boolean }>;
+  /** Runtime-clock time the native recording started, to place hangs among commits. */
+  nativeStartedAtRuntimeMs?: number;
   /** Source-map lookups (`url:line:col` → `file:line`) for JS locations. */
   symbols?: Record<string, string | null>;
   /** Runtime-clock start of the React recording, to place commits on the CPU timeline. */
@@ -324,6 +398,17 @@ function propType(p: string): string {
   return p.slice(p.lastIndexOf(':') + 1);
 }
 
+/** The action that most recently started before `atMs` (runtime clock), within 5s. */
+export function precedingStep(
+  steps: AnalyzeInput['steps'],
+  atMs: number
+): { label: string; sinceMs: number } | undefined {
+  let best: { label: string; atMs: number } | undefined;
+  for (const s of steps ?? []) if (s.atMs <= atMs && (!best || s.atMs > best.atMs)) best = s;
+  if (!best || atMs - best.atMs > 5_000) return undefined;
+  return { label: best.label, sinceMs: round(atMs - best.atMs) };
+}
+
 export function buildFindings(input: AnalyzeInput): Finding[] {
   const findings: Finding[] = [];
   const r = input.renders;
@@ -346,12 +431,18 @@ export function buildFindings(input: AnalyzeInput): Finding[] {
           input.symbols
         );
       }
+      const step =
+        input.reactStartedAt !== undefined
+          ? precedingStep(input.steps, input.reactStartedAt + c.atMs)
+          : undefined;
       findings.push({
         severity: c.durationMs >= 50 ? 'high' : 'medium',
         kind: 'slow-commit',
         title: `Commit #${c.index} took ${c.durationMs}ms (frame budget ${FRAME_BUDGET_MS}ms)`,
         detail:
-          `At t+${(c.atMs / 1000).toFixed(2)}s, ${c.components} component(s) rendered; most ` +
+          `At t+${(c.atMs / 1000).toFixed(2)}s` +
+          (step ? `, ${step.sinceMs}ms after ${step.label}` : '') +
+          `, ${c.components} component(s) rendered; most ` +
           `self time in ${list(c.top.map((t) => `${t.name} ${t.selfMs}ms${t.reason ? ` (${t.reason})` : ''}`))}.` +
           (hotspots.length
             ? ` JS during the commit: ${list(hotspots.map((h) => `${h.name} ${h.selfMs}ms (${h.location})`))}.`
@@ -361,7 +452,7 @@ export function buildFindings(input: AnalyzeInput): Finding[] {
           'memoize it, otherwise move the expensive work out of render (useMemo, or defer it).',
         component: c.top[0]?.name,
         impactMs: c.durationMs - FRAME_BUDGET_MS,
-        evidence: { commit: c, cpuDuringCommit: hotspots },
+        evidence: { commit: c, cpuDuringCommit: hotspots, afterStep: step },
       });
     }
     if (slow.length > 5) {
@@ -405,6 +496,7 @@ export function buildFindings(input: AnalyzeInput): Finding[] {
     }
 
     const totalSelf = r.components.reduce((a, c) => a + c.selfMs, 0);
+    const compilerOn = r.components.some((c) => c.compiled);
     for (const c of r.components) {
       if (c.host) continue;
       const framework = isFrameworkComponent(c.name);
@@ -426,6 +518,12 @@ export function buildFindings(input: AnalyzeInput): Finding[] {
           detail:
             `${parentRenders} of ${c.name}'s ${c.renders} renders got a new props object whose values were ` +
             `all identical — only its parent (${list(c.parents.map((p) => p.name))}) re-rendered. ` +
+            (c.rootCauses.length
+              ? `Root cause: ${list(
+                  c.rootCauses.map((x) => `${x.cause} ×${x.count}`),
+                  2
+                )}. `
+              : '') +
             `~${wasted}ms of self time.`,
           suggestion: appParent
             ? `Memoize ${appParent} (React.memo) or whatever makes it re-render.`
@@ -468,7 +566,38 @@ export function buildFindings(input: AnalyzeInput): Finding[] {
           evidence: { component: c.name, changedProps: c.changedProps, parents: c.parents },
         });
       }
+      const ctxRenders = c.reasons.context ?? 0;
+      if (!framework && ctxRenders >= 5 && c.changedContexts.length > 0) {
+        const ctx = c.changedContexts[0].context;
+        findings.push({
+          severity: sev(ctxRenders, 10, 30),
+          kind: 'context-churn',
+          title: `${c.name} re-rendered ${ctxRenders}× because ${ctx} changed`,
+          detail:
+            `Contexts: ${list(c.changedContexts.map((x) => `${x.context} ×${x.count}`))}. Every consumer ` +
+            `re-renders when the provider value changes identity.`,
+          suggestion: `Memoize ${ctx}'s provider value (useMemo), or split it so ${c.name} subscribes to less.`,
+          component: c.name,
+          impactMs: round(c.avgSelfMs * ctxRenders),
+          evidence: { changedContexts: c.changedContexts, reasons: c.reasons },
+        });
+      }
       if (framework) continue;
+      if (compilerOn && !c.compiled && c.renders > 5 && (c.reasons.parent ?? 0) > 0) {
+        findings.push({
+          severity: 'low',
+          kind: 'compiler-bailout',
+          title: `${c.name} is not optimized by the React Compiler but re-rendered ${c.renders}×`,
+          detail:
+            'Other components in this app are compiled (they carry a memo cache), this one is not — ' +
+            'the compiler likely bailed out on it.',
+          suggestion:
+            'Check the compiler output for this component (a rules-of-React violation usually causes the bail-out).',
+          component: c.name,
+          impactMs: c.selfMs,
+          evidence: { renders: c.renders, reasons: c.reasons },
+        });
+      }
       if (c.renders >= 10 && c.commitShare >= 0.5 && r.totalCommits >= 10) {
         findings.push({
           severity: 'low',
@@ -566,17 +695,94 @@ export function buildFindings(input: AnalyzeInput): Finding[] {
       });
     }
     for (const h of n.hangs ?? []) {
+      // React commits within 200ms of the hang: the JS side of the same stall.
+      let commits: CommitSummary[] = [];
+      if (
+        input.renders &&
+        h.traceMs !== undefined &&
+        input.nativeStartedAtRuntimeMs !== undefined &&
+        input.reactStartedAt !== undefined
+      ) {
+        const from = input.nativeStartedAtRuntimeMs + h.traceMs - 200;
+        const to = input.nativeStartedAtRuntimeMs + h.traceMs + h.durationMs + 200;
+        commits = input.renders.commits.filter((c) => {
+          const end = input.reactStartedAt! + c.atMs;
+          return end >= from && end - c.durationMs <= to;
+        });
+      }
       findings.push({
         severity: h.durationMs >= 500 || /severe|^hang$/i.test(h.kind) ? 'high' : 'medium',
         kind: 'hang',
         title: `Main thread hung for ${h.durationMs}ms (${h.kind}) at t+${(h.startMs / 1000).toFixed(2)}s`,
-        detail: h.top.length
-          ? `Busiest during the hang: ${list(h.top.map((t) => `${t.symbol} ${t.selfMs}ms`))}.`
-          : 'No main-thread samples attributed to the hang window.',
+        detail:
+          (h.top.length
+            ? `Busiest during the hang: ${list(h.top.map((t) => `${t.symbol} ${t.selfMs}ms`))}.`
+            : 'No main-thread samples attributed to the hang window.') +
+          (commits.length
+            ? ` React commits around it: ${list(commits.map((c) => `#${c.index} ${c.durationMs}ms (${c.top[0]?.name ?? '?'})`))}.`
+            : ''),
         suggestion: 'Move the work off the main thread, or split it across frames.',
         impactMs: h.durationMs,
-        evidence: { ...h },
+        evidence: { ...h, reactCommits: commits.map((c) => c.index) },
       });
+    }
+    for (const l of n.leaks ?? []) {
+      const attributed = !!l.responsible && !/^0x|^\?|unknown/i.test(l.responsible);
+      findings.push({
+        severity: attributed ? 'high' : 'medium',
+        kind: 'native-leak',
+        title: `Leaked ${l.count}× ${l.type} (${(l.bytes / 1024).toFixed(1)} KiB)`,
+        detail: attributed
+          ? `Allocated by ${l.responsible}${l.library ? ` in ${l.library}` : ''}.`
+          : 'No responsible frame — relaunch with MallocStackLogging for attribution.',
+        suggestion:
+          'Look for a retain cycle or an unreleased native resource at that allocation site.',
+        function: l.responsible,
+        impactMs: 0,
+        evidence: { ...l },
+      });
+    }
+    if (
+      n.frames &&
+      n.frames.jankyPercent !== null &&
+      n.frames.totalFrames >= 30 &&
+      n.frames.jankyPercent >= 10
+    ) {
+      findings.push({
+        severity: n.frames.jankyPercent >= 30 ? 'high' : 'medium',
+        kind: 'jank',
+        title: `${n.frames.jankyPercent}% of ${n.frames.totalFrames} frames were janky`,
+        detail:
+          `Frame time p50 ${n.frames.p50Ms ?? '?'}ms, p95 ${n.frames.p95Ms ?? '?'}ms` +
+          (n.frames.dominantPhase ? `; most time in ${n.frames.dominantPhase}` : '') +
+          '.',
+        suggestion:
+          'vsyncDelay → UI thread blocked; traversal → layout; draw → recording display lists; issueDraw → GPU. ' +
+          'See `profile frames report` for the full breakdown.',
+        impactMs: 0,
+        evidence: { ...n.frames },
+      });
+    }
+    const m = n.memory;
+    if (m?.startPssBytes !== undefined && m.endPssBytes !== undefined) {
+      const growth = m.endPssBytes - m.startPssBytes;
+      if (growth >= 20 * 1024 * 1024) {
+        findings.push({
+          severity: growth >= 100 * 1024 * 1024 ? 'high' : 'medium',
+          kind: 'memory-growth',
+          title: `Memory grew ${(growth / 1024 / 1024).toFixed(1)} MB over the recording`,
+          detail:
+            `PSS ${(m.startPssBytes / 1024 / 1024).toFixed(1)} → ${(m.endPssBytes / 1024 / 1024).toFixed(1)} MB` +
+            (m.gcCollections
+              ? `; ${m.gcCollections} ART GC(s), ${m.gcPauseMs ?? 0}ms paused`
+              : '') +
+            '.',
+          suggestion:
+            'Repeat the flow; growth that does not come back is a leak — confirm with `memory --save/--diff`.',
+          impactMs: 0,
+          evidence: { ...m },
+        });
+      }
     }
   }
 

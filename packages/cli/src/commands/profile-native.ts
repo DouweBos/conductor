@@ -16,8 +16,18 @@ import { resolveAndroidTool, androidSpawnEnv } from '../android/sdk.js';
 import { spawnCommand } from '../runner.js';
 import { getSession } from '../session.js';
 import { macAppPid } from '../drivers/macos.js';
+import { findPhysicalDevice, appPid as devicectlAppPid } from '../drivers/devicectl.js';
 import { round } from '../stats.js';
 import { parseSimpleperfReport, rollupByDso } from './profile.js';
+import { adbShell } from '../android/device.js';
+import {
+  parseGfxinfoSummary,
+  parseFramestats,
+  toFrameSample,
+  summariseFrames,
+  resetFrameCounters,
+} from './profile-frames.js';
+import { collectGcSince, deviceLogcatTimestamp, summariseGc } from './profile-gc.js';
 import type { NativeHang, NativeReport, NativeSymbol, NativeThread } from './profile-analyze.js';
 import {
   ProfileMeta,
@@ -122,6 +132,95 @@ export function parseXctraceTable(xml: string): XTable {
   return { columns, rows };
 }
 
+/** Rows written as attributes (`<row category="…" persistent-bytes="…"/>`), as Allocations' tables are. */
+export function parseAttrRows(xml: string): Array<Record<string, string>> {
+  const rows: Array<Record<string, string>> = [];
+  const re = /<row\s+([^>]*?)\/?>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml))) {
+    const attrs = parseAttrs(m[1]);
+    if (Object.keys(attrs).length) rows.push(attrs);
+  }
+  return rows;
+}
+
+export interface AllocationSummary {
+  persistentBytes: number;
+  transientBytes: number;
+  persistentCount: number;
+  transientCount: number;
+  /** Largest live allocation categories. */
+  top: Array<{ category: string; persistentBytes: number; count: number; transientCount: number }>;
+}
+
+/** Allocations' "Statistics" detail: totals plus the biggest live categories. */
+export function summariseAllocations(
+  rows: Array<Record<string, string>>,
+  top = 10
+): AllocationSummary | undefined {
+  const num = (v: string | undefined): number => Number(v ?? 0) || 0;
+  const all =
+    rows.find((r) => r.category === 'All Heap & Anonymous VM') ??
+    rows.find((r) => /^All /.test(r.category ?? ''));
+  if (!all) return undefined;
+  return {
+    persistentBytes: num(all['persistent-bytes']),
+    transientBytes: num(all['transient-bytes']),
+    persistentCount: num(all['count-persistent']),
+    transientCount: num(all['count-transient']),
+    top: rows
+      .filter((r) => r.category && !/^All /.test(r.category))
+      .sort((a, b) => num(b['persistent-bytes']) - num(a['persistent-bytes']))
+      .slice(0, top)
+      .map((r) => ({
+        category: r.category,
+        persistentBytes: num(r['persistent-bytes']),
+        count: num(r['count-persistent']),
+        transientCount: num(r['count-transient']),
+      })),
+  };
+}
+
+export interface LeakGroup {
+  type: string;
+  responsible?: string;
+  library?: string;
+  count: number;
+  bytes: number;
+}
+
+/**
+ * Leaks' detail, grouped by leaked type and responsible frame. The table comes
+ * either as columns or as attribute rows depending on the Xcode version, so
+ * both are read by field name rather than position.
+ */
+export function summariseLeaks(xml: string): LeakGroup[] {
+  const records: Array<Record<string, string>> = [];
+  if (xml.includes('<schema')) {
+    for (const row of parseXctraceTable(xml).rows) {
+      const r: Record<string, string> = {};
+      for (const [k, v] of Object.entries(row)) if (v) r[k] = v.attrs.fmt ?? v.attrs.name ?? v.text;
+      records.push(r);
+    }
+  } else records.push(...parseAttrRows(xml));
+  const pick = (r: Record<string, string>, keys: RegExp): string | undefined =>
+    Object.entries(r).find(([k]) => keys.test(k))?.[1];
+  const groups = new Map<string, LeakGroup>();
+  for (const r of records) {
+    const type = pick(r, /leaked-object|object|type|category/i) ?? '(unknown)';
+    const responsible = pick(r, /responsible-frame|responsible-caller|frame/i);
+    const library = pick(r, /responsible-library|library|image/i);
+    const bytes = Number((pick(r, /size|bytes/i) ?? '0').replace(/[^\d]/g, '')) || 0;
+    const count = Number(pick(r, /count/i) ?? 1) || 1;
+    const key = `${type}\u0000${responsible ?? ''}`;
+    const g = groups.get(key) ?? { type, responsible, library, count: 0, bytes: 0 };
+    g.count += count;
+    g.bytes += bytes;
+    groups.set(key, g);
+  }
+  return [...groups.values()].sort((a, b) => b.bytes - a.bytes || b.count - a.count);
+}
+
 /** "Main Thread (0x9a1296b) (ProfilingTest, pid: 48516)" → "Main Thread". */
 export function threadName(fmt: string | undefined): string {
   if (!fmt) return '(unknown thread)';
@@ -156,7 +255,10 @@ const RN_RUNTIME_LIB =
   /^(hermes|hermesvm|React|React-.*|ReactNative.*|RCT.*|yoga|folly|jsi|DYLD-STUB.*)$/i;
 
 /** Bottom-of-stack frames every main-thread sample carries; they say nothing about the cost. */
-const ENTRY_POINT = /(^|[\s.])main(\(\))?$|^start$|UIApplicationMain/;
+const ENTRY_POINT = /(^|[\s.$])main(\(\))?$|^start$|UIApplicationMain|_entry_point$/;
+/** RN / Reanimated / Hermes code statically linked into a debug app binary (`app.debug.dylib`). */
+const RN_RUNTIME_SYMBOL =
+  /(^|[\s[(<-])(std::|facebook::|hermes::|folly::|reanimated::|worklets::|yoga::|YG[A-Z]|DYLD-STUB|[-+]\[(RCT|REA|RNS|RNC|RNG|EX)[A-Z])/;
 
 /** The app's own code: anything shipped inside its bundle, not the OS or the RN runtime. */
 function isAppBinary(f: XFrame, appExecutable?: string): boolean {
@@ -207,7 +309,10 @@ export function analyzeTimeProfile(
     const th = threadName(row.thread?.attrs.fmt);
     threads.set(th, (threads.get(th) ?? 0) + weight);
     const appFrame = frames.find(
-      (f) => isAppBinary(f, opts.appExecutable) && !ENTRY_POINT.test(f.name)
+      (f) =>
+        isAppBinary(f, opts.appExecutable) &&
+        !ENTRY_POINT.test(f.name) &&
+        !RN_RUNTIME_SYMBOL.test(f.name)
     );
     if (appFrame) {
       const k = `${appFrame.name}\u0000${appFrame.library}`;
@@ -253,6 +358,7 @@ export function analyzeTimeProfile(
     }
     hangList.push({
       startMs: ms(start - (Number.isFinite(first) ? first : 0)),
+      traceMs: ms(start),
       durationMs: ms(dur),
       kind: h['hang-type']?.attrs.fmt ?? h['hang-type']?.text ?? 'hang',
       top: [...inHang.entries()]
@@ -327,8 +433,64 @@ async function simAppPid(udid: string, appId: string): Promise<number | undefine
   return undefined;
 }
 
+/**
+ * The app's pid and the `--device` value xctrace wants for this session:
+ * simulators by UDID, physical devices by hardware UDID, macOS none.
+ */
+export async function resolveAppProcess(
+  sessionName: string,
+  platform: string,
+  appId: string
+): Promise<{ pid: number; device?: string }> {
+  if (platform === 'macos') {
+    const pid = await macAppPid(appId);
+    if (pid === undefined) throw new Error(`${appId} is not running`);
+    return { pid };
+  }
+  const physical = await findPhysicalDevice(sessionName).catch(() => null);
+  const pid = physical
+    ? await devicectlAppPid(physical.identifier, appId).catch(() => undefined)
+    : await simAppPid(sessionName, appId);
+  if (pid === undefined) throw new Error(`${appId} is not running on ${sessionName}`);
+  return { pid, device: physical ? physical.udid : sessionName };
+}
+
+async function relaunchWithMallocLogging(deviceId: string, appId: string): Promise<void> {
+  const physical = await findPhysicalDevice(deviceId).catch(() => null);
+  const res = physical
+    ? await spawnCommand('xcrun', [
+        'devicectl',
+        'device',
+        'process',
+        'launch',
+        '--terminate-existing',
+        '--environment-variables',
+        JSON.stringify({ MallocStackLogging: '1' }),
+        '--device',
+        physical.identifier,
+        appId,
+      ])
+    : await spawnCommand(
+        'xcrun',
+        ['simctl', 'launch', '--terminate-running-process', deviceId, appId],
+        {
+          env: { ...process.env, SIMCTL_CHILD_MallocStackLogging: '1' },
+        }
+      );
+  if (!res.success)
+    throw new Error(`relaunch with MallocStackLogging failed: ${res.stderr.trim()}`);
+  // Give the app a moment to come up before xctrace looks for its pid.
+  await sleep(3_000);
+}
+
 export interface NativeOptions {
   appId?: string;
+  /** iOS: add the Leaks instrument. */
+  leaks?: boolean;
+  /** iOS: add the Allocations instrument. */
+  allocations?: boolean;
+  /** iOS: cold-relaunch the app with MallocStackLogging=1 so leaks name their allocation site. */
+  mallocStackLogging?: boolean;
   out?: string;
   top?: number;
 }
@@ -337,20 +499,17 @@ async function startXctrace(
   meta: ProfileMeta,
   sessionName: string,
   platform: string,
-  appId: string
+  appId: string,
+  extras: { leaks?: boolean; allocations?: boolean } = {}
 ): Promise<void> {
-  const pid = platform === 'macos' ? await macAppPid(appId) : await simAppPid(sessionName, appId);
-  if (pid === undefined) {
-    throw new Error(
-      `${appId} is not running on ${sessionName}` +
-        (platform === 'macos' ? '' : ' (physical devices are not supported yet — use a simulator)')
-    );
-  }
+  const { pid, device } = await resolveAppProcess(sessionName, platform, appId);
   const trace = path.join(meta.dir, 'native.trace');
   await fs.rm(trace, { recursive: true, force: true });
   const log = path.join(meta.dir, 'native.log');
   const args = ['xctrace', 'record', '--template', 'Time Profiler', '--attach', String(pid)];
-  if (platform !== 'macos') args.push('--device', sessionName);
+  if (extras.leaks) args.push('--instrument', 'Leaks');
+  if (extras.allocations) args.push('--instrument', 'Allocations');
+  if (device) args.push('--device', device);
   // A forgotten recording should not grow forever.
   args.push('--time-limit', '10m', '--output', trace, '--no-prompt');
   const fd = openSync(log, 'w');
@@ -362,7 +521,13 @@ async function startXctrace(
   while (Date.now() < deadline) {
     const text = await fs.readFile(log, 'utf8').catch(() => '');
     if (/Ctrl-C to stop|Starting recording/.test(text)) {
-      meta.native = { state: 'recording', tool: 'xctrace', trace, pid: child.pid };
+      meta.native = {
+        state: 'recording',
+        tool: 'xctrace',
+        trace,
+        pid: child.pid,
+        startedAtHostMs: Date.now(),
+      };
       return;
     }
     if (!alive(child.pid!)) throw new Error(`xctrace exited before recording:\n${text.trim()}`);
@@ -409,15 +574,32 @@ async function analyzeXctrace(meta: ProfileMeta, top: number): Promise<NativeRep
   const tp = await exportTable(trace, 'time-profile');
   if (!tp) throw new Error(`could not export the time-profile table from ${trace}`);
   const hangs = await exportTable(trace, 'potential-hangs');
+  const track = async (name: string, detail: string): Promise<string | undefined> => {
+    const res = await spawnCommand('xcrun', [
+      'xctrace',
+      'export',
+      '--input',
+      trace,
+      '--xpath',
+      `/trace-toc/run[@number="1"]/tracks/track[@name="${name}"]/details/detail[@name="${detail}"]`,
+    ]);
+    return res.success ? res.stdout : undefined;
+  };
+  const allocXml = await track('Allocations', 'Statistics');
+  const leaksXml = await track('Leaks', 'Leaks');
   // The app's executable name is the process name xctrace attached to.
   const log = await fs.readFile(path.join(meta.dir, 'native.log'), 'utf8').catch(() => '');
   const exe = log.match(/Attaching to: (.+?) \(\d+\)/)?.[1];
-  return analyzeTimeProfile(tp, hangs, {
+  const report = analyzeTimeProfile(tp, hangs, {
     top,
     appExecutable: exe,
     trace,
     platform: meta.platform ?? 'ios',
   });
+  if (allocXml) report.allocations = summariseAllocations(parseAttrRows(allocXml));
+  // An empty <node> means Leaks ran and found nothing; no node means it was not recorded.
+  if (leaksXml?.includes('<node')) report.leaks = summariseLeaks(leaksXml);
+  return report;
 }
 
 function remotePerfPath(meta: ProfileMeta): string {
@@ -434,7 +616,8 @@ async function startSimpleperf(meta: ProfileMeta, deviceId: string, appId: strin
   const attempt = async (event?: string): Promise<{ pid?: number; error?: string }> => {
     const fd = openSync(log, 'w');
     const args = ['-s', deviceId, 'shell', 'simpleperf', 'record', '--app', appId];
-    if (event) args.push('-e', event);
+    // The software clock event is costly on emulators; 1kHz keeps the app's own timing honest.
+    if (event) args.push('-e', event, '-f', '1000');
     // --duration caps a forgotten recording; SIGINT ends it early and still writes the file.
     args.push('-o', remote, '--duration', '600');
     const child = spawn(adb, args, { detached: true, stdio: ['ignore', fd, fd], env });
@@ -484,8 +667,15 @@ async function stopSimpleperf(meta: ProfileMeta, deviceId: string): Promise<void
   const remote = remotePerfPath(meta);
   await spawnCommand(adb, ['-s', deviceId, 'shell', 'pkill', '-INT', '-f', remote], { env });
   const pid = meta.native!.pid!;
-  const deadline = Date.now() + 60_000;
-  while (alive(pid) && Date.now() < deadline) await sleep(250);
+  // simpleperf finalises the file after SIGINT; pulling earlier gets a truncated recording.
+  const deadline = Date.now() + 180_000;
+  const running = async (): Promise<boolean> => {
+    const r = await spawnCommand(adb, ['-s', deviceId, 'shell', 'pgrep', '-f', remote], { env });
+    return r.success && r.stdout.trim().length > 0;
+  };
+  while ((alive(pid) || (await running())) && Date.now() < deadline) await sleep(500);
+  if (await running())
+    throw new Error('simpleperf did not finish writing its recording within 180s');
   const pull = await spawnCommand(adb, ['-s', deviceId, 'pull', remote, meta.native!.trace], {
     env,
   });
@@ -522,7 +712,12 @@ async function analyzeSimpleperf(
       ],
       { env }
     );
-  const bySymbol = await report('dso,symbol');
+  let bySymbol = await report('dso,symbol');
+  if (!bySymbol.success && /No such file/i.test(bySymbol.stderr + bySymbol.stdout)) {
+    // Re-analysing after stop cleaned up the device copy: push the pulled recording back.
+    await spawnCommand(adb, ['-s', deviceId, 'push', meta.native!.trace, remote], { env });
+    bySymbol = await report('dso,symbol');
+  }
   if (!bySymbol.success) {
     throw new Error(
       `simpleperf report failed on-device (${bySymbol.stderr.trim() || 'no output'}). ` +
@@ -550,8 +745,70 @@ async function analyzeSimpleperf(
       .slice(0, 15)
       .map((d) => ({ library: d.dso, percent: d.percent })),
     threads: byThread.success ? parseSimpleperfThreads(byThread.stdout).slice(0, 15) : [],
+    ...((await readJson<Pick<NativeReport, 'frames' | 'memory'>>(
+      path.join(meta.dir, 'native-android.json')
+    )) ?? {}),
     notes: [],
   };
+}
+
+// ── Android extras: frames, GC, memory around the recording ───────────────────
+
+interface AndroidExtrasStart {
+  gcSince?: string;
+  startPssBytes?: number;
+}
+
+async function pssBytes(deviceId: string, appId: string): Promise<number | undefined> {
+  const res = await adbShell(deviceId, ['dumpsys', 'meminfo', appId]);
+  const kb = res.success
+    ? (res.stdout.match(/TOTAL PSS:\s+(\d+)/)?.[1] ?? res.stdout.match(/^\s*TOTAL\s+(\d+)/m)?.[1])
+    : undefined;
+  return kb ? Number(kb) * 1024 : undefined;
+}
+
+async function startAndroidExtras(deviceId: string, appId: string): Promise<AndroidExtrasStart> {
+  await resetFrameCounters(deviceId, appId).catch(() => undefined);
+  return {
+    gcSince: await deviceLogcatTimestamp(deviceId).catch(() => undefined),
+    startPssBytes: await pssBytes(deviceId, appId).catch(() => undefined),
+  };
+}
+
+async function collectAndroidExtras(
+  deviceId: string,
+  appId: string,
+  start: AndroidExtrasStart
+): Promise<Pick<NativeReport, 'frames' | 'memory'>> {
+  const out: Pick<NativeReport, 'frames' | 'memory'> = {};
+  const gfx = await adbShell(deviceId, ['dumpsys', 'gfxinfo', appId, 'framestats']);
+  if (gfx.success) {
+    const summary = parseGfxinfoSummary(gfx.stdout);
+    const stats = summariseFrames(
+      parseFramestats(gfx.stdout)
+        .map((r) => toFrameSample(r))
+        .filter((f): f is NonNullable<typeof f> => f !== null),
+      5
+    );
+    if ((summary.totalFrames ?? 0) > 0) {
+      out.frames = {
+        totalFrames: summary.totalFrames ?? 0,
+        jankyPercent: summary.jankyPercent ?? null,
+        p50Ms: stats?.distribution.p50Ms ?? null,
+        p95Ms: stats?.distribution.p95Ms ?? null,
+        dominantPhase: stats?.attribution?.dominantPhase ?? null,
+      };
+    }
+  }
+  const gc = await collectGcSince(deviceId, start.gcSince).catch(() => []);
+  const gcReport = gc.length ? summariseGc(gc) : undefined;
+  out.memory = {
+    startPssBytes: start.startPssBytes,
+    endPssBytes: await pssBytes(deviceId, appId).catch(() => undefined),
+    gcCollections: gcReport?.events,
+    gcPauseMs: gcReport?.totalPauseMs,
+  };
+  return out;
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -582,11 +839,25 @@ export async function startNativeProfile(
   if (active?.native?.state === 'recording') {
     throw new Error(`already recording into ${active.dir} — run \`conductor profile native stop\``);
   }
+  if (nOpts.mallocStackLogging) {
+    if (platform === 'android' || platform === 'macos') {
+      throw new Error('--malloc-stack-logging is for iOS/tvOS apps');
+    }
+    if (active?.react?.state === 'recording') {
+      throw new Error(
+        '--malloc-stack-logging relaunches the app, which would discard the React recording in progress — start it first, then `profile react start`'
+      );
+    }
+    await relaunchWithMallocLogging(sessionName, appId);
+  }
   const meta = await openProfile(sessionName, { platform, appId, out: nOpts.out });
   meta.appId ??= appId;
   try {
-    if (platform === 'android') await startSimpleperf(meta, sessionName, appId);
-    else await startXctrace(meta, sessionName, platform, appId);
+    if (platform === 'android') {
+      const extras = await startAndroidExtras(sessionName, appId);
+      await startSimpleperf(meta, sessionName, appId);
+      meta.native!.android = extras;
+    } else await startXctrace(meta, sessionName, platform, appId, nOpts);
   } catch (err) {
     meta.native = undefined;
     await settleProfile(meta);
@@ -630,8 +901,15 @@ export async function stopNativeProfile(
     throw new Error('not recording (run `conductor profile native start` first)');
   }
   try {
-    if (meta.native.tool === 'simpleperf') await stopSimpleperf(meta, sessionName);
-    else await stopXctrace(meta);
+    if (meta.native.tool === 'simpleperf') {
+      await stopSimpleperf(meta, sessionName);
+      const extras = await collectAndroidExtras(
+        sessionName,
+        meta.appId!,
+        (meta.native.android ?? {}) as AndroidExtrasStart
+      ).catch(() => ({}));
+      await writeJson(path.join(meta.dir, 'native-android.json'), extras);
+    } else await stopXctrace(meta);
     meta.native.state = 'done';
   } catch (err) {
     meta.native.state = 'failed';
@@ -756,6 +1034,38 @@ export function printNativeReport(
                 .slice(0, 3)
                 .join(', ')}`
             : '')
+      );
+    }
+  }
+  if (r.frames) {
+    console.log(
+      `\n  frames: ${r.frames.totalFrames} rendered, ${r.frames.jankyPercent ?? '?'}% janky, ` +
+        `p50 ${r.frames.p50Ms ?? '?'}ms p95 ${r.frames.p95Ms ?? '?'}ms` +
+        (r.frames.dominantPhase ? `, worst frames dominated by ${r.frames.dominantPhase}` : '')
+    );
+  }
+  if (r.memory?.startPssBytes !== undefined && r.memory.endPssBytes !== undefined) {
+    const mb = (b: number): string => `${(b / 1024 / 1024).toFixed(1)}MB`;
+    console.log(
+      `  memory: PSS ${mb(r.memory.startPssBytes)} → ${mb(r.memory.endPssBytes)}` +
+        (r.memory.gcCollections !== undefined ? `, ${r.memory.gcCollections} ART GC(s) logged` : '')
+    );
+  }
+  if (r.allocations) {
+    const mb = (b: number): string => `${(b / 1024 / 1024).toFixed(1)}MB`;
+    console.log(
+      `\n  allocations: ${mb(r.allocations.persistentBytes)} live in ${r.allocations.persistentCount} objects, ` +
+        `${r.allocations.transientCount} transient (${mb(r.allocations.transientBytes)})`
+    );
+    for (const a of r.allocations.top.slice(0, 5)) {
+      console.log(`  ${mb(a.persistentBytes).padStart(9)}  ${a.category}  (${a.count} live)`);
+    }
+  }
+  if (r.leaks) {
+    console.log(`\n  leaks: ${r.leaks.length ? `${r.leaks.length} group(s)` : 'none detected'}`);
+    for (const l of r.leaks.slice(0, 5)) {
+      console.log(
+        `    ${l.count}× ${l.type} ${(l.bytes / 1024).toFixed(1)}KiB${l.responsible ? ` — ${l.responsible}` : ''}`
       );
     }
   }

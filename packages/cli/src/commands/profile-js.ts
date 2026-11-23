@@ -864,3 +864,58 @@ export async function profileJsHold(
     await fs.rm(p.state, { force: true });
   }
 }
+
+export interface StackSummary {
+  /** Caller chain from the matched function outward (innermost first). */
+  frames: string[];
+  ms: number;
+  samples: number;
+}
+
+/**
+ * Where a function is called from: for every sample whose stack contains a
+ * frame matching `pattern`, the chain from that frame out to `depth` callers.
+ */
+export function stacksFor(
+  profiles: CpuProfile[],
+  pattern: RegExp,
+  depth = 6,
+  top = 5,
+  label: (frame: CallFrame) => string = frameKey
+): StackSummary[] {
+  const byKey = new Map<string, StackSummary>();
+  for (const profile of profiles) {
+    const byId = new Map<number, ProfileNode>(profile.nodes.map((n) => [n.id, n]));
+    const parentOf = new Map<number, number>();
+    for (const n of profile.nodes) for (const c of n.children ?? []) parentOf.set(c, n.id);
+    const samples = profile.samples ?? [];
+    const deltas = profile.timeDeltas ?? [];
+    for (let i = 0; i < samples.length; i++) {
+      let cursor: number | undefined = samples[i];
+      while (
+        cursor !== undefined &&
+        !pattern.test(byId.get(cursor)?.callFrame.functionName ?? '')
+      ) {
+        cursor = parentOf.get(cursor);
+      }
+      if (cursor === undefined) continue;
+      const frames: string[] = [];
+      while (cursor !== undefined && frames.length < depth) {
+        const n = byId.get(cursor);
+        if (!n || n.callFrame.functionName === '[root]' || n.callFrame.functionName === '(root)')
+          break;
+        frames.push(label(n.callFrame));
+        cursor = parentOf.get(cursor);
+      }
+      const key = frames.join(' ← ');
+      const slot = byKey.get(key) ?? { frames, ms: 0, samples: 0 };
+      slot.ms += (deltas[i] ?? 0) / 1000;
+      slot.samples++;
+      byKey.set(key, slot);
+    }
+  }
+  return [...byKey.values()]
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, top)
+    .map((s) => ({ ...s, ms: round(s.ms) }));
+}

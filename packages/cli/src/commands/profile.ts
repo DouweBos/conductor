@@ -20,6 +20,7 @@ export const HELP = `  profile cpu --duration <s> [--out <path>] [<appId>]
     --max-commits <n>                  Commit ring-buffer size (default 2000)
     --max-components <n>               Component records kept per commit (default 1000)
     --hosts                            Also record host elements (View, Text…)
+    --force                            Take over a recording another conductor session left running
   profile react stop [--top N]         Stop, save the profile and summarise it
     --timeline                         Include per-commit component detail in --json
     --no-symbolicate                   Skip mapping JS functions to sources via Metro's source map
@@ -28,11 +29,16 @@ export const HELP = `  profile cpu --duration <s> [--out <path>] [<appId>]
     --filter <regex> / --hosts         Narrow by name / show host elements (if recorded with --hosts)
   profile react cpu [<dir>]            Hermes CPU hotspots by JS function (self/total, source)
     --components-only                  Only PascalCase functions (component renders)
+    --stack <regex>                    Where matching functions are called from (top caller chains)
+  profile status                       What is recording right now (and whether the app still holds it)
   profile analyze [<dir>]              Ranked findings across React, JS CPU and native
     --save-baseline <name|path>        Save this run as a baseline
     --diff <name|path>                 Compare against a baseline (flags ±20% changes)
+    --project-root <dir>               Where to find component sources (default: where start ran)
   profile native start [<appId>]       Start native CPU sampling (iOS/tvOS sim + macOS: xctrace
-                                       Time Profiler, Android: simpleperf)
+                                       Time Profiler, Android: simpleperf + frames/GC/memory)
+    --leaks / --allocations            iOS: also record the Leaks / Allocations instruments
+    --malloc-stack-logging             iOS: relaunch the app with MallocStackLogging so leaks name their site
   profile native stop [--top N]        Stop, export and rank (threads, hot functions, hangs)
   profile native analyze [<dir>]       Re-print a saved native report`;
 
@@ -47,6 +53,7 @@ import { MacDriver, macAppPid } from '../drivers/macos.js';
 import { adbShell } from '../android/device.js';
 import { memory } from './memory.js';
 import { collectGcSince, deviceLogcatTimestamp, summariseGc, GcReport } from './profile-gc.js';
+import { resolveAppProcess } from './profile-native.js';
 
 export interface SimpleperfEntry {
   percent: number;
@@ -179,21 +186,18 @@ async function recordIosCpu(
   deviceId: string,
   appId: string | undefined,
   durationSec: number,
-  out: string
+  out: string,
+  platform: string
 ): Promise<void> {
-  const args = [
-    'xctrace',
-    'record',
-    '--template',
-    'Time Profiler',
-    '--device',
-    deviceId,
-    '--time-limit',
-    `${durationSec}s`,
-    '--output',
-    out,
-  ];
-  if (appId) args.push('--attach', appId);
+  const args = ['xctrace', 'record', '--template', 'Time Profiler'];
+  if (appId) {
+    // xctrace attaches by pid or process name, never by bundle id.
+    const { pid, device } = await resolveAppProcess(deviceId, platform, appId);
+    args.push('--device', device ?? deviceId, '--attach', String(pid));
+  } else {
+    args.push('--device', deviceId, '--all-processes');
+  }
+  args.push('--time-limit', `${durationSec}s`, '--output', out);
   await new Promise<void>((resolve, reject) => {
     const proc = spawn('xcrun', args, { stdio: 'inherit' });
     proc.on('close', (code) =>
@@ -349,7 +353,7 @@ export async function profileCpu(
     if (platform === 'macos') {
       await recordMacCpu(sessionName, profileOpts.appId, profileOpts.durationSec, out);
     } else if (isApple) {
-      await recordIosCpu(sessionName, profileOpts.appId, profileOpts.durationSec, out);
+      await recordIosCpu(sessionName, profileOpts.appId, profileOpts.durationSec, out, platform!);
     } else if (platform === 'android') {
       entries = await recordAndroidCpu(
         sessionName,
@@ -657,16 +661,18 @@ async function captureStdout(fn: () => Promise<void>): Promise<string> {
 export const REACT_PROFILER_INSTALL = (
   maxCommits: number,
   maxComponents: number,
-  includeHosts = false
+  includeHosts = false,
+  owner = ''
 ): string => `
 (() => {
   if (globalThis.__CONDUCTOR_REACT_PROFILER__) {
-    return { installed: true, already: true };
+    return { installed: true, already: true, owner: globalThis.__CONDUCTOR_REACT_PROFILER__.state.owner };
   }
   const hook = globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__;
   if (!hook) return { installed: false, error: 'No React DevTools hook on this runtime' };
 
   var state = {
+    owner: ${JSON.stringify(owner)},
     startedAt: Date.now(),
     commits: [],
     maxCommits: ${maxCommits},
@@ -705,21 +711,44 @@ export const REACT_PROFILER_INSTALL = (
     if (Array.isArray(v)) return 'array';
     return t;
   };
+  var contextName = function (ctx) {
+    return (ctx && (ctx.displayName || (ctx.Provider && ctx.Provider.displayName))) || 'Context';
+  };
   var renderReason = function (fiber) {
     var alt = fiber.alternate;
-    if (!alt) return { reason: 'mount' };
+    var compiled = !!(fiber.updateQueue && fiber.updateQueue.memoCache);
+    if (!alt) return { reason: 'mount', compiled: compiled };
+    var hooks = null;
     var stateChanged = false;
     if (fiber.tag === 1) {
       stateChanged = fiber.memoizedState !== alt.memoizedState;
     } else {
+      var types = fiber._debugHookTypes || null;
       var h = fiber.memoizedState;
       var ph = alt.memoizedState;
-      var guard = 0;
-      while (h && ph && guard++ < 100) {
-        if (h.queue && h.memoizedState !== ph.memoizedState) { stateChanged = true; break; }
+      var idx = 0;
+      while (h && ph && idx < 100) {
+        if (h.queue && h.memoizedState !== ph.memoizedState) {
+          stateChanged = true;
+          if (!hooks) hooks = [];
+          if (hooks.length < 5) hooks.push(((types && types[idx]) || 'hook') + '#' + idx);
+        }
         h = h.next;
         ph = ph.next;
+        idx++;
       }
+    }
+    var contexts = null;
+    var d = fiber.dependencies && fiber.dependencies.firstContext;
+    var od = alt.dependencies && alt.dependencies.firstContext;
+    var cguard = 0;
+    while (d && od && cguard++ < 50) {
+      if (d.memoizedValue !== od.memoizedValue) {
+        if (!contexts) contexts = [];
+        if (contexts.length < 5) contexts.push(contextName(d.context));
+      }
+      d = d.next;
+      od = od.next;
     }
     var np = fiber.memoizedProps;
     var op = alt.memoizedProps;
@@ -736,15 +765,22 @@ export const REACT_PROFILER_INSTALL = (
       for (var j = 0; j < oldKeys.length; j++) {
         if (!(oldKeys[j] in np) && changed.length < 8) changed.push(oldKeys[j] + ':removed');
       }
+      if (!changed.length) changed = null;
     }
-    if (stateChanged) return changed && changed.length ? { reason: 'state', changed: changed } : { reason: 'state' };
-    if (changed && changed.length) return { reason: 'props', changed: changed };
-    if (np !== op) {
-      // New props object, every prop shallow-equal: only the parent re-rendered.
-      // React.memo (or a stable parent) would have skipped this render.
-      return { reason: 'parent' };
-    }
-    return { reason: 'context' };
+    var out = { compiled: compiled };
+    if (changed) out.changed = changed;
+    if (hooks) out.hooks = hooks;
+    if (contexts) out.contexts = contexts;
+    if (stateChanged) out.reason = 'state';
+    else if (changed) out.reason = 'props';
+    else if (contexts) out.reason = 'context';
+    // New props object, every prop shallow-equal: only the parent re-rendered.
+    // React.memo (or a stable parent) would have skipped this render.
+    else if (np !== op) out.reason = 'parent';
+    // Same props, no state or context change we can see: a context read through
+    // a path without dependencies, a forced update, or an external store.
+    else out.reason = 'unknown';
+    return out;
   };
 
   var orig = hook.onCommitFiberRoot;
@@ -763,7 +799,7 @@ export const REACT_PROFILER_INSTALL = (
         var components = [];
         var droppedHere = 0;
 
-        var visit = function (fiber, depth, parentName) {
+        var visit = function (fiber, depth, parentName, cause) {
           var start = fiber.actualStartTime;
           if (!(typeof start === 'number' && start >= passStart)) return 0;
 
@@ -771,10 +807,18 @@ export const REACT_PROFILER_INSTALL = (
             (fiber.type && (fiber.type.displayName || fiber.type.name)) ||
             (typeof fiber.type === 'string' ? fiber.type : null);
           var host = typeof fiber.type === 'string';
+          var composite = !!name && !host;
+          var why = composite ? renderReason(fiber) : null;
+          // Root cause handed to descendants: the nearest ancestor that rendered for its own reason.
+          var childCause = cause;
+          if (why && why.reason !== 'parent') {
+            childCause = name + ' (' + why.reason + (why.hooks ? ' ' + why.hooks[0] : '') +
+              (why.contexts ? ' ' + why.contexts[0] : '') + ')';
+          }
           var childSum = 0;
           var child = fiber.child;
           while (child) {
-            childSum += visit(child, depth + 1, name && !host ? name : parentName);
+            childSum += visit(child, depth + 1, composite ? name : parentName, childCause);
             child = child.sibling;
           }
 
@@ -791,9 +835,12 @@ export const REACT_PROFILER_INSTALL = (
               if (host) rec.host = true;
               else {
                 if (parentName) rec.parent = parentName;
-                var why = renderReason(fiber);
                 rec.reason = why.reason;
                 if (why.changed) rec.changed = why.changed;
+                if (why.hooks) rec.hooks = why.hooks;
+                if (why.contexts) rec.contexts = why.contexts;
+                if (why.compiled) rec.compiled = true;
+                if (why.reason === 'parent' && cause) rec.cause = cause;
               }
               components.push(rec);
             } else {
@@ -803,7 +850,7 @@ export const REACT_PROFILER_INSTALL = (
           return dur;
         };
 
-        visit(rootFiber, 0, null);
+        visit(rootFiber, 0, null, null);
         state.droppedComponents += droppedHere;
         state.commits.push({
           at: Date.now(),
@@ -871,6 +918,7 @@ export const REACT_PROFILER_READ = (top: number, timeline: boolean): string => `
     profilingSupported: s.profilingSupported,
     startedAt: s.startedAt,
     readAt: Date.now(),
+    owner: s.owner,
     totalCommits: s.commits.length,
     droppedCommits: s.droppedCommits,
     skippedCommits: s.skippedCommits,
@@ -910,7 +958,7 @@ export interface ReactComponentStat {
   renders: number;
 }
 
-export type RenderReason = 'mount' | 'props' | 'state' | 'parent' | 'context';
+export type RenderReason = 'mount' | 'props' | 'state' | 'parent' | 'context' | 'unknown';
 
 export interface ReactCommitComponent {
   name: string;
@@ -925,6 +973,14 @@ export interface ReactCommitComponent {
   reason?: RenderReason;
   /** Changed props as `name:type`, for `props` (and `state` when props also changed). */
   changed?: string[];
+  /** State hooks that changed, as `useState#2` (from `_debugHookTypes`). */
+  hooks?: string[];
+  /** Contexts whose value changed (displayName). */
+  contexts?: string[];
+  /** Compiled by the React Compiler (has a memo cache). */
+  compiled?: boolean;
+  /** For `parent` renders: the nearest ancestor that rendered for its own reason. */
+  cause?: string;
 }
 
 export interface ReactCommitEntry {
@@ -943,6 +999,8 @@ export interface ReactProfilerReadResult {
   /** Runtime `Date.now()` when the hook was installed / read. */
   startedAt?: number;
   readAt?: number;
+  /** Conductor session that installed the hook. */
+  owner?: string;
   totalCommits?: number;
   droppedCommits?: number;
   /** Commits whose root carried no start stamp, so their work could not be isolated. */
@@ -1004,3 +1062,18 @@ export function printReactReport(read: ReactProfilerReadResult): void {
     );
   }
 }
+
+/** Who holds the commit hook in this runtime, and since when. */
+export const REACT_PROFILER_STATUS = `
+(() => {
+  const p = globalThis.__CONDUCTOR_REACT_PROFILER__;
+  if (!p) return { installed: false };
+  return {
+    installed: true,
+    owner: p.state.owner,
+    startedAt: p.state.startedAt,
+    now: Date.now(),
+    commits: p.state.commits.length + p.state.droppedCommits
+  };
+})()
+`;

@@ -6,7 +6,8 @@ export const HELP = `  run-flow <file> [--device <id>]     Run a Maestro YAML fl
     --profile [react|native|all]      Record a profile around the whole run (default react:
                                       React commits + Hermes CPU), then print ranked findings
       --profile-out <dir>             Profile directory (default ~/.conductor/profiles/…)
-      --app <id> / --page <id>        Metro target when several apps share Metro`;
+      --app <id> / --page <id>        Metro target when several apps share Metro
+      --leaks / --allocations         iOS native: also record Leaks / Allocations`;
 
 import path from 'path';
 import { getDriver } from '../runner.js';
@@ -20,7 +21,7 @@ import {
   printFindings,
 } from './profile-session.js';
 import { startNativeProfile, stopNativeProfile, printNativeReport } from './profile-native.js';
-import { readMeta, writeMeta } from './profile-store.js';
+import { readMeta, writeMeta, appendProfileStep } from './profile-store.js';
 
 export interface FlowProfileOptions {
   mode: 'react' | 'native' | 'all';
@@ -28,6 +29,8 @@ export interface FlowProfileOptions {
   appId?: string;
   pageId?: string;
   port?: number;
+  leaks?: boolean;
+  allocations?: boolean;
 }
 
 export interface CommandBenchmark extends Distribution {
@@ -131,6 +134,8 @@ export async function runFlow(
         const meta = await startNativeProfile(sessionName, {
           appId: profile!.appId,
           out: profile!.out,
+          leaks: profile!.leaks,
+          allocations: profile!.allocations,
         });
         profileDir = meta.dir;
       } catch (err) {
@@ -140,8 +145,26 @@ export async function runFlow(
     }
 
     try {
+      // Under a profile, every step is logged so analyze can say which one preceded a slow commit.
+      const stepSink = profile
+        ? (e: BenchmarkEntry): void => {
+            if (e.depth > 0) return;
+            const end = Date.now();
+            void appendProfileStep(sessionName, {
+              label: e.label,
+              startHostMs: Math.round(end - e.ms),
+              endHostMs: end,
+              ok: e.ok,
+            }).catch(() => undefined);
+          }
+        : undefined;
       if (runs <= 1) {
-        await executeFlow(flow, driver, { cwd: path.dirname(resolvedFile), env, benchmark });
+        await executeFlow(flow, driver, {
+          cwd: path.dirname(resolvedFile),
+          env,
+          benchmark,
+          benchmarkSink: stepSink,
+        });
       } else {
         const results: Array<{ totalMs: number; entries: BenchmarkEntry[] }> = [];
         for (let i = 0; i < runs; i++) {
@@ -152,7 +175,10 @@ export async function runFlow(
             cwd: path.dirname(resolvedFile),
             env,
             benchmark,
-            benchmarkSink: (e) => entries.push(e),
+            benchmarkSink: (e) => {
+              entries.push(e);
+              stepSink?.(e);
+            },
           });
           results.push({ totalMs: round(performance.now() - started), entries });
         }

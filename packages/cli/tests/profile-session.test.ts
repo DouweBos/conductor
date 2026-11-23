@@ -18,7 +18,9 @@ import {
   buildFindings,
   toBaseline,
   diffBaselines,
+  precedingStep,
 } from '../src/commands/profile-analyze.js';
+import { buildComponentIndex, locateComponent } from '../src/commands/component-index.js';
 import {
   analyzeCpuProfile,
   analyzeCpuProfiles,
@@ -30,6 +32,9 @@ import {
   analyzeTimeProfile,
   threadName,
   parseSimpleperfThreads,
+  parseAttrRows,
+  summariseAllocations,
+  summariseLeaks,
 } from '../src/commands/profile-native.js';
 import {
   SourceMapLookup,
@@ -38,6 +43,7 @@ import {
   scriptFileName,
 } from '../src/source-map.js';
 import { metroWsOrigin } from '../src/drivers/log-sources/metro.js';
+import { matchAppProcess } from '../src/drivers/devicectl.js';
 
 export const profilingSession = new TestSuite('profiling session');
 
@@ -194,7 +200,7 @@ profilingSession.test('hook: only state hooks (with a queue) count as state chan
   });
 
   const read = capture([f(null, { start: 10, dur: 2 }, a1, b1)]);
-  assert(comp(read, 'A').reason === 'context', `A reason ${comp(read, 'A').reason}`);
+  assert(comp(read, 'A').reason === 'unknown', `A reason ${comp(read, 'A').reason}`);
   assert(comp(read, 'B').reason === 'state', `B reason ${comp(read, 'B').reason}`);
 });
 
@@ -714,3 +720,235 @@ profilingSession.test(
     );
   }
 );
+
+profilingSession.test(
+  'devicectl: app pid comes from the bundle URL, not an extension',
+  async () => {
+    const url = 'file:///private/var/containers/Bundle/Application/DEF6/Plex.app/';
+    const procs = [
+      {
+        processIdentifier: 10,
+        executable:
+          'file:///private/var/containers/Bundle/Application/DEF6/Plex.app/PlugIns/Widget.appex/Widget',
+      },
+      {
+        processIdentifier: 11,
+        executable: 'file:///private/var/containers/Bundle/Application/DEF6/Plex.app/Plex',
+      },
+      {
+        processIdentifier: 12,
+        executable: 'file:///private/var/containers/Bundle/Application/AAAA/Slack.app/Slack',
+      },
+    ];
+    assert(matchAppProcess(procs, url, 'tv.plex.rn.app') === 11, 'main executable');
+    assert(matchAppProcess(procs.slice(2), url, 'tv.plex.rn.app') === undefined, 'not running');
+  }
+);
+
+// ── Causes, steps, hangs ↔ commits, memory tables ─────────────────────────────
+
+profilingSession.test(
+  'hook: parent renders carry the root cause; hooks and contexts are named',
+  async () => {
+    const ctx = { displayName: 'ThemeContext' };
+    const hookPrev = { memoizedState: 1, queue: {}, next: null };
+    const hookNext = { memoizedState: 2, queue: {}, next: null };
+    const feedPrev = f('Feed', { start: 0, dur: 1, memoizedProps: {}, memoizedState: hookPrev });
+    const feedNext = f('Feed', {
+      start: 10,
+      dur: 3,
+      alternate: feedPrev,
+      memoizedProps: feedPrev.memoizedProps,
+      memoizedState: hookNext,
+    });
+    (feedNext as unknown as { _debugHookTypes: string[] })._debugHookTypes = ['useState'];
+    const cardPrev = f('Card', { start: 0, dur: 1, memoizedProps: { id: 1 } });
+    const cardNext = f('Card', {
+      start: 10,
+      dur: 1,
+      alternate: cardPrev,
+      memoizedProps: { id: 1 },
+    });
+    feedNext.child = cardNext;
+    const themedPrev = f('Themed', { start: 0, dur: 1, memoizedProps: {} });
+    (themedPrev as unknown as { dependencies: unknown }).dependencies = {
+      firstContext: { context: ctx, memoizedValue: 'light', next: null },
+    };
+    const themedNext = f('Themed', {
+      start: 10,
+      dur: 1,
+      alternate: themedPrev,
+      memoizedProps: themedPrev.memoizedProps,
+    });
+    (themedNext as unknown as { dependencies: unknown }).dependencies = {
+      firstContext: { context: ctx, memoizedValue: 'dark', next: null },
+    };
+    (themedNext as unknown as { updateQueue: unknown }).updateQueue = { memoCache: {} };
+    const read = capture([f(null, { start: 10, dur: 4 }, feedNext, themedNext)]);
+    assert(
+      JSON.stringify(comp(read, 'Feed').hooks) === '["useState#0"]',
+      `hooks ${JSON.stringify(comp(read, 'Feed').hooks)}`
+    );
+    assert(comp(read, 'Card').reason === 'parent', 'Card parent');
+    assert(
+      comp(read, 'Card').cause === 'Feed (state useState#0)',
+      `cause ${comp(read, 'Card').cause}`
+    );
+    assert(comp(read, 'Themed').reason === 'context', `Themed ${comp(read, 'Themed').reason}`);
+    assert(comp(read, 'Themed').contexts?.[0] === 'ThemeContext', 'context named');
+    assert(comp(read, 'Themed').compiled === true, 'compiler memo cache detected');
+  }
+);
+
+profilingSession.test(
+  'findings: context churn, root cause text, step label and compiler bail-out',
+  async () => {
+    const commits = Array.from({ length: 8 }, (_, i) => ({
+      at: 1000 + i * 300,
+      dur: i === 0 ? 40 : 2,
+      comps: [
+        { name: 'Themed', reason: 'context' as const, contexts: ['ThemeContext'] },
+        {
+          name: 'Card',
+          reason: 'parent' as const,
+          parent: 'Feed',
+          cause: 'Feed (state useState#0)',
+        },
+        { name: 'Compiled', reason: 'state' as const, compiled: true },
+      ],
+    }));
+    const renders = computeRenders(readOf(commits));
+    const findings = buildFindings({
+      renders,
+      reactStartedAt: 1000,
+      steps: [{ label: 'tapOn "Load"', atMs: 1000 + 1000 - 120, ok: true }],
+    });
+    assert(
+      findings.some((x) => x.kind === 'context-churn' && /ThemeContext/.test(x.title)),
+      'context churn'
+    );
+    const wasted = findings.find((x) => x.kind === 'wasted-renders')!;
+    assert(/Root cause: Feed \(state useState#0\)/.test(wasted.detail), wasted.detail);
+    const slow = findings.find((x) => x.kind === 'slow-commit')!;
+    assert(/120ms after tapOn "Load"/.test(slow.detail), slow.detail);
+    assert(
+      findings.some((x) => x.kind === 'compiler-bailout' && x.component === 'Card'),
+      'bail-out flagged'
+    );
+    assert(
+      precedingStep([{ label: 'a', atMs: 0, ok: true }], 6000) === undefined,
+      'steps older than 5s are not a cause'
+    );
+  }
+);
+
+profilingSession.test('findings: a hang lists the React commits around it', async () => {
+  const renders = computeRenders(
+    readOf([{ at: 2100, dur: 80, comps: [{ name: 'Heavy', selfDuration: 70 }] }])
+  );
+  const findings = buildFindings({
+    renders,
+    reactStartedAt: 1000,
+    nativeStartedAtRuntimeMs: 1000,
+    native: {
+      platform: 'ios',
+      tool: 'xctrace',
+      trace: 't',
+      symbols: [],
+      libraries: [],
+      threads: [],
+      notes: [],
+      hangs: [{ startMs: 2000, traceMs: 2000, durationMs: 400, kind: 'Hang', top: [] }],
+    },
+  });
+  const hang = findings.find((x) => x.kind === 'hang')!;
+  assert(/#0 80ms \(Heavy\)/.test(hang.detail), hang.detail);
+});
+
+profilingSession.test('allocations and leaks tables', async () => {
+  const stats = `<node><row category="All Heap &amp; Anonymous VM" persistent-bytes="1000" count-persistent="10" total-bytes="1500" transient-bytes="500" count-transient="5"/>
+<row category="Malloc 16.00 KiB" persistent-bytes="800" count-persistent="2" count-transient="0"/>
+<row category="CFString" persistent-bytes="100" count-persistent="7" count-transient="3"/></node>`;
+  const a = summariseAllocations(parseAttrRows(stats))!;
+  assert(a.persistentBytes === 1000 && a.transientCount === 5, JSON.stringify(a));
+  assert(a.top[0].category === 'Malloc 16.00 KiB' && a.top.length === 2, JSON.stringify(a.top));
+  const leaks = summariseLeaks(
+    `<node><row leaked-object="NSMutableArray" size="64 Bytes" responsible-frame="-[Player load]" responsible-library="App"/>` +
+      `<row leaked-object="NSMutableArray" size="64 Bytes" responsible-frame="-[Player load]" responsible-library="App"/></node>`
+  );
+  assert(
+    leaks.length === 1 && leaks[0].count === 2 && leaks[0].bytes === 128,
+    JSON.stringify(leaks)
+  );
+  const nf = buildFindings({
+    native: {
+      platform: 'ios',
+      tool: 'xctrace',
+      trace: 't',
+      symbols: [],
+      libraries: [],
+      threads: [],
+      notes: [],
+      leaks,
+    },
+  });
+  assert(nf[0].kind === 'native-leak' && nf[0].severity === 'high', JSON.stringify(nf[0]));
+});
+
+profilingSession.test('android extras: jank and memory growth findings', async () => {
+  const nf = buildFindings({
+    native: {
+      platform: 'android',
+      tool: 'simpleperf',
+      trace: 't',
+      symbols: [],
+      libraries: [],
+      threads: [],
+      notes: [],
+      frames: {
+        totalFrames: 120,
+        jankyPercent: 40,
+        p50Ms: 20,
+        p95Ms: 90,
+        dominantPhase: 'issueDraw',
+      },
+      memory: { startPssBytes: 200 * 1048576, endPssBytes: 330 * 1048576 },
+    },
+  });
+  assert(
+    nf.some((x) => x.kind === 'jank' && x.severity === 'high'),
+    'jank'
+  );
+  assert(
+    nf.some((x) => x.kind === 'memory-growth' && x.severity === 'high'),
+    'growth'
+  );
+});
+
+profilingSession.test('component index: finds definitions and resolves display names', async () => {
+  const os = await import('node:os');
+  const fsp = await import('node:fs/promises');
+  const path = await import('node:path');
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cidx-'));
+  await fsp.mkdir(path.join(dir, 'src/app'), { recursive: true });
+  await fsp.mkdir(path.join(dir, 'node_modules/x'), { recursive: true });
+  await fsp.writeFile(
+    path.join(dir, 'src/app/profile.tsx'),
+    'export default function ProfileScreen() {}\nconst Row = memo((p) => null);\n'
+  );
+  await fsp.writeFile(
+    path.join(dir, 'src/Card.tsx'),
+    'export const Card: React.FC<P> = ({ a }) => null;\nclass Old extends React.Component {}\n'
+  );
+  await fsp.writeFile(path.join(dir, 'node_modules/x/View.js'), 'function View() {}\n');
+  const idx = await buildComponentIndex(dir);
+  assert(
+    locateComponent(idx, 'ProfileScreen(./profile.tsx)') === 'src/app/profile.tsx:1',
+    'expo-router name'
+  );
+  assert(locateComponent(idx, 'Memo(Row)') === 'src/app/profile.tsx:2', 'memo arrow');
+  assert(locateComponent(idx, 'Card') === 'src/Card.tsx:1', 'typed const arrow');
+  assert(locateComponent(idx, 'Old') === 'src/Card.tsx:2', 'class');
+  assert(locateComponent(idx, 'View') === undefined, 'node_modules skipped');
+  await fsp.rm(dir, { recursive: true, force: true });
+});

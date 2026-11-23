@@ -92,7 +92,8 @@ export function summariseGc(events: GcEvent[]): GcReport {
  * host's, so ask the device what time it thinks it is.
  */
 export async function deviceLogcatTimestamp(deviceId: string): Promise<string | undefined> {
-  const res = await adbShell(deviceId, ['date', '+%m-%d %H:%M:%S.000']);
+  // adb shell joins args with spaces, so the format must be quoted for the device shell.
+  const res = await adbShell(deviceId, ['date', "'+%m-%d %H:%M:%S.000'"]);
   return res.success ? res.stdout.trim() : undefined;
 }
 

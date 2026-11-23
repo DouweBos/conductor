@@ -110,7 +110,9 @@ pass `--report` when you need the answer rather than the artefact.
 | `conductor profile react stop [--top n]` | Stop both, save, and print a summary (components by self time, JS hotspots) |
 | `conductor profile react renders [<dir>] [--filter <regex>] [--hosts]` | Per component: renders, share of commits, self/max ms, **why** (mount / props / state / parent / context), changed props |
 | `conductor profile react cpu [<dir>] [--components-only]` | JS functions by self time, mapped to original `file:line` via Metro's source map |
-| `conductor profile analyze [<dir>]` | Ranked findings with a suggested fix each |
+| `conductor profile react cpu --stack <regex>` | Where a hot function is called from: top caller chains, source-mapped |
+| `conductor profile analyze [<dir>] [--project-root <dir>]` | Ranked findings with a suggested fix each, and the component's source file:line |
+| `conductor profile status` | What is recording now, and whether the app still holds it |
 | `conductor profile analyze --save-baseline <name\|path>` / `--diff <name\|path>` | Save a run / compare against one (flags ±20% changes that are also large in absolute terms) |
 
 `renders`, `cpu` and `analyze` read the last finished profile for the device
@@ -119,9 +121,23 @@ pass `--report` when you need the answer rather than the artefact.
 
 Reading the reasons: `parent` means the component got a new props object whose
 values were all equal — only its parent re-rendered, and `React.memo` would
-have skipped it. `props` lists the changed props with their type; when they are
-all `fn`/`object`/`array`, the parent is recreating them inline (useCallback /
-useMemo). `context` means neither props nor state changed.
+have skipped it; `root cause` names the nearest ancestor that changed for its
+own reason (e.g. `Feed (state useState#0)`). `props` lists the changed props
+with their type; when they are all `fn`/`object`/`array`, the parent is
+recreating them inline (useCallback / useMemo). `state` names the hooks that
+changed, `context` the contexts. `unknown` means nothing visible changed
+(external store subscription or forced update). Components compiled by the
+React Compiler are marked, and uncompiled ones that keep re-rendering are
+flagged as likely bail-outs.
+
+Every conductor action you run while recording (tap-on, press-key, swipe,
+run-flow steps…) is logged, and a slow commit says which one preceded it
+("132ms after tapOn increment-button"). Component source locations come from
+scanning the project the recording was started in (`--project-root` to
+override).
+
+`start` refuses to take over a recording another conductor session is running
+on the same app; `--force` takes it over.
 
 Findings cover: commits over the 16ms frame budget (with the JS functions that
 ran during that commit), bursts of commits within 100ms (setState cascades),
@@ -144,18 +160,23 @@ Needs a dev or profiling build. A release build fails with a clear message.
 
 | Command | Purpose |
 |---|---|
-| `conductor profile native start [<appId>]` | Start sampling the app (iOS/tvOS simulators + macOS: xctrace Time Profiler; Android: simpleperf) |
+| `conductor profile native start [<appId>] [--leaks] [--allocations] [--malloc-stack-logging]` | Start sampling the app (iOS/tvOS simulators, physical devices, macOS: xctrace Time Profiler, optionally Leaks/Allocations; Android: simpleperf plus frame timing, GC and memory) |
 | `conductor profile native stop [--top n]` | Stop, export and rank: per-thread split, hottest functions, deepest app frame per sample, hangs |
 | `conductor profile native analyze [<dir>]` | Re-print a saved native report |
 
+`--malloc-stack-logging` cold-relaunches the app with `MallocStackLogging=1` so
+leaks name their allocation site — start it before `profile react start`.
+
 Started while `profile react` is recording, it writes into the same profile
-directory so `profile analyze` ranks React, JS and native findings together.
-Android needs a debuggable or `profileable` build. Physical iOS devices are not
-supported yet.
+directory so `profile analyze` ranks React, JS and native findings together —
+and a native hang lists the React commits that happened around it.
+Android needs a debuggable or `profileable` build; emulators fall back to the
+`cpu-clock` event at 1kHz. "App code" in a debug build includes third-party
+native modules linked into the app binary.
 
 ## Repeatable profiles from a flow
 
-`conductor run-flow <file> --profile [react|native|all] [--repeat n] [--profile-out <dir>]`
+`conductor run-flow <file> --profile [react|native|all] [--repeat n] [--profile-out <dir>] [--leaks] [--allocations]`
 records a profile around the whole run and prints the findings. Record the
 flow once with `flow record start` / `flow record finish`, then re-run it under
 the profiler before and after a change:

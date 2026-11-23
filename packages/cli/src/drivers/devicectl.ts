@@ -259,6 +259,55 @@ interface ProcessListResult {
   result?: { runningProcesses?: Array<{ processIdentifier: number; executable?: string }> };
 }
 
+interface AppUrlResult {
+  result?: { apps?: Array<{ bundleIdentifier: string; url?: string }> };
+}
+
+/**
+ * PID of a running app on a physical device. Processes are listed by executable
+ * URL, so match on the app's installed bundle URL rather than on the bundle id.
+ */
+export async function appPid(deviceId: string, bundleId: string): Promise<number | undefined> {
+  const apps = await devicectlJson<AppUrlResult>([
+    'device',
+    'info',
+    'apps',
+    '--device',
+    deviceId,
+    '--bundle-id',
+    bundleId,
+  ]).catch(() => ({}) as AppUrlResult);
+  const url = apps.result?.apps?.find((a) => a.bundleIdentifier === bundleId)?.url;
+  const listed = await devicectlJson<ProcessListResult>([
+    'device',
+    'info',
+    'processes',
+    '--device',
+    deviceId,
+  ]);
+  return matchAppProcess(listed.result?.runningProcesses ?? [], url, bundleId);
+}
+
+/** The process whose executable lives directly in the app bundle at `appUrl` (not an extension). */
+export function matchAppProcess(
+  procs: Array<{ processIdentifier: number; executable?: string }>,
+  appUrl: string | undefined,
+  bundleId: string
+): number | undefined {
+  const norm = (u: string): string =>
+    decodeURIComponent(u.replace(/^file:\/\//, '')).replace(/\/$/, '');
+  if (appUrl) {
+    const base = norm(appUrl);
+    const hit = procs.find((p) => {
+      if (!p.executable) return false;
+      const exe = norm(p.executable);
+      return exe.startsWith(base + '/') && !exe.slice(base.length + 1).includes('/');
+    });
+    if (hit) return hit.processIdentifier;
+  }
+  return procs.find((p) => p.executable?.includes(bundleId))?.processIdentifier;
+}
+
 /** Terminate an app by bundle id. devicectl only kills by PID, so resolve one first. */
 export async function terminateApp(deviceId: string, bundleId: string): Promise<void> {
   const listed = await devicectlJson<ProcessListResult>([

@@ -106,6 +106,7 @@ import {
   profileReactRenders,
   profileReactCpu,
   profileAnalyze,
+  profileStatus,
 } from './commands/profile-session.js';
 import {
   profileNativeStart,
@@ -121,6 +122,7 @@ import {
 } from './commands/profile-js.js';
 import { crashesList, crashesShow, crashesTail, HELP as crashesHelp } from './commands/crashes.js';
 import { getActiveRecording, appendStep, commandToYamlStep } from './drivers/flow-recorder.js';
+import { appendProfileStep } from './commands/profile-store.js';
 import { foregroundApp, HELP as foregroundAppHelp } from './commands/foreground-app.js';
 import { listApps, HELP as listAppsHelp } from './commands/list-apps.js';
 import { copyApp, HELP as copyAppHelp } from './commands/copy-app.js';
@@ -325,6 +327,8 @@ async function main(): Promise<void> {
       'objects',
       'heap',
       'leaks',
+      'allocations',
+      'malloc-stack-logging',
       'snapshots',
       'growth-only',
       'global',
@@ -412,6 +416,8 @@ async function main(): Promise<void> {
       'threshold',
       'reference',
       'page',
+      'project-root',
+      'stack',
       'profile',
       'profile-out',
     ],
@@ -421,6 +427,7 @@ async function main(): Promise<void> {
   if (argv['verbose']) setVerbose(true);
 
   const [command, ...rest] = argv._;
+  const commandStartedAt = Date.now();
   const opts = { json: argv['json'] as boolean };
 
   if (argv['version']) {
@@ -1211,6 +1218,8 @@ async function main(): Promise<void> {
               appId: argv['app'] as string | undefined,
               pageId: argv['page'] as string | undefined,
               port: argv['port'] !== undefined ? Number(argv['port']) : undefined,
+              leaks: argv['leaks'] as boolean,
+              allocations: argv['allocations'] as boolean,
             }
           : undefined
       );
@@ -1387,6 +1396,7 @@ async function main(): Promise<void> {
               argv['max-components'] !== undefined ? Number(argv['max-components']) : undefined,
             cpu: argv['cpu'] as boolean | undefined,
             includeHosts: argv['hosts'] as boolean,
+            force: argv['force'] as boolean,
             out: argv['out'] as string | undefined,
           });
         } else if (sub2 === 'stop') {
@@ -1398,6 +1408,7 @@ async function main(): Promise<void> {
         } else if (sub2 === 'renders') {
           exitCode = await profileReactRenders(opts, sessionName, {
             dir: rest[2],
+            projectRoot: argv['project-root'] as string | undefined,
             top,
             filter: argv['filter'] as string | undefined,
             includeHost: argv['hosts'] as boolean,
@@ -1407,10 +1418,12 @@ async function main(): Promise<void> {
             dir: rest[2],
             top,
             componentsOnly: argv['components-only'] as boolean,
+            stack: argv['stack'] as string | undefined,
           });
         } else if (sub2 === 'analyze') {
           exitCode = await profileAnalyze(opts, sessionName, {
             dir: rest[2],
+            projectRoot: argv['project-root'] as string | undefined,
             top,
             saveBaseline: argv['save-baseline'] as string | undefined,
             diff: argv['diff'] as string | undefined,
@@ -1424,6 +1437,9 @@ async function main(): Promise<void> {
         if (sub2 === 'start') {
           exitCode = await profileNativeStart(opts, sessionName, {
             appId: rest[2] ?? (argv['app'] as string | undefined),
+            leaks: argv['leaks'] as boolean,
+            allocations: argv['allocations'] as boolean,
+            mallocStackLogging: argv['malloc-stack-logging'] as boolean,
             out: argv['out'] as string | undefined,
           });
         } else if (sub2 === 'stop') {
@@ -1434,16 +1450,19 @@ async function main(): Promise<void> {
           console.error('Usage: conductor profile native <start|stop|analyze>');
           exitCode = 1;
         }
+      } else if (sub === 'status') {
+        exitCode = await profileStatus(opts, sessionName);
       } else if (sub === 'analyze') {
         exitCode = await profileAnalyze(opts, sessionName, {
           dir: rest[1],
+          projectRoot: argv['project-root'] as string | undefined,
           top,
           saveBaseline: argv['save-baseline'] as string | undefined,
           diff: argv['diff'] as string | undefined,
         });
       } else {
         console.error(
-          'Usage: conductor profile <cpu|memory|frames|js|react|native|analyze> [args]'
+          'Usage: conductor profile <cpu|memory|frames|js|react|native|analyze|status> [args]'
         );
         exitCode = 1;
       }
@@ -1613,9 +1632,16 @@ async function main(): Promise<void> {
   if (exitCode === 0 && !NO_DEVICE_COMMANDS.has(command) && command !== 'flow') {
     try {
       const active = await getActiveRecording(sessionName);
-      if (active) {
-        const step = commandToYamlStep(command, rest.map(String), argv as Record<string, unknown>);
-        if (step) appendStep(active, step);
+      const step = commandToYamlStep(command, rest.map(String), argv as Record<string, unknown>);
+      if (active && step) appendStep(active, step);
+      // Label React commits during a profile with the action that preceded them.
+      if (step) {
+        await appendProfileStep(sessionName, {
+          label: [command, ...rest.map(String)].join(' ').slice(0, 120),
+          startHostMs: commandStartedAt,
+          endHostMs: Date.now(),
+          ok: true,
+        });
       }
     } catch {
       // Recording is best-effort — never fail the command for a bookkeeping issue.

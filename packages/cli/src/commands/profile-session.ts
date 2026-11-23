@@ -18,6 +18,7 @@ import {
   REACT_PROFILER_INSTALL,
   REACT_PROFILER_READ,
   REACT_PROFILER_STOP,
+  REACT_PROFILER_STATUS,
   NO_PROFILING_BUILD,
   ReactProfilerReadResult,
   ReactProfilerStartResult,
@@ -28,8 +29,10 @@ import {
   HolderDone,
   JsProfileSummary,
   analyzeCpuProfiles,
+  stacksFor,
   connectMetro,
   loadSegments,
+  activeJsHolder,
   printGaps,
   printSummary,
   startJsHolder,
@@ -50,6 +53,8 @@ import {
 import {
   ProfileMeta,
   activeProfile,
+  profilesRoot,
+  readProfileSteps,
   openProfile,
   readJson,
   readMeta,
@@ -59,11 +64,14 @@ import {
   writeMeta,
 } from './profile-store.js';
 import { analyzeNative, printNativeReport } from './profile-native.js';
+import { buildComponentIndex, locateComponent } from './component-index.js';
 import { getSession } from '../session.js';
 
 export interface ReactStartOptions extends CdpOpts {
   maxCommits?: number;
   maxComponents?: number;
+  /** Take over a recording another conductor session left running. */
+  force?: boolean;
   /** Record host elements (View, Text…) too. */
   includeHosts?: boolean;
   /** Also run the Hermes sampler (default true). */
@@ -79,6 +87,8 @@ export interface ReactStopOptions {
 }
 
 const RE_ATTACH_MS = 20_000;
+/** Older recordings by another session are treated as abandoned (the sampler holder gives up at 15). */
+const STALE_MINUTES = 15;
 
 /** Attach to the recording's own target; retry while a dropped session comes back. */
 async function connectPinned(
@@ -122,10 +132,34 @@ export async function startReactProfile(
   try {
     client = await connectMetro(sessionName, o);
     const t = client.target!;
-    // Discard a hook left behind by an earlier run that never stopped.
-    await client.evaluate(REACT_PROFILER_STOP).catch(() => undefined);
+    const existing = await client
+      .evaluate<{
+        installed: boolean;
+        owner?: string;
+        startedAt?: number;
+        now?: number;
+      }>(REACT_PROFILER_STATUS)
+      .catch(() => ({ installed: false }) as { installed: boolean; owner?: string });
+    if (existing.installed) {
+      const e = existing as { owner?: string; startedAt?: number; now?: number };
+      const ageMin = e.startedAt && e.now ? (e.now - e.startedAt) / 60_000 : Infinity;
+      // Another conductor session still recording this app: never clobber it silently.
+      if (e.owner && e.owner !== sessionName && ageMin < STALE_MINUTES && !o.force) {
+        throw new Error(
+          `conductor session "${e.owner}" has been profiling this app for ${ageMin.toFixed(1)} min. ` +
+            `Stop it there, or pass --force to take over (its data is discarded).`
+        );
+      }
+      // A hook left behind by an earlier run that never stopped, or a forced takeover.
+      await client.evaluate(REACT_PROFILER_STOP).catch(() => undefined);
+    }
     const install = await client.evaluate<ReactProfilerStartResult>(
-      REACT_PROFILER_INSTALL(o.maxCommits ?? 2000, o.maxComponents ?? 1000, o.includeHosts)
+      REACT_PROFILER_INSTALL(
+        o.maxCommits ?? 2000,
+        o.maxComponents ?? 1000,
+        o.includeHosts,
+        sessionName
+      )
     );
     if (!install.installed) throw new Error(install.error ?? 'install failed');
     if (install.profilingSupported === false) {
@@ -384,6 +418,7 @@ async function cpuSummary(p: LoadedProfile, top: number): Promise<JsProfileSumma
 
 export interface RendersOptions {
   dir?: string;
+  projectRoot?: string;
   top?: number;
   filter?: string;
   includeHost?: boolean;
@@ -402,7 +437,13 @@ export async function profileReactRenders(
       );
     const report = computeRenders(p.react, { includeHost: o.includeHost });
     const re = o.filter ? new RegExp(o.filter, 'i') : undefined;
-    const comps = report.components.filter((c) => !re || re.test(c.name));
+    const comps: Array<(typeof report.components)[number] & { source?: string }> =
+      report.components.filter((c) => !re || re.test(c.name));
+    const root = o.projectRoot ?? p.meta.projectRoot;
+    if (root) {
+      const index = await buildComponentIndex(root);
+      for (const c of comps) c.source = locateComponent(index, c.name);
+    }
     const top = o.top ?? 25;
     if (opts.json) {
       printData(
@@ -433,18 +474,33 @@ export async function profileReactRenders(
         `  ${String(c.renders).padStart(7)} ${`${Math.round(c.commitShare * 100)}%`.padStart(7)} ` +
           `${`${c.selfMs}ms`.padStart(9)} ${`${c.maxSelfMs}ms`.padStart(8)}  ${c.name}` +
           (c.maxInstances > 1 ? ` ×${c.maxInstances}` : '') +
-          (why ? `  (${why})` : '')
+          (why ? `  (${why})` : '') +
+          (c.source ? `  ${c.source}` : '')
       );
       if (c.changedProps.length) {
         console.log(
           `  ${''.padStart(44)}changed: ${c.changedProps.map((x) => `${x.prop} ×${x.count}`).join(', ')}`
         );
       }
+      const extra = [
+        c.changedHooks.length
+          ? `hooks: ${c.changedHooks.map((x) => `${x.hook} ×${x.count}`).join(', ')}`
+          : '',
+        c.changedContexts.length
+          ? `contexts: ${c.changedContexts.map((x) => `${x.context} ×${x.count}`).join(', ')}`
+          : '',
+        c.rootCauses.length
+          ? `root cause: ${c.rootCauses.map((x) => `${x.cause} ×${x.count}`).join(', ')}`
+          : '',
+        c.compiled ? 'compiled by React Compiler' : '',
+      ].filter(Boolean);
+      for (const line of extra) console.log(`  ${''.padStart(44)}${line}`);
     }
     if (comps.length > top) console.log(`  ... ${comps.length - top} more (raise --top)`);
     console.log(
       '\n  commits = share of commits it rendered in. why: mount / props (changed props listed) / ' +
-        'state / parent (new props object, all values equal — React.memo would skip) / context.'
+        'state / parent (new props object, all values equal — React.memo would skip) / context / ' +
+        'unknown (nothing visible changed: external store or forced update).'
     );
     console.log('  per-commit membership (`commits: [indices]`) is in --json.');
     if (report.truncated) {
@@ -460,12 +516,48 @@ export async function profileReactRenders(
 export async function profileReactCpu(
   opts: OutputOptions,
   sessionName: string,
-  o: { dir?: string; top?: number; componentsOnly?: boolean }
+  o: { dir?: string; top?: number; componentsOnly?: boolean; stack?: string }
 ): Promise<number> {
   try {
     const p = await loadProfile(sessionName, o.dir);
     if (!p.cpuDone) throw new Error(`${p.dir} has no Hermes CPU profile (recorded with --no-cpu?)`);
     const top = o.top ?? 20;
+    if (o.stack) {
+      const symbols =
+        (await readJson<Record<string, string | null>>(path.join(p.dir, 'symbols.json'))) ?? {};
+      const profiles = await loadSegments(p.cpuDone);
+      // Map every frame on the matched stacks, not just the top functions `stop` cached.
+      const frames = profiles.flatMap((pr) => pr.nodes.map((n) => n.callFrame));
+      const pseudo = frames
+        .filter((cf) => cf.url && cf.lineNumber !== undefined)
+        .map((cf) => ({
+          name: cf.functionName,
+          location: '',
+          url: cf.url,
+          lineNumber: cf.lineNumber,
+          columnNumber: cf.columnNumber,
+          selfMs: 0,
+          totalMs: 0,
+          selfPercent: 0,
+          samples: 0,
+        }));
+      await symbolicateStats(pseudo, symbols, 15_000).catch(() => undefined);
+      await writeJson(path.join(p.dir, 'symbols.json'), symbols);
+      const stacks = stacksFor(profiles, new RegExp(o.stack), 8, top, (cf) => {
+        const src = symbols[`${cf.url}:${cf.lineNumber}:${cf.columnNumber}`];
+        return `${cf.functionName || '(anonymous)'}  ${src ?? (cf.url ? `${cf.url.slice(cf.url.lastIndexOf('/') + 1).replace(/\/\/&.*$/, '')}:${(cf.lineNumber ?? 0) + 1}` : '')}`;
+      });
+      if (opts.json) printData({ status: 'ok', dir: p.dir, function: o.stack, stacks }, opts);
+      else {
+        console.log(`profile react cpu — call stacks through /${o.stack}/`);
+        if (!stacks.length) console.log('  no samples matched.');
+        for (const st of stacks) {
+          console.log(`\n  ${st.ms}ms (${st.samples} samples)`);
+          st.frames.forEach((fr, i) => console.log(`    ${i === 0 ? '' : '← '}${fr}`));
+        }
+      }
+      return 0;
+    }
     const summary = (await cpuSummary(p, 500))!;
     let rows = summary.top;
     // PascalCase function names are (almost always) components' render functions.
@@ -487,6 +579,8 @@ export async function profileReactCpu(
 
 export interface AnalyzeOptions {
   dir?: string;
+  /** Where to look up component sources (default: the directory `start` ran in). */
+  projectRoot?: string;
   top?: number;
   saveBaseline?: string;
   diff?: string;
@@ -529,6 +623,26 @@ export async function analyzeProfile(
       input.cpuAnchor = { startedAtRuntimeMs: p.cpuDone.startedAtRuntimeMs };
     }
   }
+  const steps = await readProfileSteps(p.dir);
+  if (steps.length && p.react?.startedAt !== undefined) {
+    // Host → runtime clock. The sampler's anchor pair is exact; the React start is a close fallback.
+    const offset =
+      p.cpuDone?.startedAtRuntimeMs !== undefined && p.cpuDone.startedAtHostMs !== undefined
+        ? p.cpuDone.startedAtRuntimeMs - p.cpuDone.startedAtHostMs
+        : p.react.startedAt - Date.parse(p.meta.startedAt);
+    input.steps = steps.map((st) => ({
+      label: st.label,
+      atMs: st.startHostMs + offset,
+      ok: st.ok,
+    }));
+  }
+  if (p.meta.native?.startedAtHostMs !== undefined && p.cpuDone?.startedAtRuntimeMs !== undefined) {
+    input.nativeStartedAtRuntimeMs =
+      p.meta.native.startedAtHostMs + (p.cpuDone.startedAtRuntimeMs - p.cpuDone.startedAtHostMs!);
+  } else if (p.meta.native?.startedAtHostMs !== undefined) {
+    // Simulators and emulators share the host clock.
+    input.nativeStartedAtRuntimeMs = p.meta.native.startedAtHostMs;
+  }
   if (p.meta.native?.state === 'done') {
     input.native = await analyzeNative(p.meta, p.meta.session, 25).catch(() => undefined);
   }
@@ -536,6 +650,13 @@ export async function analyzeProfile(
     throw new Error(`${p.dir} holds no finished recording to analyse`);
   }
   const findings = buildFindings(input);
+  const root = o.projectRoot ?? p.meta.projectRoot;
+  if (root) {
+    const index = await buildComponentIndex(root);
+    for (const f of findings) {
+      if (f.component && !f.location) f.location = locateComponent(index, f.component);
+    }
+  }
   const result: AnalyzeResult = { dir: p.dir, meta: p.meta, input, findings };
   const current = toBaseline(input);
   if (o.diff) {
@@ -654,7 +775,10 @@ export function printFindings(r: AnalyzeResult, top: number): void {
   } else {
     console.log('');
     r.findings.slice(0, top).forEach((f, i) => {
-      console.log(`  ${String(i + 1).padStart(2)}. [${f.severity.toUpperCase()}] ${f.title}`);
+      console.log(
+        `  ${String(i + 1).padStart(2)}. [${f.severity.toUpperCase()}] ${f.title}` +
+          (f.location && f.component ? `  (${f.location})` : '')
+      );
       console.log(`      ${f.detail}`);
       console.log(`      → ${f.suggestion}`);
     });
@@ -686,4 +810,107 @@ export async function printNativeIfAny(dir: string): Promise<void> {
     path.join(dir, 'native.json')
   );
   if (report) printNativeReport(report, 10);
+}
+
+// ── status ────────────────────────────────────────────────────────────────────
+
+export interface ProfileStatus {
+  state: 'recording' | 'idle';
+  dir?: string;
+  startedAt?: string;
+  react?: ProfileMeta['react'] & {
+    sampler?: 'running' | 'gone';
+    liveCommits?: number;
+    owner?: string;
+  };
+  native?: ProfileMeta['native'] & { alive?: boolean };
+  /** Set when the app's runtime no longer holds our hook (reloaded, or taken over). */
+  warning?: string;
+  latest?: string;
+}
+
+export async function profileStatus(opts: OutputOptions, sessionName: string): Promise<number> {
+  try {
+    const meta = await activeProfile(sessionName);
+    const out: ProfileStatus = { state: meta ? 'recording' : 'idle' };
+    const latest = await readJson<{ dir: string }>(
+      path.join(profilesRoot(sessionName), 'latest.json')
+    );
+    if (latest) out.latest = latest.dir;
+    if (meta) {
+      out.dir = meta.dir;
+      out.startedAt = meta.startedAt;
+      if (meta.react) {
+        out.react = { ...meta.react };
+        if (meta.react.state === 'recording') {
+          if (meta.react.cpu)
+            out.react.sampler = (await activeJsHolder(sessionName)) ? 'running' : 'gone';
+          let client: MetroCdpClient | undefined;
+          try {
+            client = await connectPinned(sessionName, meta, 3_000);
+            const st = await client.evaluate<{
+              installed: boolean;
+              owner?: string;
+              commits?: number;
+            }>(REACT_PROFILER_STATUS);
+            if (!st.installed) {
+              out.warning =
+                'the commit hook is gone from the app — it reloaded; the recording is lost';
+            } else {
+              out.react.liveCommits = st.commits;
+              out.react.owner = st.owner;
+              if (st.owner && st.owner !== sessionName) {
+                out.warning = `taken over by conductor session "${st.owner}"`;
+              }
+            }
+          } catch {
+            out.warning = 'app not reachable over Metro right now (it re-attaches on stop)';
+          } finally {
+            client?.close();
+          }
+        }
+      }
+      if (meta.native) {
+        let alive = false;
+        try {
+          if (meta.native.pid) {
+            process.kill(meta.native.pid, 0);
+            alive = true;
+          }
+        } catch {
+          // gone
+        }
+        out.native = { ...meta.native, alive };
+      }
+    }
+    if (opts.json) printData({ status: 'ok', ...out }, opts);
+    else {
+      if (!meta)
+        console.log(
+          'profile status — idle' + (out.latest ? `\n  last profile → ${out.latest}` : '')
+        );
+      else {
+        console.log(`profile status — recording since ${meta.startedAt}\n  profile → ${meta.dir}`);
+        if (out.react) {
+          console.log(
+            `  react: ${out.react.state}` +
+              (out.react.liveCommits !== undefined
+                ? `, ${out.react.liveCommits} commit(s) so far`
+                : '') +
+              (out.react.cpu ? `, Hermes sampler ${out.react.sampler ?? out.react.state}` : '')
+          );
+        }
+        if (out.native) {
+          console.log(
+            `  native: ${out.native.tool} ${out.native.state}${out.native.state === 'recording' ? (out.native.alive ? '' : ' (process gone!)') : ''}`
+          );
+        }
+        if (out.warning) console.log(`  warning: ${out.warning}`);
+      }
+    }
+    return 0;
+  } catch (err) {
+    printError(`profile status — ${err instanceof Error ? err.message : String(err)}`, opts);
+    return 1;
+  }
 }

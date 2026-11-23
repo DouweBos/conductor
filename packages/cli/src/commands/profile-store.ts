@@ -24,6 +24,8 @@ export interface ProfileMeta {
   platform?: string;
   appId?: string;
   dir: string;
+  /** Working directory at start when it is a JS project: where component sources are looked up. */
+  projectRoot?: string;
   startedAt: string;
   stoppedAt?: string;
   target?: PinnedTarget;
@@ -33,7 +35,11 @@ export interface ProfileMeta {
     tool: 'xctrace' | 'simpleperf';
     trace: string;
     pid?: number;
+    /** Host clock when recording began (xctrace's trace-relative times start here). */
+    startedAtHostMs?: number;
     error?: string;
+    /** Android extras captured around the recording. */
+    android?: unknown;
   };
   /** Set when the recording wrapped a `run-flow`. */
   flow?: { file: string; runs: number; ok: boolean };
@@ -80,12 +86,18 @@ export async function openProfile(
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dir = path.resolve(init.out ?? path.join(profilesRoot(session), stamp));
   await fs.mkdir(dir, { recursive: true });
+  const cwd = process.cwd();
+  const isProject = await fs
+    .stat(path.join(cwd, 'package.json'))
+    .then(() => true)
+    .catch(() => false);
   const meta: ProfileMeta = {
     version: 1,
     session,
     platform: init.platform,
     appId: init.appId,
     dir,
+    projectRoot: isProject ? cwd : undefined,
     startedAt: new Date().toISOString(),
   };
   await writeMeta(meta);
@@ -126,3 +138,33 @@ export async function resolveProfileDir(session: string, explicit?: string): Pro
 }
 
 export { readJson };
+
+/** A device action taken while recording, on the host clock. Used to label commits. */
+export interface ProfileStep {
+  label: string;
+  startHostMs: number;
+  endHostMs: number;
+  ok: boolean;
+}
+
+/** Append to the active recording's step log, if one is running. Best-effort. */
+export async function appendProfileStep(session: string, step: ProfileStep): Promise<void> {
+  const meta = await activeProfile(session);
+  if (!meta) return;
+  await fs.appendFile(path.join(meta.dir, 'steps.jsonl'), JSON.stringify(step) + '\n');
+}
+
+export async function readProfileSteps(dir: string): Promise<ProfileStep[]> {
+  const text = await fs.readFile(path.join(dir, 'steps.jsonl'), 'utf8').catch(() => '');
+  return text
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => {
+      try {
+        return JSON.parse(l) as ProfileStep;
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is ProfileStep => x !== null);
+}
