@@ -54,7 +54,8 @@ conductor take-screenshot --output /tmp/screen.png
 | Navigation | `open-link`, `back` |
 | Flows | `run-flow`, `run-flow-inline`, `run-parallel`, `run-sequence`, `flow` |
 | Devices | `start-device`, `stop-device`, `list-devices`, `device-pool`, `set-location`, `set-orientation`, `set-permissions` |
-| Debugging | `logs`, `crashes`, `network`, `memory`, `profile`, `metro`, `record-video`, `stream-server` |
+| Debugging | `logs`, `crashes`, `network`, `memory`, `profile` (incl. `profile launch`), `metro`, `record-video`, `stream-server` |
+| React app state | `debug navigation`, `debug navigate`, `debug query-cache`, `debug store`, `debug bridge`, `debug watch` |
 | In-process (iOS/tvOS) | `native-inspect`, `native-find`, `native-set`, `native-eval`, `native-heap`, and more |
 | Test cases | `cases` |
 | Web setup | `install-web [browser]` (installs a Playwright browser; `--check` prints status) |

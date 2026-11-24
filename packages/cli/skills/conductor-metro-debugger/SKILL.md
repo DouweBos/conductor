@@ -1,6 +1,6 @@
 ---
 name: conductor-metro-debugger
-description: Inspect a running app's JS runtime, logs, and network with the conductor CLI — evaluate JS in React Native (Hermes) or the web page, dump the React component tree, read console/Metro/device logs, and inspect or issue HTTP requests. Use when debugging app behavior, reading logs, evaluating expressions in the live runtime, inspecting React components, or examining network traffic.
+description: Inspect a running app's JS runtime, state, logs, and network with the conductor CLI — evaluate JS in React Native (Hermes) or the web page, read the current navigation route, React Query cache and Redux/Zustand stores, call an in-app bridge, watch state change live, dump the React component tree, read console/Metro/device logs, and inspect or follow HTTP traffic. Use when debugging app behavior, checking which screen/route the app is on, inspecting cached server data or store state, reading logs, evaluating expressions in the live runtime, inspecting React components, or examining network traffic.
 ---
 
 # Conductor — runtime debugging, logs & network
@@ -34,6 +34,30 @@ they need a **dev/debug build** (the DevTools backend must be active) and a runn
 Metro; on a release build they return a clear "not a dev build" error. Output is
 `{"status":"ok","applied":true}` or `{"status":"error","message":"…"}`.
 
+## App state (no in-app dependency)
+
+These find React Navigation, TanStack Query and react-redux by walking the
+React fiber tree over Metro, so any dev build works without app changes.
+
+| Command | Purpose |
+|---|---|
+| `conductor debug navigation [--full]` | Focused route: name, params, nested path (`Root › Tabs › Home`). `--full` adds the whole navigation state. Works for expo-router |
+| `conductor debug navigate <route> [--params '<json>']` | Navigate through the app's navigation container |
+| `conductor debug query-cache` | Every cached query: key, status/fetchStatus, observers, age, stale |
+| `conductor debug query-cache --key <substr> [--path a.b[0]] [--summary]` | Narrow to matching keys and include their data (projected / keys→types) |
+| `conductor debug query-cache --grep <value>` | Which queries contain a value, and at which paths |
+| `conductor debug store` | List stores: Redux (auto), Zustand registered in `globalThis.__CONDUCTOR_STORES__ = { name: useStore }`, and stores a bridge exposes via `listStores` |
+| `conductor debug store <name> [--path p] [--summary]` | Read one store |
+| `conductor debug store <name> --set '<json>'` / `--dispatch '<json>'` | Merge into a Zustand/bridge store / dispatch a Redux action |
+| `conductor debug bridge list [--bridge <global>]` | Methods on an app-provided bridge global (default `__conductorBridge`; or set `CONDUCTOR_BRIDGE_GLOBAL`) |
+| `conductor debug bridge call <method> [jsonArgs…] [--bridge <global>]` | Call a bridge method and print its awaited result |
+| `conductor debug watch <navigation\|query-cache\|store <name>\|expr '<js>'>` | Poll and print each change as a diff (`--interval ms`, `--duration s`; NDJSON with `--json`) |
+
+Big values are capped at `--max-bytes` (default 100000): the reply is
+summarized with a hint to narrow with `--path` / `--summary`. `--depth` sets
+the serializer's depth (default 8). Always bound `debug watch` with
+`--duration` when running it as an agent.
+
 ## Logs
 
 | Command | Purpose |
@@ -41,6 +65,9 @@ Metro; on a release build they return a clear "not a dev build" error. Output is
 | `conductor logs --recent <n>` | Last N buffered log lines — **agent-friendly, exits immediately** |
 | `conductor logs [--source metro\|device] [--level …] [--json] [--duration s]` | Stream logs (bound it with `--duration`) |
 | `conductor logs --list` | List Metro debugger targets for this device |
+
+Physical iPhones/Apple TVs stream device logs through `idevicesyslog`
+(`brew install libimobiledevice`); without it only Metro logs are collected.
 
 Prefer `logs --recent N` over a bare `logs` stream — don't leave a stream
 running indefinitely.
@@ -50,6 +77,7 @@ running indefinitely.
 | Command | Purpose |
 |---|---|
 | `conductor network logs [--limit N]` | Recent HTTP traffic (RN fetch/XHR shim; web via Playwright) |
+| `conductor network logs --follow [--duration s]` | Print requests as they complete (NDJSON with `--json`) |
 | `conductor network request <url> [--method M] [--body STR] [--header K=V]` | Issue an HTTP request from the app's context |
 
 ## Metro bundler

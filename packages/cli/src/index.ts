@@ -97,9 +97,19 @@ import {
   debugReload,
   HELP as debugHelp,
 } from './commands/debug.js';
+import {
+  debugNavigation,
+  debugNavigate,
+  debugQueryCache,
+  debugStore,
+  debugBridge,
+  debugWatch,
+  HELP as debugStateHelp,
+} from './commands/debug-state.js';
 import { networkLogs, networkRequest, HELP as networkHelp } from './commands/network.js';
 import { flowRecord, HELP as flowRecordHelp } from './commands/flow-record.js';
 import { profileCpu, profileMemory, HELP as profileHelp } from './commands/profile.js';
+import { profileLaunch, HELP as profileLaunchHelp } from './commands/profile-launch.js';
 import {
   profileReactStart,
   profileReactStop,
@@ -260,10 +270,10 @@ const COMMAND_HELP: Record<string, string> = {
   'run-sequence': runSequenceHelp,
   gestures: gesturesHelp,
   workspace: workspaceHelp,
-  debug: debugHelp,
+  debug: `${debugHelp}\n${debugStateHelp}`,
   network: networkHelp,
   'flow record': flowRecordHelp,
-  profile: profileHelp,
+  profile: `${profileHelp}\n${profileLaunchHelp}`,
   crashes: crashesHelp,
   logs: logsHelp,
   memory: memoryHelp,
@@ -343,6 +353,10 @@ async function main(): Promise<void> {
       // --no-cpu / --no-symbolicate are parsed by minimist without being declared, so absent stays undefined.
       'hosts',
       'components-only',
+      'full',
+      'summary',
+      'data',
+      'follow',
     ],
     string: [
       'device',
@@ -420,6 +434,17 @@ async function main(): Promise<void> {
       'stack',
       'profile',
       'profile-out',
+      'params',
+      'key',
+      'grep',
+      'set',
+      'dispatch',
+      'bridge',
+      'mark-regex',
+      'until-mark',
+      'mode',
+      'activity',
+      'deeplink',
     ],
     alias: { h: 'help', v: 'verbose', V: 'version', o: 'output', y: 'yes' },
   });
@@ -1450,6 +1475,22 @@ async function main(): Promise<void> {
           console.error('Usage: conductor profile native <start|stop|analyze>');
           exitCode = 1;
         }
+      } else if (sub === 'launch') {
+        exitCode = await profileLaunch(
+          rest[1] !== undefined ? String(rest[1]) : (argv['app'] as string | undefined),
+          opts,
+          sessionName,
+          {
+            runs: argv['runs'] !== undefined ? Number(argv['runs']) : undefined,
+            mode: argv['mode'] as string | undefined,
+            url: (argv['url'] ?? argv['deeplink']) as string | undefined,
+            activity: argv['activity'] as string | undefined,
+            markRegex: argv['mark-regex'] as string | undefined,
+            untilMark: argv['until-mark'] as string | undefined,
+            duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
+            timeout: argv['timeout'] !== undefined ? Number(argv['timeout']) : undefined,
+          }
+        );
       } else if (sub === 'status') {
         exitCode = await profileStatus(opts, sessionName);
       } else if (sub === 'analyze') {
@@ -1462,7 +1503,7 @@ async function main(): Promise<void> {
         });
       } else {
         console.error(
-          'Usage: conductor profile <cpu|memory|frames|js|react|native|analyze|status> [args]'
+          'Usage: conductor profile <cpu|memory|frames|js|react|native|launch|analyze|status> [args]'
         );
         exitCode = 1;
       }
@@ -1493,7 +1534,15 @@ async function main(): Promise<void> {
       const targetIndex = argv['target'] !== undefined ? Number(argv['target']) : undefined;
       if (sub === 'logs') {
         const limit = argv['limit'] !== undefined ? Number(argv['limit']) : undefined;
-        exitCode = await networkLogs(opts, sessionName, { port, targetIndex, limit });
+        exitCode = await networkLogs(opts, sessionName, {
+          port,
+          targetIndex,
+          limit,
+          follow: argv['follow'] as boolean,
+          duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
+          appId: argv['app'] as string | undefined,
+          pageId: argv['page'] as string | undefined,
+        });
       } else if (sub === 'request') {
         const url = rest[1] ?? (argv['url'] as string | undefined) ?? '';
         const rawHeaders = argv['header'];
@@ -1524,6 +1573,12 @@ async function main(): Promise<void> {
         appId: argv['app'] as string | undefined,
         pageId: argv['page'] as string | undefined,
       };
+      const stateOpts = {
+        ...debugOpts,
+        maxBytes: argv['max-bytes'] !== undefined ? Number(argv['max-bytes']) : undefined,
+        depth: argv['depth'] !== undefined ? Number(argv['depth']) : undefined,
+        bridge: argv['bridge'] as string | undefined,
+      };
       if (sub === 'status') {
         exitCode = await debugStatus(opts, sessionName, debugOpts);
       } else if (sub === 'evaluate' || sub === 'eval') {
@@ -1538,9 +1593,67 @@ async function main(): Promise<void> {
         exitCode = await debugLogRegistry(opts, sessionName);
       } else if (sub === 'reload') {
         exitCode = await debugReload(opts, sessionName, debugOpts);
+      } else if (sub === 'navigation' || sub === 'route') {
+        exitCode = await debugNavigation(opts, sessionName, {
+          ...stateOpts,
+          full: argv['full'] as boolean,
+        });
+      } else if (sub === 'navigate') {
+        exitCode = await debugNavigate(String(rest[1] ?? ''), opts, sessionName, {
+          ...stateOpts,
+          params: argv['params'] as string | undefined,
+        });
+      } else if (sub === 'query-cache' || sub === 'queries') {
+        exitCode = await debugQueryCache(opts, sessionName, {
+          ...stateOpts,
+          key: argv['key'] as string | undefined,
+          grep: argv['grep'] !== undefined ? String(argv['grep']) : undefined,
+          path: argv['path'] as string | undefined,
+          summary: argv['summary'] as boolean,
+          data: argv['data'] as boolean,
+          limit: argv['limit'] !== undefined ? Number(argv['limit']) : undefined,
+        });
+      } else if (sub === 'store' || sub === 'stores') {
+        exitCode = await debugStore(
+          rest[1] !== undefined ? String(rest[1]) : undefined,
+          opts,
+          sessionName,
+          {
+            ...stateOpts,
+            path: argv['path'] as string | undefined,
+            summary: argv['summary'] as boolean,
+            set: argv['set'] as string | undefined,
+            dispatch: argv['dispatch'] as string | undefined,
+          }
+        );
+      } else if (sub === 'bridge') {
+        exitCode = await debugBridge(
+          String(rest[1] ?? '').toLowerCase(),
+          rest.slice(2),
+          opts,
+          sessionName,
+          stateOpts
+        );
+      } else if (sub === 'watch') {
+        exitCode = await debugWatch(
+          String(rest[1] ?? '').toLowerCase(),
+          rest.slice(2).map(String),
+          opts,
+          sessionName,
+          {
+            ...stateOpts,
+            interval: argv['interval'] !== undefined ? Number(argv['interval']) : undefined,
+            duration: argv['duration'] !== undefined ? Number(argv['duration']) : undefined,
+            full: argv['full'] as boolean,
+            path: argv['path'] as string | undefined,
+            summary: argv['summary'] as boolean,
+            key: argv['key'] as string | undefined,
+            data: argv['data'] as boolean,
+          }
+        );
       } else {
         console.error(
-          'Usage: conductor debug <status|evaluate|component-tree|inspect-element|log-registry|reload>'
+          'Usage: conductor debug <status|evaluate|component-tree|inspect-element|log-registry|reload|navigation|navigate|query-cache|store|bridge|watch>'
         );
         exitCode = 1;
       }

@@ -1,0 +1,7 @@
+Starting: Intent { cmp=tv.plex.app.debug/tv.plex.app.MainActivity }
+Status: ok
+Activity: tv.plex.app.debug/tv.plex.app.MainActivity
+ThisTime: 3410
+TotalTime: 3410
+WaitTime: 3466
+Complete

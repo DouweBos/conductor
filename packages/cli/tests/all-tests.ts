@@ -51,6 +51,7 @@ import { profilingSession } from './profile-session.test.js';
 import { logCollector } from './log-collector.test.js';
 import { webServer } from './web-server.test.js';
 import { xctestAttachments } from './xctest-attachments.test.js';
+import { stateTools } from './state-tools.test.js';
 import { getDriver } from '../src/runner.js';
 import { IOSDriver } from '../src/drivers/ios.js';
 import { parseFlowFile, executeFlow } from '../src/drivers/flow-runner.js';
@@ -93,7 +94,7 @@ async function detectDevice(deviceUdid: string | undefined): Promise<string | un
 async function main(): Promise<void> {
   const { deviceUdid, suiteFilter } = parseArgs();
   const device = await detectDevice(deviceUdid);
-  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, metroUse, cdpDiscovery, deviceSelection, devicectlSuite, foldSuite, displaysSuite, pressKeyRemote, snapshotRef, flowRecorder, vega, roku, macos, inputStreaming, videoStreaming, maestroParity, pathAliases, profiling, profilingSession, logCollector, webServer, xctestAttachments];
+  let suites = [parser, iosExec, androidExec, fileBased, scriptSuite, elementResolver, a11ySuite, envFlag, daemonIdle, devicePoolSuite, androidSdk, startDeviceAndroid, metroCdp, metroUse, cdpDiscovery, deviceSelection, devicectlSuite, foldSuite, displaysSuite, pressKeyRemote, snapshotRef, flowRecorder, vega, roku, macos, inputStreaming, videoStreaming, maestroParity, pathAliases, profiling, profilingSession, logCollector, webServer, xctestAttachments, stateTools];
 
   if (device) {
     console.log(`\nDevice: ${device}`);

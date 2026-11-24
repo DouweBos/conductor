@@ -1,0 +1,425 @@
+--------- beginning of main
+--------- beginning of events
+09-02 00:49:42.276   441   605 I am_proc_start: [0,25031,10075,tv.plex.app.debug,next-top-activity,{tv.plex.app.debug/tv.plex.app.MainActivity}]
+09-02 00:49:43.502   441   523 I ActivityTaskManager: Displayed tv.plex.app.debug/tv.plex.app.MainActivity for user 0: +1s261ms
+09-02 00:49:43.613 25031 25075 E ReactNativeJS: PERFMARK mod:rn-initcore 0.0 1788302983613 {}
+09-02 00:49:43.620 25031 25075 E ReactNativeJS: PERFMARK launch:perftrace-eval 12281917.5 1788302983620 {}
+09-02 00:49:43.621 25031 25075 E ReactNativeJS: PERFMARK launch:index-entry 12281918.5 1788302983621 {}
+09-02 00:49:43.626 25031 25075 E ReactNativeJS: PERFMARK poly:intl-locale 12281923.5 1788302983626 {}
+09-02 00:49:43.627 25031 25075 E ReactNativeJS: PERFMARK poly:intl-pluralrules 12281924.9 1788302983627 {}
+09-02 00:49:43.628 25031 25075 E ReactNativeJS: PERFMARK poly:intl-displaynames 12281925.5 1788302983628 {}
+09-02 00:49:43.628 25031 25075 E ReactNativeJS: PERFMARK poly:intl-listformat 12281926.0 1788302983628 {}
+09-02 00:49:43.629 25031 25075 E ReactNativeJS: PERFMARK poly:intl-relativetimeformat 12281926.5 1788302983629 {}
+09-02 00:49:43.629 25031 25075 E ReactNativeJS: PERFMARK poly:hybrid-numberformat 12281927.0 1788302983629 {}
+09-02 00:49:43.657 25031 25075 E ReactNativeJS: PERFMARK poly:locale-data-en 12281954.9 1788302983657 {}
+09-02 00:49:43.658 25031 25075 E ReactNativeJS: PERFMARK poly:structured-clone 12281955.2 1788302983658 {}
+09-02 00:49:43.658 25031 25075 E ReactNativeJS: PERFMARK mod:web-streams 12281955.4 1788302983658 {}
+09-02 00:49:43.661 25031 25075 E ReactNativeJS: PERFMARK mod:nitro-text-decoder 12281958.7 1788302983661 {}
+09-02 00:49:43.661 25031 25075 E ReactNativeJS: PERFMARK mod:rn-index 12281959.1 1788302983661 {}
+09-02 00:49:43.662 25031 25075 E ReactNativeJS: PERFMARK mod:nitro-native 12281959.6 1788302983662 {}
+09-02 00:49:44.266 25031 25075 E ReactNativeJS: PERFMARK mod:nitro-modules 12282563.4 1788302984266 {}
+09-02 00:49:44.266 25031 25075 E ReactNativeJS: PERFMARK mod:worklets 12282563.7 1788302984266 {}
+09-02 00:49:44.333 25031 25075 E ReactNativeJS: PERFMARK poly:textdecoder 12282630.8 1788302984333 {}
+09-02 00:49:44.333 25031 25075 E ReactNativeJS: PERFMARK poly:nitro-fetch 12282631.1 1788302984333 {}
+09-02 00:49:44.338 25031 25075 E ReactNativeJS: PERFMARK poly:nitro-websockets 12282635.2 1788302984338 {}
+09-02 00:49:44.338 25031 25075 E ReactNativeJS: PERFMARK poly:urlsearchparams 12282635.7 1788302984338 {}
+09-02 00:49:44.349 25031 25075 E ReactNativeJS: PERFMARK poly:url-polyfill 12282646.9 1788302984349 {}
+09-02 00:49:44.350 25031 25075 E ReactNativeJS: PERFMARK poly:get-random-values 12282647.2 1788302984350 {}
+09-02 00:49:44.350 25031 25075 E ReactNativeJS: PERFMARK poly:tosorted 12282647.3 1788302984350 {}
+09-02 00:49:44.352 25031 25075 E ReactNativeJS: PERFMARK poly:globals-assigned 12282650.1 1788302984352 {}
+09-02 00:49:44.353 25031 25075 E ReactNativeJS: PERFMARK launch:polyfills-done 12282650.3 1788302984353 {"js_heap":6010776,"js_heap_size":8388608,"js_allocated":4857888}
+09-02 00:49:44.353 25031 25075 E ReactNativeJS: PERFMARK idx:react-native 12282650.7 1788302984353 {}
+09-02 00:49:44.362 25031 25075 E ReactNativeJS: PERFMARK mod:reanimated 12282659.5 1788302984362 {}
+09-02 00:49:44.704 25031 25075 E ReactNativeJS: PERFMARK mod:createApp 12283002.0 1788302984704 {}
+09-02 00:49:44.729 25031 25075 E ReactNativeJS: PERFMARK mod:useLuma 12283026.5 1788302984729 {}
+09-02 00:49:44.740 25031 25075 E ReactNativeJS: PERFMARK mod:useLumaScreen 12283037.1 1788302984739 {}
+09-02 00:49:44.795 25031 25075 E ReactNativeJS: PERFMARK mod:player 12283092.8 1788302984795 {}
+09-02 00:49:44.902 25031 25075 E ReactNativeJS: PERFMARK mod:Navigator 12283199.4 1788302984902 {}
+09-02 00:49:44.912 25031 25075 E ReactNativeJS: PERFMARK launch:app-module-eval-start 12283209.6 1788302984912 {"js_heap":12181680,"js_heap_size":12582912,"js_allocated":6935856}
+09-02 00:49:44.917 25031 25075 E ReactNativeJS: PERFMARK launch:app-module-eval-end 12283214.1 1788302984916 {}
+09-02 00:49:44.917 25031 25075 E ReactNativeJS: PERFMARK idx:app 12283214.3 1788302984917 {}
+09-02 00:49:44.917 25031 25075 E ReactNativeJS: PERFMARK idx:tif 12283214.4 1788302984917 {}
+09-02 00:49:44.924 25031 25075 E ReactNativeJS: PERFMARK idx:logging 12283221.7 1788302984924 {}
+09-02 00:49:44.926 25031 25075 E ReactNativeJS: PERFMARK mod:sentry-rn 12283223.1 1788302984925 {}
+09-02 00:49:44.933 25031 25075 E ReactNativeJS: PERFMARK idx:sentry 12283230.6 1788302984933 {}
+09-02 00:49:44.934 25031 25075 E ReactNativeJS: PERFMARK idx:adid 12283231.5 1788302984934 {}
+09-02 00:49:44.934 25031 25075 E ReactNativeJS: PERFMARK idx:scroll 12283231.8 1788302984934 {}
+09-02 00:49:44.934 25031 25075 E ReactNativeJS: PERFMARK idx:bg-playback 12283231.9 1788302984934 {}
+09-02 00:49:44.934 25031 25075 E ReactNativeJS: PERFMARK launch:init-logging-done 12283232.1 1788302984934 {}
+09-02 00:49:44.935 25031 25075 E ReactNativeJS: PERFMARK idx:fullstory 12283232.1 1788302984934 {}
+09-02 00:49:44.935 25031 25075 E ReactNativeJS: PERFMARK launch:init-sentry-done 12283232.2 1788302984935 {}
+09-02 00:49:44.935 25031 25075 E ReactNativeJS: PERFMARK idx:bg-message 12283232.9 1788302984935 {}
+09-02 00:49:44.935 25031 25075 E ReactNativeJS: PERFMARK idx:device-info 12283233.1 1788302984935 {}
+09-02 00:49:44.936 25031 25075 E ReactNativeJS: PERFMARK launch:register-component 12283233.3 1788302984936 {}
+09-02 00:49:44.939 25031 25075 E ReactNativeJS: PERFMARK launch:run-application 12283236.2 1788302984939 {}
+09-02 00:49:44.945 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283242.7 1788302984945 {"store":"clientIdentifier"}
+09-02 00:49:44.947 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283244.4 1788302984947 {"store":"account"}
+09-02 00:49:44.947 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283245.0 1788302984947 {"store":"appLocked"}
+09-02 00:49:44.948 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283245.7 1788302984948 {"store":"consent"}
+09-02 00:49:44.949 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283246.2 1788302984949 {"store":"deviceSettings"}
+09-02 00:49:44.949 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283246.7 1788302984949 {"store":"sharedDeviceSettings"}
+09-02 00:49:44.950 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283247.3 1788302984950 {"store":"metricsSession"}
+09-02 00:49:44.950 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283248.0 1788302984950 {"store":"onboarding"}
+09-02 00:49:44.953 25031 25075 E ReactNativeJS: PERFMARK launch:store-hydrated 12283250.1 1788302984952 {"store":"plexEnvironment"}
+09-02 00:49:44.953 25031 25075 E ReactNativeJS: PERFMARK launch:stores-hydrated 12283250.3 1788302984953 {}
+09-02 00:49:44.955 25031 25075 E ReactNativeJS: PERFSTARTUP {"startTime":12281844,"endTime":12283233,"initializeRuntimeStart":12281844,"initializeRuntimeEnd":null,"executeJavaScriptBundleEntryPointStart":12281844,"executeJavaScriptBundleEntryPointEnd":null,"perfNow":12283253,"dateNow":1788302984955}
+09-02 00:49:44.958 25031 25075 E ReactNativeJS: PERFMARK launch:app-first-render 12283255.6 1788302984958 {"js_heap":12997648,"js_heap_size":12582912,"js_allocated":7751824}
+09-02 00:49:44.958 25031 25075 E ReactNativeJS: PERFSTARTUP {"startTime":12281844,"endTime":12283233,"initializeRuntimeStart":12281844,"initializeRuntimeEnd":null,"executeJavaScriptBundleEntryPointStart":12281844,"executeJavaScriptBundleEntryPointEnd":null,"perfNow":12283255.8,"dateNow":1788302984958}
+09-02 00:49:44.961 25031 25075 E ReactNativeJS: PERFMARK mod:luma-client-dist 12283258.3 1788302984961 {}
+09-02 00:49:44.962 25031 25075 E ReactNativeJS: PERFMARK mod:luma-core 12283259.5 1788302984962 {}
+09-02 00:49:44.964 25031 25075 E ReactNativeJS: PERFMARK mod:luma-core-end 12283261.8 1788302984964 {}
+09-02 00:49:44.970 25031 25075 E ReactNativeJS: PERFMARK mod:luma-client-dist-end 12283268.0 1788302984970 {}
+09-02 00:49:45.013 25031 25075 E ReactNativeJS: PERFNET start 1 HEAD clients.plex.tv/pms/:/ip 12283310.5
+09-02 00:49:45.137 25031 25075 E ReactNativeJS: PERFMARK launch:translations-load-start 12283434.4 1788302985137 {"locale":"en"}
+09-02 00:49:45.156 25031 25075 E ReactNativeJS: PERFMARK launch:migration-done 12283453.4 1788302985156 {}
+09-02 00:49:45.156 25031 25075 E ReactNativeJS: PERFMARK launch:translations-loaded 12283453.8 1788302985156 {"locale":"en"}
+09-02 00:49:45.165 25031 25075 E ReactNativeJS: PERFMARK launch:loaded 12283462.6 1788302985165 {}
+09-02 00:49:45.384 25031 25075 E ReactNativeJS: PERFMARK launch:luma-wait 12283681.9 1788302985384 {"isLoggedIn":true,"hasOptOuts":true,"vss":false}
+09-02 00:49:45.392 25031 25075 E ReactNativeJS: PERFMARK mod:luma-pms 12283689.4 1788302985392 {}
+09-02 00:49:45.392 25031 25075 E ReactNativeJS: PERFMARK mod:luma-pms-end 12283689.9 1788302985392 {}
+09-02 00:49:45.578 25031 25075 E ReactNativeJS: PERFMARK mod:flash-list 12283875.6 1788302985578 {}
+09-02 00:49:45.616 25031 25075 E ReactNativeJS: PERFMARK launch:initial-destination 12283914.0 1788302985616 {"destination":"primary-stack"}
+09-02 00:49:45.667 25031 25075 E ReactNativeJS: PERFNET start 2 GET clients.plex.tv/api/v2/user 12283964.3
+09-02 00:49:45.733 25031 25075 E ReactNativeJS: PERFMARK screen:focus 12284030.8 1788302985733 {}
+09-02 00:49:45.743 25031 25075 E ReactNativeJS: PERFMARK launch:nav-ready 12284040.5 1788302985743 {}
+09-02 00:49:45.829 25031 25075 E ReactNativeJS: PERFMARK screen:focus 12284126.2 1788302985829 {}
+09-02 00:49:46.006 25031 25075 E ReactNativeJS: PERFMARK launch:rq-persist-restored 12284303.4 1788302986006 {}
+09-02 00:49:46.015 25031 25075 E ReactNativeJS: PERFNET end 1 200 1001.7 12284312.2
+09-02 00:49:46.056 25031 25075 E ReactNativeJS: PERFMARK launch:luma-ready 12284353.9 1788302986056 {}
+09-02 00:49:46.083 25031 25075 E ReactNativeJS: PERFMARK home:favorite-libraries-initialized 12284380.6 1788302986083 {}
+09-02 00:49:46.149 25031 25075 E ReactNativeJS: PERFNET start 3 GET clients.plex.tv/api/v2/home/users 12284447.0
+09-02 00:49:46.154 25031 25075 E ReactNativeJS: PERFNET start 4 GET clients.plex.tv/api/v2/user/profile 12284451.7
+09-02 00:49:46.157 25031 25075 E ReactNativeJS: PERFNET start 5 GET clients.plex.tv/api/v2/user/settings/opt_outs 12284454.8
+09-02 00:49:46.160 25031 25075 E ReactNativeJS: PERFNET start 6 GET clients.plex.tv/api/v2/user/view_state_sync 12284457.2
+09-02 00:49:46.179 25031 25075 E ReactNativeJS: PERFNET start 7 GET luma.plex.tv/api/navigation 12284476.1
+09-02 00:49:46.183 25031 25075 E ReactNativeJS: PERFNET start 8 GET clients.plex.tv/api/v2/user/fb4163a9a83ad998/settings/bulk 12284480.6
+09-02 00:49:46.185 25031 25075 E ReactNativeJS: PERFNET start 9 GET clients.plex.tv/api/v2/user/fb4163a9a83ad998/settings/bulk 12284482.5
+09-02 00:49:46.192 25031 25075 E ReactNativeJS: PERFMARK launch:nav-data-received 12284490.1 1788302986192 {}
+09-02 00:49:46.194 25031 25075 E ReactNativeJS: PERFNET start 10 GET clients.plex.tv/api/v2/resources 12284491.8
+09-02 00:49:46.196 25031 25075 E ReactNativeJS: PERFMARK launch:media-servers-updated 12284493.6 1788302986196 {"count":8}
+09-02 00:49:46.203 25031 25075 E ReactNativeJS: PERFNET start 11 GET clients.plex.tv/api/v2/shared_servers/received/accepted 12284500.5
+09-02 00:49:46.204 25031 25075 E ReactNativeJS: PERFNET start 12 GET clients.plex.tv/api/v2/shared_sources/received 12284502.1
+09-02 00:49:46.215 25031 25075 E ReactNativeJS: PERFNET start 13 GET luma.plex.tv/api/screen/account/ads-consent 12284512.4
+09-02 00:49:46.221 25031 25075 E ReactNativeJS: PERFNET start 14 GET luma.plex.tv/api/navigation 12284518.7
+09-02 00:49:46.229 25031 25075 E ReactNativeJS: PERFNET start 15 GET luma.plex.tv/api/screen/discover/onboarding 12284526.7
+09-02 00:49:46.236 25031 25075 E ReactNativeJS: PERFNET start 16 GET clients.plex.tv/api/v2/user/fb4163a9a83ad998/settings/bulk 12284533.9
+09-02 00:49:46.247 25031 25075 E ReactNativeJS: PERFNET start 17 GET clients.plex.tv/api/v2/user/fb4163a9a83ad998/settings/bulk 12284544.7
+09-02 00:49:46.251 25031 25075 E ReactNativeJS: PERFNET start 18 GET clients.plex.tv/api/v2/user/privacy 12284548.5
+09-02 00:49:46.254 25031 25075 E ReactNativeJS: PERFNET start 19 GET clients.plex.tv/api/v2/features 12284551.3
+09-02 00:49:46.321 25031 25075 E ReactNativeJS: PERFMARK launch:navigator-step 12284618.4 1788302986321 {"step":"navigator"}
+09-02 00:49:46.721 25031 25075 E ReactNativeJS: PERFNET start 20 GET luma.plex.tv/api/navigation 12285018.4
+09-02 00:49:46.733 25031 25075 E ReactNativeJS: PERFMARK screen:focus 12285031.0 1788302986733 {}
+09-02 00:49:46.779 25031 25075 E ReactNativeJS: PERFNET start 21 GET luma.plex.tv/api/navigation/notifications 12285076.4
+09-02 00:49:46.914 25031 25075 E ReactNativeJS: PERFMARK home:mount 12285211.9 1788302986914 {}
+09-02 00:49:47.147 25031 25075 E ReactNativeJS: PERFMARK screen:focus 12285444.4 1788302987147 {}
+09-02 00:49:47.345 25031 25075 E ReactNativeJS: PERFNET start 22 GET 10-0-0-3.3e6f9fc4d9614ee3be8703631a12d42b.plex.direct:32400/media/providers 12285642.6
+09-02 00:49:47.346 25031 25075 E ReactNativeJS: PERFNET start 23 GET 159-196-32-116.3e6f9fc4d9614ee3be8703631a12d42b.plex.direct:443/media/providers 12285643.7
+09-02 00:49:47.347 25031 25075 E ReactNativeJS: PERFNET start 24 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/media/providers 12285645.0
+09-02 00:49:47.349 25031 25075 E ReactNativeJS: PERFNET start 25 GET 172-19-0-7.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/media/providers 12285646.1
+09-02 00:49:47.350 25031 25075 E ReactNativeJS: PERFNET start 26 GET 87-212-149-27.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/media/providers 12285647.1
+09-02 00:49:47.351 25031 25075 E ReactNativeJS: PERFNET start 27 GET 192-168-1-90.737ccba3270c4e749b3a96ce15a0f7dc.plex.direct:32400/media/providers 12285648.3
+09-02 00:49:47.352 25031 25075 E ReactNativeJS: PERFNET start 28 GET 81-99-114-142.737ccba3270c4e749b3a96ce15a0f7dc.plex.direct:20706/media/providers 12285649.4
+09-02 00:49:47.353 25031 25075 E ReactNativeJS: PERFNET start 29 GET 192-168-1-100.a2e9ed0a198447da8658b8eb362a141f.plex.direct:32400/media/providers 12285650.5
+09-02 00:49:47.355 25031 25075 E ReactNativeJS: PERFNET start 30 GET 172-17-0-1.a2e9ed0a198447da8658b8eb362a141f.plex.direct:32400/media/providers 12285652.0
+09-02 00:49:47.356 25031 25075 E ReactNativeJS: PERFNET start 31 GET 81-99-114-142.a2e9ed0a198447da8658b8eb362a141f.plex.direct:11132/media/providers 12285653.1
+09-02 00:49:47.357 25031 25075 E ReactNativeJS: PERFNET start 32 GET 10-0-10-37.fb5907457e024ce99c39f72daa332e81.plex.direct:32400/media/providers 12285654.3
+09-02 00:49:47.358 25031 25075 E ReactNativeJS: PERFNET start 33 GET 73-213-201-231.fb5907457e024ce99c39f72daa332e81.plex.direct:32437/media/providers 12285655.3
+09-02 00:49:47.359 25031 25075 E ReactNativeJS: PERFNET start 34 GET 172-31-200-1.4921a20757ca45298274ef160caeaa9f.plex.direct:32400/media/providers 12285656.5
+09-02 00:49:47.360 25031 25075 E ReactNativeJS: PERFNET start 35 GET 10-6-10-10.4921a20757ca45298274ef160caeaa9f.plex.direct:32400/media/providers 12285658.0
+09-02 00:49:47.361 25031 25075 E ReactNativeJS: PERFNET start 36 GET 172-18-0-1.4921a20757ca45298274ef160caeaa9f.plex.direct:32400/media/providers 12285659.0
+09-02 00:49:47.362 25031 25075 E ReactNativeJS: PERFNET start 37 GET 94-63-183-238.4921a20757ca45298274ef160caeaa9f.plex.direct:32400/media/providers 12285659.8
+09-02 00:49:47.364 25031 25075 E ReactNativeJS: PERFNET start 38 GET 192-168-19-237.b3ccc867175149c68280458e8be0dd99.plex.direct:32400/media/providers 12285661.1
+09-02 00:49:47.365 25031 25075 E ReactNativeJS: PERFNET start 39 GET 172-19-0-1.b3ccc867175149c68280458e8be0dd99.plex.direct:32400/media/providers 12285662.1
+09-02 00:49:47.366 25031 25075 E ReactNativeJS: PERFNET start 40 GET 172-20-0-1.b3ccc867175149c68280458e8be0dd99.plex.direct:32400/media/providers 12285663.2
+09-02 00:49:47.367 25031 25075 E ReactNativeJS: PERFNET start 41 GET 172-17-0-1.b3ccc867175149c68280458e8be0dd99.plex.direct:32400/media/providers 12285664.3
+09-02 00:49:47.368 25031 25075 E ReactNativeJS: PERFNET start 42 GET 172-23-0-1.b3ccc867175149c68280458e8be0dd99.plex.direct:32400/media/providers 12285665.4
+09-02 00:49:47.369 25031 25075 E ReactNativeJS: PERFNET start 43 GET 172-21-0-1.b3ccc867175149c68280458e8be0dd99.plex.direct:32400/media/providers 12285666.4
+09-02 00:49:47.370 25031 25075 E ReactNativeJS: PERFNET start 44 GET 172-18-0-1.b3ccc867175149c68280458e8be0dd99.plex.direct:32400/media/providers 12285667.5
+09-02 00:49:47.371 25031 25075 E ReactNativeJS: PERFNET start 45 GET 172-22-0-1.b3ccc867175149c68280458e8be0dd99.plex.direct:32400/media/providers 12285668.7
+09-02 00:49:47.372 25031 25075 E ReactNativeJS: PERFNET start 46 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/media/providers 12285669.7
+09-02 00:49:47.373 25031 25075 E ReactNativeJS: PERFNET start 47 GET 192-168-1-90.877c3ad9e5074a64a85b00ee62f5352e.plex.direct:32400/media/providers 12285670.8
+09-02 00:49:47.374 25031 25075 E ReactNativeJS: PERFNET start 48 GET 99-65-34-27.877c3ad9e5074a64a85b00ee62f5352e.plex.direct:32403/media/providers 12285671.8
+09-02 00:49:47.930 25031 25075 E ReactNativeJS: PERFNET start 49 POST features.plex.tv/v1/rgstr 12286227.6
+09-02 00:49:47.939 25031 25075 E ReactNativeJS: PERFMARK launch:splash-animation-finished 12286237.1 1788302987939 {}
+09-02 00:49:47.952 25031 25075 E ReactNativeJS: PERFMARK launch:splash-hidden 12286249.4 1788302987952 {}
+09-02 00:49:47.995 25031 25075 E ReactNativeJS: PERFNET start 50 POST features.plex.tv/v1/initialize 12286292.8
+09-02 00:49:48.000 25031 25075 E ReactNativeJS: PERFNET end 2 200 2333.7 12286298.0
+09-02 00:49:48.287 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12286584.4 1788302988287 {"priority":-1}
+09-02 00:49:48.289 25031 25075 E ReactNativeJS: PERFNET end 7 200 2110.3 12286586.4
+09-02 00:49:48.291 25031 25075 E ReactNativeJS: PERFNET end 14 200 2069.6 12286588.3
+09-02 00:49:48.292 25031 25075 E ReactNativeJS: PERFNET end 24 200 944.7 12286589.6
+09-02 00:49:48.410 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12286707.8 1788302988410 {"server":"Grover","path":"/hubs/continueWatching?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline"}
+09-02 00:49:48.411 25031 25075 E ReactNativeJS: PERFNET start 51 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/continueWatching 12286708.3
+09-02 00:49:48.414 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12286711.3 1788302988414 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:49:48.414 25031 25075 E ReactNativeJS: PERFNET start 52 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/popularInLibraries 12286711.7
+09-02 00:49:48.418 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12286715.4 1788302988418 {"server":"Grover","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=2&pinnedContentDirectoryID=2%2C1&count=20"}
+09-02 00:49:48.418 25031 25075 E ReactNativeJS: PERFNET start 53 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/promoted 12286715.8
+09-02 00:49:48.419 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12286717.0 1788302988419 {"server":"Grover","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=1&pinnedContentDirectoryID=2%2C1&count=20"}
+09-02 00:49:48.420 25031 25075 E ReactNativeJS: PERFNET start 54 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/promoted 12286717.5
+09-02 00:49:48.536 25031 25075 E ReactNativeJS: PERFNET end 6 200 2376.5 12286833.7
+09-02 00:49:48.547 25031 25075 E ReactNativeJS: PERFNET end 5 200 2390.0 12286844.8
+09-02 00:49:48.560 25031 25075 E ReactNativeJS: PERFNET end 4 200 2406.0 12286857.7
+09-02 00:49:48.562 25031 25075 E ReactNativeJS: PERFNET end 20 200 1841.0 12286859.4
+09-02 00:49:48.567 25031 25075 E ReactNativeJS: PERFNET end 26 200 1217.5 12286864.6
+09-02 00:49:48.569 25031 25075 E ReactNativeJS: PERFNET end 8 200 2386.3 12286866.9
+09-02 00:49:48.576 25031 25075 E ReactNativeJS: PERFNET end 16 200 2339.7 12286873.6
+09-02 00:49:48.579 25031 25075 E ReactNativeJS: PERFNET end 18 200 2327.9 12286876.4
+09-02 00:49:48.581 25031 25075 E ReactNativeJS: PERFNET end 17 200 2334.2 12286878.9
+09-02 00:49:48.583 25031 25075 E ReactNativeJS: PERFNET end 21 200 1804.4 12286880.7
+09-02 00:49:48.586 25031 25075 E ReactNativeJS: PERFNET end 15 204 2356.8 12286883.5
+09-02 00:49:48.588 25031 25075 E ReactNativeJS: PERFNET end 3 200 2438.3 12286885.3
+09-02 00:49:48.591 25031 25075 E ReactNativeJS: PERFNET end 12 200 2386.3 12286888.4
+09-02 00:49:48.596 25031 25075 E ReactNativeJS: PERFNET end 11 200 2392.9 12286893.4
+09-02 00:49:48.602 25031 25075 E ReactNativeJS: PERFNET end 19 200 2348.3 12286899.6
+09-02 00:49:48.609 25031 25075 E ReactNativeJS: PERFNET end 28 200 1257.0 12286906.3
+09-02 00:49:48.721 25031 25075 E ReactNativeJS: PERFNET end 13 204 2505.7 12287018.1
+09-02 00:49:48.722 25031 25075 E ReactNativeJS: PERFNET end 9 200 2537.2 12287019.7
+09-02 00:49:48.727 25031 25075 E ReactNativeJS: PERFNET end 10 200 2533.1 12287024.9
+09-02 00:49:48.769 25031 25075 E ReactNativeJS: PERFNET end 31 200 1413.7 12287066.9
+09-02 00:49:48.881 25031 25075 E ReactNativeJS: PERFNET end 37 200 1519.2 12287179.0
+09-02 00:49:49.023 25031 25075 E ReactNativeJS: PERFMARK image:loaded 12287320.8 1788302989023 {"n":1,"cacheType":"disk"}
+09-02 00:49:49.023 25031 25075 E ReactNativeJS: PERFMARK image:first-loaded 12287321.0 1788302989023 {}
+09-02 00:49:49.023 25031 25075 E ReactNativeJS: PERFMARK image:loaded 12287321.1 1788302989023 {"n":2,"cacheType":"disk"}
+09-02 00:49:49.143 25031 25075 E ReactNativeJS: PERFNET start 55 GET luma.plex.tv/api/screen/account/ads-consent 12287440.4
+09-02 00:49:49.144 25031 25075 E ReactNativeJS: PERFNET start 56 GET luma.plex.tv/api/screen/discover/onboarding 12287441.8
+09-02 00:49:49.146 25031 25075 E ReactNativeJS: PERFNET start 57 GET luma.plex.tv/api/navigation/notifications 12287443.7
+09-02 00:49:49.150 25031 25075 E ReactNativeJS: PERFNET start 58 GET luma.plex.tv/api/navigation 12287447.8
+09-02 00:49:49.233 25031 25075 E ReactNativeJS: PERFNET end 33 200 1875.4 12287530.7
+09-02 00:49:49.351 25031 25075 E ReactNativeJS: PERFNET end 49 202 1420.6 12287648.2
+09-02 00:49:49.353 25031 25075 E ReactNativeJS: PERFNET start 59 POST features.plex.tv/v1/rgstr 12287650.7
+09-02 00:49:49.357 25031 25075 E ReactNativeJS: PERFNET end 50 200 1361.5 12287654.3
+09-02 00:49:49.386 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12287683.7 1788302989386 {"priority":-1}
+09-02 00:49:49.387 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12287684.2 1788302989387 {"priority":-1}
+09-02 00:49:49.388 25031 25075 E ReactNativeJS: PERFNET end 48 200 2013.8 12287685.5
+09-02 00:49:49.422 25031 25075 E ReactNativeJS: PERFMARK launch:statsig-ready 12287719.1 1788302989421 {}
+09-02 00:49:49.534 25031 25075 E ReactNativeJS: PERFMARK home:feature-gates-ready 12287832.0 1788302989534 {"timedOut":false}
+09-02 00:49:49.596 25031 25075 E ReactNativeJS: PERFMARK luma:query-fn-start 12287893.5 1788302989596 {"path":"/"}
+09-02 00:49:49.597 25031 25075 E ReactNativeJS: PERFMARK fetch:idle-wait-start 12287894.2 1788302989597 {"url":"luma.plex.tv/api/screen/"}
+09-02 00:49:49.604 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12287901.6 1788302989604 {"server":"bedroom-imac","path":"/hubs/continueWatching?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline"}
+09-02 00:49:49.604 25031 25075 E ReactNativeJS: PERFNET start 60 GET 99-65-34-27.877c3ad9e5074a64a85b00ee62f5352e.plex.direct:32403/hubs/continueWatching 12287902.0
+09-02 00:49:49.635 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12287932.7 1788302989635 {"server":"bedroom-imac","path":"/hubs/popularInLibraries?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:49:49.636 25031 25075 E ReactNativeJS: PERFNET start 61 GET 99-65-34-27.877c3ad9e5074a64a85b00ee62f5352e.plex.direct:32403/hubs/popularInLibraries 12287933.1
+09-02 00:49:49.639 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12287937.1 1788302989639 {"server":"bedroom-imac","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=3&pinnedContentDirectoryID=3&count=20"}
+09-02 00:49:49.640 25031 25075 E ReactNativeJS: PERFNET start 62 GET 99-65-34-27.877c3ad9e5074a64a85b00ee62f5352e.plex.direct:32403/hubs/promoted 12287937.5
+09-02 00:49:49.891 25031 25075 E ReactNativeJS: PERFNET start 63 POST features.plex.tv/v1/initialize 12288189.0
+09-02 00:49:49.894 25031 25075 E ReactNativeJS: PERFNET end 46 200 2522.1 12288191.7
+09-02 00:49:49.958 25031 25075 E ReactNativeJS: PERFMARK launch:servers-tested 12288255.6 1788302989958 {"servers":3}
+09-02 00:49:50.074 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12288371.7 1788302990074 {"server":"Morflix","path":"/hubs/continueWatching?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline"}
+09-02 00:49:50.075 25031 25075 E ReactNativeJS: PERFNET start 64 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/hubs/continueWatching 12288372.2
+09-02 00:49:50.079 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12288376.5 1788302990079 {"server":"Morflix","path":"/hubs/popularInLibraries?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:49:50.079 25031 25075 E ReactNativeJS: PERFNET start 65 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/hubs/popularInLibraries 12288376.9
+09-02 00:49:50.084 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12288381.5 1788302990084 {"server":"Morflix","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=3&pinnedContentDirectoryID=3&count=20"}
+09-02 00:49:50.084 25031 25075 E ReactNativeJS: PERFNET start 66 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/hubs/promoted 12288381.9
+09-02 00:49:50.188 25031 25075 E ReactNativeJS: PERFNET end 51 200 1777.8 12288486.1
+09-02 00:49:50.190 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12288487.9 1788302990190 {"server":"Grover","path":"/hubs/continueWatching?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline","ms":1780}
+09-02 00:49:50.193 25031 25075 E ReactNativeJS: PERFNET end 52 404 1779.1 12288490.8
+09-02 00:49:50.194 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12288491.7 1788302990194 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":1780,"error":true}
+09-02 00:49:50.205 25031 25075 E ReactNativeJS: PERFNET end 54 200 1784.8 12288502.3
+09-02 00:49:50.208 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12288505.1 1788302990207 {"server":"Grover","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=1&pinnedContentDirectoryID=2%2C1&count=20","ms":1788}
+09-02 00:49:50.227 25031 25075 E ReactNativeJS: PERFNET end 53 200 1809.3 12288525.1
+09-02 00:49:50.231 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12288528.6 1788302990231 {"server":"Grover","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=2&pinnedContentDirectoryID=2%2C1&count=20","ms":1813}
+09-02 00:49:50.260 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12288557.5 1788302990260 {"priority":-1}
+09-02 00:49:50.285 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12288582.4 1788302990285 {"priority":-1}
+09-02 00:49:50.287 25031 25075 E ReactNativeJS: PERFNET end 23 200 2940.6 12288584.4
+09-02 00:49:50.479 25031 25075 E ReactNativeJS: PERFNET end 58 200 1328.6 12288776.4
+09-02 00:49:50.483 25031 25075 E ReactNativeJS: PERFNET end 56 204 1339.1 12288780.9
+09-02 00:49:50.484 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12288782.0 1788302990484 {"priority":-1}
+09-02 00:49:50.485 25031 25075 E ReactNativeJS: PERFNET end 57 200 1339.2 12288782.9
+09-02 00:49:50.487 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12288785.0 1788302990487 {"priority":-1}
+09-02 00:49:50.488 25031 25075 E ReactNativeJS: PERFNET end 59 202 1135.3 12288786.0
+09-02 00:49:50.491 25031 25075 E ReactNativeJS: PERFNET start 67 POST features.plex.tv/v1/rgstr 12288788.6
+09-02 00:49:50.494 25031 25075 E ReactNativeJS: PERFNET end 55 204 1350.8 12288791.1
+09-02 00:49:50.495 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12288793.1 1788302990495 {"priority":-1}
+09-02 00:49:50.497 25031 25075 E ReactNativeJS: PERFNET end 63 200 605.7 12288794.7
+09-02 00:49:50.559 25031 25075 E ReactNativeJS: PERFNET end 60 200 954.7 12288856.7
+09-02 00:49:50.560 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12288857.5 1788302990560 {"server":"bedroom-imac","path":"/hubs/continueWatching?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline","ms":956}
+09-02 00:49:50.713 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12289010.4 1788302990713 {"priority":-1}
+09-02 00:49:50.714 25031 25075 E ReactNativeJS: PERFNET end 64 200 639.7 12289011.8
+09-02 00:49:50.716 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12289013.3 1788302990716 {"server":"Morflix","path":"/hubs/continueWatching?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline","ms":642}
+09-02 00:49:50.719 25031 25075 E ReactNativeJS: PERFNET end 61 200 1083.6 12289016.7
+09-02 00:49:50.721 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12289018.8 1788302990721 {"server":"bedroom-imac","path":"/hubs/popularInLibraries?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":1086}
+09-02 00:49:50.748 25031 25075 E ReactNativeJS: PERFNET end 27 ERR 3397.1 12289045.5
+09-02 00:49:50.750 25031 25075 E ReactNativeJS: PERFNET end 47 ERR 3376.3 12289047.1
+09-02 00:49:50.751 25031 25075 E ReactNativeJS: PERFNET end 65 200 671.6 12289048.5
+09-02 00:49:50.754 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12289051.2 1788302990754 {"server":"Morflix","path":"/hubs/popularInLibraries?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":675}
+09-02 00:49:50.806 25031 25075 E ReactNativeJS: PERFNET end 67 202 315.1 12289103.7
+09-02 00:49:50.807 25031 25075 E ReactNativeJS: PERFNET end 29 ERR 3454.4 12289104.9
+09-02 00:49:50.810 25031 25075 E ReactNativeJS: PERFNET end 62 200 1170.1 12289107.6
+09-02 00:49:50.814 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12289111.4 1788302990814 {"server":"bedroom-imac","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=3&pinnedContentDirectoryID=3&count=20","ms":1175}
+09-02 00:49:50.914 25031 25075 E ReactNativeJS: PERFMARK fetch:idle-wait-end 12289211.1 1788302990914 {"url":"luma.plex.tv/api/screen/"}
+09-02 00:49:50.914 25031 25075 E ReactNativeJS: PERFNET start 68 GET luma.plex.tv/api/screen/ 12289211.5
+09-02 00:49:50.921 25031 25075 E ReactNativeJS: PERFNET end 66 200 836.7 12289218.6
+09-02 00:49:50.929 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12289226.7 1788302990929 {"server":"Morflix","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=3&pinnedContentDirectoryID=3&count=20","ms":845}
+09-02 00:49:51.005 25031 25075 E ReactNativeJS: PERFMARK home:pms-fetched-all 12289302.9 1788302991005 {"cw":3,"popular":3,"promoted":4,"ota":0}
+09-02 00:49:51.222 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12289518.4 1788302991221 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:49:51.229 25031 25075 E ReactNativeJS: PERFNET start 69 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/popularInLibraries 12289525.4
+09-02 00:49:51.241 25031 25075 E ReactNativeJS: PERFNET end 69 404 13.1 12289538.5
+09-02 00:49:51.242 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12289539.7 1788302991242 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":21,"error":true}
+09-02 00:49:51.535 25031 25075 E ReactNativeJS: PERFNET end 68 200 621.3 12289832.8
+09-02 00:49:51.606 25031 25075 E ReactNativeJS: PERFMARK luma:query-fn-end 12289903.2 1788302991606 {"path":"/","ms":2010}
+09-02 00:49:51.635 25031 25075 E ReactNativeJS: PERFMARK home:merge-start 12289932.3 1788302991635 {"servers":9}
+09-02 00:49:52.896 25031 25075 E ReactNativeJS: PERFMARK home:merge-end 12291193.7 1788302992896 {"servers":9,"sections":23,"ms":1261.3}
+09-02 00:49:52.948 25031 25075 E ReactNativeJS: PERFMARK home:page-view 12291245.2 1788302992948 {}
+09-02 00:49:52.979 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12291277.0 1788302992979 {"screen":"/"}
+09-02 00:49:53.913 25031 25075 E ReactNativeJS: PERFMARK image:loaded 12292210.8 1788302993913 {"n":3,"cacheType":"disk"}
+09-02 00:49:53.913 25031 25075 E ReactNativeJS: PERFMARK hero:image-loaded 12292211.0 1788302993913 {"cacheType":"disk"}
+09-02 00:49:53.914 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12292211.9 1788302993914 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:49:53.915 25031 25075 E ReactNativeJS: PERFNET start 70 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/popularInLibraries 12292212.6
+09-02 00:49:53.921 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12292218.2 1788302993921 {"priority":10}
+09-02 00:49:53.921 25031 25075 E ReactNativeJS: PERFMARK sections:list-loaded 12292219.0 1788302993921 {"screen":"/"}
+09-02 00:49:53.922 25031 25075 E ReactNativeJS: PERFMARK home:first-row-layout 12292219.2 1788302993922 {"js_heap":138263712,"js_heap_size":33554432,"js_allocated":24261096}
+09-02 00:49:54.680 25031 25075 E ReactNativeJS: PERFNET end 70 404 764.5 12292977.2
+09-02 00:49:54.680 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12292978.0 1788302994680 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":766,"error":true}
+09-02 00:49:57.378 25031 25075 E ReactNativeJS: PERFNET end 22 ERR 10033.1 12295675.8
+09-02 00:49:57.381 25031 25075 E ReactNativeJS: PERFNET end 25 ERR 10032.5 12295678.6
+09-02 00:49:57.387 25031 25075 E ReactNativeJS: PERFNET end 30 ERR 10032.9 12295684.8
+09-02 00:49:57.392 25031 25075 E ReactNativeJS: PERFNET end 32 ERR 10034.9 12295689.2
+09-02 00:49:57.394 25031 25075 E ReactNativeJS: PERFNET end 34 ERR 10035.2 12295691.7
+09-02 00:49:57.407 25031 25075 E ReactNativeJS: PERFNET end 35 ERR 10046.2 12295704.3
+09-02 00:49:57.408 25031 25075 E ReactNativeJS: PERFNET end 36 ERR 10046.7 12295705.7
+09-02 00:49:57.410 25031 25075 E ReactNativeJS: PERFNET end 38 ERR 10046.8 12295707.9
+09-02 00:49:57.413 25031 25075 E ReactNativeJS: PERFNET end 39 ERR 10048.6 12295710.7
+09-02 00:49:57.416 25031 25075 E ReactNativeJS: PERFNET end 40 ERR 10050.4 12295713.6
+09-02 00:49:57.418 25031 25075 E ReactNativeJS: PERFNET end 41 ERR 10051.5 12295715.8
+09-02 00:49:57.421 25031 25075 E ReactNativeJS: PERFNET end 42 ERR 10052.7 12295718.1
+09-02 00:49:57.423 25031 25075 E ReactNativeJS: PERFNET end 43 ERR 10054.0 12295720.5
+09-02 00:49:57.425 25031 25075 E ReactNativeJS: PERFNET end 44 ERR 10055.0 12295722.5
+09-02 00:49:57.427 25031 25075 E ReactNativeJS: PERFNET end 45 ERR 10056.1 12295724.8
+09-02 00:49:58.698 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12296995.0 1788302998697 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:49:58.698 25031 25075 E ReactNativeJS: PERFNET start 71 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/popularInLibraries 12296995.7
+09-02 00:49:58.717 25031 25075 E ReactNativeJS: PERFNET end 71 404 19.1 12297014.8
+09-02 00:49:58.718 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12297015.8 1788302998718 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":21,"error":true}
+09-02 00:50:08.142 25031 25075 E ReactNativeJS: PERFMARK hero:image-loaded 12306439.9 1788303008142 {"cacheType":"disk"}
+09-02 00:50:09.904 25325 25325 I PERFHOST: press 1788303010033
+09-02 00:50:10.042 25031 25075 E ReactNativeJS: PERFMARK press:onpress 12308339.2 1788303010042 {}
+09-02 00:50:10.042 25031 25075 E ReactNativeJS: PERFMARK press:resolve-params-start 12308339.4 1788303010042 {"path":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/movie/the-whisper-man/113064?context.page=home&context.groupID=hub.custom.collection&context.groupIndex=3&context.itemIndex=0"}
+09-02 00:50:10.042 25031 25075 E ReactNativeJS: PERFMARK press:resolve-params-end 12308339.5 1788303010042 {"path":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/movie/the-whisper-man/113064?context.page=home&context.groupID=hub.custom.collection&context.groupIndex=3&context.itemIndex=0","ms":0}
+09-02 00:50:10.042 25031 25075 E ReactNativeJS: PERFMARK press:params-resolved 12308339.6 1788303010042 {"path":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/movie/the-whisper-man/113064?context.page=home&context.groupID=hub.custom.collection&context.groupIndex=3&context.itemIndex=0"}
+09-02 00:50:10.045 25031 25075 E ReactNativeJS: PERFMARK nav:build-action-start 12308342.6 1788303010045 {"href":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/movie/the-whisper-man/113064?context.page=home&context.groupID=hub.custom.collection&context.groupIndex=3&context.itemIndex=0"}
+09-02 00:50:10.476 25031 25075 E ReactNativeJS: PERFMARK nav:build-action-end 12308773.8 1788303010476 {"href":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/movie/the-whisper-man/113064?context.page=home&context.groupID=hub.custom.collection&context.groupIndex=3&context.itemIndex=0","ms":431}
+09-02 00:50:10.476 25031 25075 E ReactNativeJS: PERFMARK nav:dispatch 12308774.0 1788303010476 {"href":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/movie/the-whisper-man/113064?context.page=home&context.groupID=hub.custom.collection&context.groupIndex=3&context.itemIndex=0"}
+09-02 00:50:10.563 25031 25075 E ReactNativeJS: PERFMARK details:first-render 12308860.7 1788303010563 {"path":"/movie/the-whisper-man"}
+09-02 00:50:10.575 25031 25075 E ReactNativeJS: PERFMARK details:placeholder-built 12308872.7 1788303010575 {"hasPreview":true}
+09-02 00:50:10.719 25031 25075 E ReactNativeJS: PERFMARK details:actions-focusable 12309016.9 1788303010719 {}
+09-02 00:50:10.734 25031 25075 E ReactNativeJS: PERFMARK screen:focus 12309031.5 1788303010734 {}
+09-02 00:50:10.740 25031 25075 E ReactNativeJS: PERFMARK luma:query-fn-start 12309037.1 1788303010739 {"path":"/movie/the-whisper-man"}
+09-02 00:50:10.740 25031 25075 E ReactNativeJS: PERFMARK fetch:idle-wait-start 12309037.6 1788303010740 {"url":"luma.plex.tv/api/screen/movie/the-whisper-man"}
+09-02 00:50:10.747 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12309044.6 1788303010747 {"server":"Morflix","path":"/library/metadata/113064?includeExtras=1&includeOnDeck=1&includeRelated=1&includeRelatedCount=15&includeReviews=1&includeExternalMetadata=1&checkFiles=1"}
+09-02 00:50:10.747 25031 25075 E ReactNativeJS: PERFNET start 72 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/library/metadata/113064 12309045.0
+09-02 00:50:10.826 25031 25075 E ReactNativeJS: PERFMARK details:header-layout 12309123.3 1788303010826 {"path":"/movie/the-whisper-man"}
+09-02 00:50:10.860 25031 25075 E ReactNativeJS: PERFMARK home:merge-timeout 12309157.5 1788303010860 {"path":"/movie/the-whisper-man"}
+09-02 00:50:10.878 25031 25075 E ReactNativeJS: PERFMARK fetch:idle-wait-end 12309175.7 1788303010878 {"url":"luma.plex.tv/api/screen/movie/the-whisper-man"}
+09-02 00:50:10.879 25031 25075 E ReactNativeJS: PERFNET start 73 GET luma.plex.tv/api/screen/movie/the-whisper-man 12309176.1
+09-02 00:50:10.954 25031 25075 E ReactNativeJS: PERFMARK nav:transition-start 12309251.8 1788303010954 {"path":"/movie/the-whisper-man"}
+09-02 00:50:11.080 25031 25075 E ReactNativeJS: PERFMARK nav:transition-end 12309377.4 1788303011080 {"path":"/movie/the-whisper-man"}
+09-02 00:50:11.354 25031 25075 E ReactNativeJS: PERFNET end 73 200 475.2 12309651.3
+09-02 00:50:11.368 25031 25075 E ReactNativeJS: PERFMARK luma:query-fn-end 12309665.9 1788303011368 {"path":"/movie/the-whisper-man","ms":629}
+09-02 00:50:11.656 25031 25075 E ReactNativeJS: PERFNET end 72 200 908.6 12309953.6
+09-02 00:50:11.661 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12309958.1 1788303011660 {"server":"Morflix","path":"/library/metadata/113064?includeExtras=1&includeOnDeck=1&includeRelated=1&includeRelatedCount=15&includeReviews=1&includeExternalMetadata=1&checkFiles=1","ms":913}
+09-02 00:50:11.743 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12310040.2 1788303011743 {"server":"Morflix","path":"/library/sections/3/prefs"}
+09-02 00:50:11.743 25031 25075 E ReactNativeJS: PERFNET start 74 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/library/sections/3/prefs 12310040.7
+09-02 00:50:11.951 25031 25075 E ReactNativeJS: PERFNET end 74 200 208.2 12310248.9
+09-02 00:50:11.953 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12310250.5 1788303011953 {"server":"Morflix","path":"/library/sections/3/prefs","ms":210}
+09-02 00:50:12.258 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12310555.6 1788303012258 {"screen":"/movie/the-whisper-man"}
+09-02 00:50:12.389 25031 25075 E ReactNativeJS: PERFMARK details:data-ready 12310687.0 1788303012389 {"path":"/movie/the-whisper-man"}
+09-02 00:50:13.082 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12311379.1 1788303013081 {"priority":10}
+09-02 00:50:13.089 25031 25075 E ReactNativeJS: PERFMARK sections:list-loaded 12311386.5 1788303013089 {"screen":"/movie/the-whisper-man"}
+09-02 00:50:19.674 25031 25075 E ReactNativeJS: PERFMARK screen:focus 12317971.1 1788303019673 {}
+09-02 00:50:19.853 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318150.1 1788303019852 {"server":"Grover","path":"/hubs/continueWatching?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline"}
+09-02 00:50:19.853 25031 25075 E ReactNativeJS: PERFNET start 75 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/continueWatching 12318150.6
+09-02 00:50:19.858 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318155.9 1788303019858 {"server":"Morflix","path":"/hubs/continueWatching?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline"}
+09-02 00:50:19.859 25031 25075 E ReactNativeJS: PERFNET start 76 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/hubs/continueWatching 12318156.4
+09-02 00:50:19.864 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318161.7 1788303019864 {"server":"bedroom-imac","path":"/hubs/continueWatching?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline"}
+09-02 00:50:19.865 25031 25075 E ReactNativeJS: PERFNET start 77 GET 99-65-34-27.877c3ad9e5074a64a85b00ee62f5352e.plex.direct:32403/hubs/continueWatching 12318162.2
+09-02 00:50:19.870 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318167.2 1788303019870 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:50:19.870 25031 25075 E ReactNativeJS: PERFNET start 78 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/popularInLibraries 12318167.6
+09-02 00:50:19.875 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318173.0 1788303019875 {"server":"Morflix","path":"/hubs/popularInLibraries?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:50:19.876 25031 25075 E ReactNativeJS: PERFNET start 79 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/hubs/popularInLibraries 12318173.4
+09-02 00:50:19.881 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318178.7 1788303019881 {"server":"bedroom-imac","path":"/hubs/popularInLibraries?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:50:19.882 25031 25075 E ReactNativeJS: PERFNET start 80 GET 99-65-34-27.877c3ad9e5074a64a85b00ee62f5352e.plex.direct:32403/hubs/popularInLibraries 12318179.2
+09-02 00:50:19.888 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318185.3 1788303019888 {"server":"Grover","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=2&pinnedContentDirectoryID=2%2C1&count=20"}
+09-02 00:50:19.888 25031 25075 E ReactNativeJS: PERFNET start 81 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/promoted 12318185.9
+09-02 00:50:19.895 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318192.2 1788303019895 {"server":"Morflix","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=3&pinnedContentDirectoryID=3&count=20"}
+09-02 00:50:19.895 25031 25075 E ReactNativeJS: PERFNET start 82 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/hubs/promoted 12318192.7
+09-02 00:50:19.901 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318198.4 1788303019901 {"server":"Grover","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=1&pinnedContentDirectoryID=2%2C1&count=20"}
+09-02 00:50:19.901 25031 25075 E ReactNativeJS: PERFNET start 83 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/promoted 12318198.8
+09-02 00:50:19.907 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12318204.4 1788303019907 {"server":"bedroom-imac","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=3&pinnedContentDirectoryID=3&count=20"}
+09-02 00:50:19.907 25031 25075 E ReactNativeJS: PERFNET start 84 GET 99-65-34-27.877c3ad9e5074a64a85b00ee62f5352e.plex.direct:32403/hubs/promoted 12318204.8
+09-02 00:50:19.911 25031 25075 E ReactNativeJS: PERFMARK luma:query-fn-start 12318208.0 1788303019911 {"path":"/"}
+09-02 00:50:19.911 25031 25075 E ReactNativeJS: PERFMARK fetch:idle-wait-start 12318209.1 1788303019911 {"url":"luma.plex.tv/api/screen/"}
+09-02 00:50:20.094 25031 25075 E ReactNativeJS: PERFNET end 78 404 223.6 12318391.2
+09-02 00:50:20.095 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12318392.1 1788303020094 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":224,"error":true}
+09-02 00:50:20.099 25031 25075 E ReactNativeJS: PERFNET end 75 200 245.8 12318396.4
+09-02 00:50:20.101 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12318398.1 1788303020100 {"server":"Grover","path":"/hubs/continueWatching?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline","ms":248}
+09-02 00:50:20.115 25031 25075 E ReactNativeJS: PERFNET end 83 200 213.4 12318412.2
+09-02 00:50:20.118 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12318415.1 1788303020117 {"server":"Grover","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=1&pinnedContentDirectoryID=2%2C1&count=20","ms":216}
+09-02 00:50:20.144 25031 25075 E ReactNativeJS: PERFNET end 81 200 255.9 12318441.8
+09-02 00:50:20.148 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12318445.7 1788303020148 {"server":"Grover","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=2&pinnedContentDirectoryID=2%2C1&count=20","ms":260}
+09-02 00:50:20.183 25031 25075 E ReactNativeJS: PERFNET end 76 200 324.2 12318480.6
+09-02 00:50:20.184 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12318481.8 1788303020184 {"server":"Morflix","path":"/hubs/continueWatching?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline","ms":326}
+09-02 00:50:20.235 25031 25075 E ReactNativeJS: PERFMARK home:merge-start 12318532.4 1788303020235 {"servers":9}
+09-02 00:50:21.346 25031 25075 E ReactNativeJS: PERFMARK home:merge-end 12319643.6 1788303021346 {"servers":9,"sections":23,"ms":1111}
+09-02 00:50:21.360 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12319657.6 1788303021360 {"screen":"/"}
+09-02 00:50:21.870 25031 25075 E ReactNativeJS: PERFNET end 79 200 1994.3 12320167.7
+09-02 00:50:21.873 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12320170.8 1788303021873 {"server":"Morflix","path":"/hubs/popularInLibraries?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":1998}
+09-02 00:50:21.890 25031 25075 E ReactNativeJS: PERFNET end 80 200 2008.7 12320187.9
+09-02 00:50:21.893 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12320190.1 1788303021892 {"server":"bedroom-imac","path":"/hubs/popularInLibraries?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":2011}
+09-02 00:50:21.907 25031 25075 E ReactNativeJS: PERFNET end 77 200 2042.2 12320204.4
+09-02 00:50:21.908 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12320205.3 1788303021908 {"server":"bedroom-imac","path":"/hubs/continueWatching?contentDirectoryID=3&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline","ms":2044}
+09-02 00:50:21.948 25031 25075 E ReactNativeJS: PERFNET end 82 200 2053.1 12320245.8
+09-02 00:50:21.952 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12320250.0 1788303021952 {"server":"Morflix","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=3&pinnedContentDirectoryID=3&count=20","ms":2057}
+09-02 00:50:22.002 25031 25075 E ReactNativeJS: PERFNET end 84 200 2094.4 12320299.2
+09-02 00:50:22.005 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12320303.0 1788303022005 {"server":"bedroom-imac","path":"/hubs/promoted?excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&includeRecentChannels=1&includeDetails=1&includeMeta=1&includeOnDeck=1&includeCollections=1&excludeContinueWatching=1&contentDirectoryID=3&pinnedContentDirectoryID=3&count=20","ms":2098}
+09-02 00:50:22.061 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12320358.7 1788303022061 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:50:22.062 25031 25075 E ReactNativeJS: PERFNET start 85 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/popularInLibraries 12320359.2
+09-02 00:50:22.102 25031 25075 E ReactNativeJS: PERFMARK home:merge-start 12320399.4 1788303022102 {"servers":9}
+09-02 00:50:23.094 25031 25075 E ReactNativeJS: PERFMARK home:merge-end 12321391.8 1788303023094 {"servers":9,"sections":23,"ms":992.3}
+09-02 00:50:23.108 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12321405.9 1788303023108 {"screen":"/"}
+09-02 00:50:23.572 25031 25075 E ReactNativeJS: PERFNET end 85 404 1510.9 12321870.1
+09-02 00:50:23.573 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12321870.8 1788303023573 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":1512,"error":true}
+09-02 00:50:23.585 25031 25075 E ReactNativeJS: PERFMARK fetch:idle-wait-end 12321882.2 1788303023585 {"url":"luma.plex.tv/api/screen/"}
+09-02 00:50:23.585 25031 25075 E ReactNativeJS: PERFNET start 86 GET luma.plex.tv/api/screen/ 12321882.5
+09-02 00:50:23.650 25031 25075 E ReactNativeJS: PERFMARK home:merge-start 12321947.5 1788303023650 {"servers":9}
+09-02 00:50:24.592 25031 25075 E ReactNativeJS: PERFMARK home:merge-end 12322890.0 1788303024592 {"servers":9,"sections":23,"ms":942.3}
+09-02 00:50:24.607 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12322904.3 1788303024607 {"screen":"/"}
+09-02 00:50:25.143 25031 25075 E ReactNativeJS: PERFNET end 86 200 1557.9 12323440.4
+09-02 00:50:25.189 25031 25075 E ReactNativeJS: PERFMARK luma:query-fn-end 12323486.7 1788303025189 {"path":"/","ms":5279}
+09-02 00:50:25.602 25031 25075 E ReactNativeJS: PERFMARK home:merge-start 12323900.0 1788303025602 {"servers":9}
+09-02 00:50:26.706 25031 25075 E ReactNativeJS: PERFMARK home:merge-end 12325003.1 1788303026705 {"servers":9,"sections":23,"ms":1102.9}
+09-02 00:50:26.719 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12325017.0 1788303026719 {"screen":"/"}
+09-02 00:50:27.188 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12325485.3 1788303027188 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:50:27.188 25031 25075 E ReactNativeJS: PERFNET start 87 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/popularInLibraries 12325485.7
+09-02 00:50:27.946 25031 25075 E ReactNativeJS: PERFNET end 87 404 757.6 12326243.4
+09-02 00:50:27.947 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12326244.2 1788303027947 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":759,"error":true}
+09-02 00:50:28.227 25031 25075 E ReactNativeJS: PERFMARK home:merge-start 12326524.2 1788303028227 {"servers":9}
+09-02 00:50:28.378 25376 25376 I PERFHOST: press 1788303028516
+09-02 00:50:29.191 25031 25075 E ReactNativeJS: PERFMARK home:merge-end 12327488.7 1788303029191 {"servers":9,"sections":23,"ms":964.3}
+09-02 00:50:29.206 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12327503.2 1788303029206 {"screen":"/"}
+09-02 00:50:29.966 25031 25075 E ReactNativeJS: PERFMARK press:onpress 12328263.3 1788303029966 {}
+09-02 00:50:29.966 25031 25075 E ReactNativeJS: PERFMARK press:resolve-params-start 12328263.5 1788303029966 {"path":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/unmatched/%2Flibrary%2Fmetadata%2F113385?context.page=home&context.groupID=hub.movie.recentlyadded&context.groupIndex=4&context.itemIndex=0"}
+09-02 00:50:29.966 25031 25075 E ReactNativeJS: PERFMARK press:resolve-params-end 12328263.6 1788303029966 {"path":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/unmatched/%2Flibrary%2Fmetadata%2F113385?context.page=home&context.groupID=hub.movie.recentlyadded&context.groupIndex=4&context.itemIndex=0","ms":0}
+09-02 00:50:29.966 25031 25075 E ReactNativeJS: PERFMARK press:params-resolved 12328263.7 1788303029966 {"path":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/unmatched/%2Flibrary%2Fmetadata%2F113385?context.page=home&context.groupID=hub.movie.recentlyadded&context.groupIndex=4&context.itemIndex=0"}
+09-02 00:50:29.968 25031 25075 E ReactNativeJS: PERFMARK nav:build-action-start 12328265.6 1788303029968 {"href":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/unmatched/%2Flibrary%2Fmetadata%2F113385?context.page=home&context.groupID=hub.movie.recentlyadded&context.groupIndex=4&context.itemIndex=0"}
+09-02 00:50:29.971 25031 25075 E ReactNativeJS: PERFMARK nav:build-action-end 12328268.8 1788303029971 {"href":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/unmatched/%2Flibrary%2Fmetadata%2F113385?context.page=home&context.groupID=hub.movie.recentlyadded&context.groupIndex=4&context.itemIndex=0","ms":3}
+09-02 00:50:29.971 25031 25075 E ReactNativeJS: PERFMARK nav:dispatch 12328268.9 1788303029971 {"href":"/libraries/8948b6be14297f5876d34c28959f058ddb9aefc0/unmatched/%2Flibrary%2Fmetadata%2F113385?context.page=home&context.groupID=hub.movie.recentlyadded&context.groupIndex=4&context.itemIndex=0"}
+09-02 00:50:30.176 25031 25075 E ReactNativeJS: PERFMARK details:actions-focusable 12328473.9 1788303030176 {}
+09-02 00:50:30.190 25031 25075 E ReactNativeJS: PERFMARK screen:focus 12328487.1 1788303030189 {}
+09-02 00:50:30.191 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12328488.5 1788303030191 {"server":"Morflix","path":"/library/metadata/113385?includeExtras=1&includeOnDeck=1&includeRelated=1&includeRelatedCount=15&includeReviews=1&includeExternalMetadata=1"}
+09-02 00:50:30.191 25031 25075 E ReactNativeJS: PERFNET start 88 GET 102-132-167-130.b3ccc867175149c68280458e8be0dd99.plex.direct:32419/library/metadata/113385 12328488.9
+09-02 00:50:30.304 25031 25075 E ReactNativeJS: PERFMARK details:header-layout 12328601.8 1788303030304 {"path":"unknown"}
+09-02 00:50:30.358 25031 25075 E ReactNativeJS: PERFMARK nav:transition-start 12328655.3 1788303030358 {"path":"unknown"}
+09-02 00:50:30.552 25031 25075 E ReactNativeJS: PERFMARK nav:transition-end 12328849.8 1788303030552 {"path":"unknown"}
+09-02 00:50:31.096 25031 25075 E ReactNativeJS: PERFNET end 88 200 904.5 12329393.4
+09-02 00:50:31.157 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12329454.1 1788303031156 {"server":"Morflix","path":"/library/metadata/113385?includeExtras=1&includeOnDeck=1&includeRelated=1&includeRelatedCount=15&includeReviews=1&includeExternalMetadata=1","ms":965}
+09-02 00:50:31.460 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12329757.8 1788303031460 {"screen":"unknown"}
+09-02 00:50:31.542 25031 25075 E ReactNativeJS: PERFMARK details:data-ready 12329839.7 1788303031542 {"path":"unknown"}
+09-02 00:50:31.990 25031 25075 E ReactNativeJS: PERFMARK focus:initial-applied 12330287.2 1788303031990 {"priority":5}
+09-02 00:50:31.994 25031 25075 E ReactNativeJS: PERFMARK sections:list-loaded 12330291.5 1788303031994 {"screen":"unknown"}
+09-02 00:50:31.997 25031 25075 E ReactNativeJS: PERFMARK pms:query-start 12330294.9 1788303031997 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20"}
+09-02 00:50:31.998 25031 25075 E ReactNativeJS: PERFNET start 89 GET 192-168-1-10.b2fafed8a6a2454e9d8299bbc1723969.plex.direct:32400/hubs/popularInLibraries 12330295.4
+09-02 00:50:32.440 25031 25075 E ReactNativeJS: PERFNET end 89 404 442.0 12330737.3
+09-02 00:50:32.441 25031 25075 E ReactNativeJS: PERFMARK pms:query-end 12330738.1 1788303032440 {"server":"Grover","path":"/hubs/popularInLibraries?contentDirectoryID=2%2C1&excludeElements=Actor%2CCollection%2CCountry%2CDirector%2CGenre%2CLabel%2CLocation%2CMood%2CPart%2CProducer%2CSimilar%2CPhoto%2CRole%2CVast%2CTopic%2CWriter&excludeFields=file%2Ctagline&count=20","ms":443,"error":true}
+09-02 00:50:32.576 25031 25075 E ReactNativeJS: PERFMARK home:merge-start 12330873.8 1788303032576 {"servers":9}
+09-02 00:50:33.599 25031 25075 E ReactNativeJS: PERFMARK home:merge-end 12331896.6 1788303033599 {"servers":9,"sections":23,"ms":1022.6}
+09-02 00:50:33.613 25031 25075 E ReactNativeJS: PERFMARK sections:first-row-render 12331910.9 1788303033613 {"screen":"/"}
+09-02 00:49:47.091  1558  1827 W TrustedNetworkStatusMan: NetworkReauth: Fetching network count from TVSettings and Launcherx.

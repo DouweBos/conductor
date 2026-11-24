@@ -1,6 +1,6 @@
 ---
 name: conductor-profiler
-description: Profile a running app's frame timing, input latency, JS CPU, native CPU, memory and React renders (with why each component re-rendered and ranked findings) with the conductor CLI, and read crash reports. Use when investigating jank or sluggishness, slow navigation, input lag on TV remotes, memory growth or leaks, GC pauses, excessive React re-renders, profiling a recorded flow before/after a change, or when an app has crashed and you need the crash report.
+description: Profile a running app's launch time, frame timing, input latency, JS CPU, native CPU, memory and React renders (with why each component re-rendered and ranked findings) with the conductor CLI, and read crash reports. Use when measuring cold start or deep-link launch time, investigating jank or sluggishness, slow navigation, input lag on TV remotes, memory growth or leaks, GC pauses, excessive React re-renders, profiling a recorded flow before/after a change, or when an app has crashed and you need the crash report.
 ---
 
 # Conductor — profiling & crashes
@@ -19,6 +19,7 @@ Measure a running app's performance and inspect crashes.
 | "Profile flow X" / before-vs-after a change | `run-flow x.yaml --profile [--repeat n]`, then `profile analyze --diff <baseline>` |
 | "Is it native?" (iOS/tvOS sim, Android) | `profile native start` → interact → `profile native stop` |
 | "Memory grows / it stutters periodically" | `profile memory --track 30` |
+| "Startup is slow" / launch time regressed | `profile launch <appId> --runs 5` |
 
 Only `profile frames` and `profile memory` work on a **stock release build**.
 `profile cpu` needs `android:debuggable` or `<profileable android:shell="true"/>`
@@ -28,6 +29,28 @@ Hermes ships without the inspector so there is no target to attach to.
 On TV, run `profile frames --track` with `--repeat 5`. Identical captures of one
 screen have been measured spanning 37.8-72.9% janky — a single window can invent
 a regression or hide one, and cannot support a `--diff`.
+
+## Launch time
+
+| Command | Purpose |
+|---|---|
+| `conductor profile launch <appId> [--runs n]` | Cold start: force-stop, launch, report median/min/max |
+| `… --mode deeplink --url <link>` | Time a cold launch through a deep link instead |
+| `… --mark-regex '<re>' [--until-mark <name>]` | Turn app log lines into a phase table; wait for and time a final mark |
+
+Android reports `am start -W` TotalTime/WaitTime and launch state, `Displayed`
+(first frame), `fully drawn` (when the app calls `reportFullyDrawn`), and the
+process start, all relative to the launch. `--activity` overrides the resolved
+launcher activity. iOS/tvOS simulators report only when the process was spawned
+plus any marks, which are timed on the host clock the simulator shares;
+physical devices aren't supported yet.
+
+Marks are app log lines matched by `--mark-regex`. The regex needs a
+`(?<name>…)` group and may have a `(?<time>…)` group (ms on the app's own
+clock), e.g. `--mark-regex 'PERFMARK (?<name>\S+) (?<time>[\d.]+)' --until-mark
+home:ready`. Each mark is reported once (its first occurrence) with its time since
+launch and the delta from the previous mark. `--duration` (default 3s) is how long
+logs are read after the launch when there's no `--until-mark`.
 
 ## Frame timing & jank (Android, incl. Fire TV / Android TV)
 

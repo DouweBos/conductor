@@ -1,4 +1,5 @@
 export const HELP = `  network logs [--port N] [--limit N]  Read recent HTTP traffic (RN: fetch/XHR shim; web: all traffic via Playwright)
+    --follow [--duration <s>]          Keep printing requests as they complete (NDJSON with --json)
   network request <url> [--method M] [--body STR] [--header K=V] [--port N]
                                        Issue an HTTP request from the app's context`;
 
@@ -37,6 +38,80 @@ export interface NetworkOptions {
   port?: number;
   targetIndex?: number;
   limit?: number;
+  follow?: boolean;
+  duration?: number;
+  appId?: string;
+  pageId?: string;
+}
+
+const FOLLOW_POLL_MS = 500;
+
+interface FollowItem {
+  key: string;
+  done: boolean;
+  line: string;
+  value: unknown;
+}
+
+/**
+ * Poll `read` and print each request once it completes. The RN shim and the
+ * web capture both keep a ring buffer, so a request is keyed by its id.
+ */
+async function followEntries(
+  read: () => Promise<FollowItem[]>,
+  opts: OutputOptions,
+  netOpts: NetworkOptions,
+  onError: () => Promise<void>
+): Promise<number> {
+  const seen = new Set<string>();
+  let stopped = false;
+  const stop = (): void => {
+    stopped = true;
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
+  const deadline = netOpts.duration !== undefined ? Date.now() + netOpts.duration * 1000 : Infinity;
+  let first = true;
+  let lastError: string | null = null;
+  while (!stopped && Date.now() < deadline) {
+    try {
+      let items = await read();
+      // Like `tail -f`: show the last --limit completed requests, then follow.
+      if (first && netOpts.limit !== undefined) {
+        const done = items.filter((i) => i.done);
+        const skip = new Set(
+          done.slice(0, Math.max(0, done.length - netOpts.limit)).map((i) => i.key)
+        );
+        for (const k of skip) seen.add(k);
+        items = items.filter((i) => !skip.has(i.key));
+      }
+      first = false;
+      lastError = null;
+      for (const item of items) {
+        if (!item.done || seen.has(item.key)) continue;
+        seen.add(item.key);
+        console.log(opts.json ? JSON.stringify(item.value) : item.line);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg !== lastError) console.error(`network logs — ${msg}`);
+      lastError = msg;
+      await onError().catch(() => {});
+    }
+    await new Promise((r) =>
+      setTimeout(r, Math.min(FOLLOW_POLL_MS, Math.max(0, deadline - Date.now())))
+    );
+  }
+  process.off('SIGINT', stop);
+  process.off('SIGTERM', stop);
+  return 0;
+}
+
+function formatShimEntry(e: NetEntry): string {
+  const ts = new Date(e.start).toISOString().slice(11, 23);
+  const status = e.error ? `ERR ${e.error}` : e.status !== null ? String(e.status) : '...';
+  const dur = e.durationMs !== null ? `${e.durationMs}ms` : '-';
+  return `${ts}  ${status.padEnd(6)} ${e.method.padEnd(6)} ${e.url} (${dur}, ${e.kind})`;
 }
 
 export interface NetworkRequestOptions extends NetworkOptions {
@@ -165,6 +240,20 @@ export async function networkLogs(
 
   // Web: Playwright captures all traffic natively — no Metro, no injected shim.
   const web = await webDriverFor(sessionName);
+  if (web && netOpts.follow) {
+    return followEntries(
+      async () =>
+        (await web.networkLogs({ limit: 500 })).entries.map((e) => ({
+          key: String(e.id),
+          done: e.durationMs !== null || e.error !== null,
+          line: formatNetEntry(e),
+          value: e,
+        })),
+      opts,
+      netOpts,
+      async () => {}
+    );
+  }
   if (web) {
     try {
       const { entries } = await web.networkLogs({ limit });
@@ -186,9 +275,43 @@ export async function networkLogs(
   try {
     const platform = await platformPromise;
     const port = await resolveMetroPort({ port: netOpts.port, deviceId, platform });
-    const client = new MetroCdpClient();
-    await client.connect({ port, deviceId, platform, targetIndex: netOpts.targetIndex });
+    const connectOpts = {
+      port,
+      deviceId,
+      platform,
+      targetIndex: netOpts.targetIndex,
+      appId: netOpts.appId,
+      pageId: netOpts.pageId,
+    };
+    let client = new MetroCdpClient();
+    await client.connect(connectOpts);
     await client.evaluate<ShimResult>(INSTALL_SHIM_SCRIPT);
+    if (netOpts.follow) {
+      if (!opts.json) console.error('following network requests — Ctrl-C to stop');
+      const code = await followEntries(
+        async () => {
+          const r = await client.evaluate<{ entries?: NetEntry[] }>(READ_SCRIPT(200));
+          return (r.entries ?? []).map((e) => ({
+            key: e.id,
+            done: e.durationMs !== null || e.error !== null,
+            line: formatShimEntry(e),
+            value: e,
+          }));
+        },
+        opts,
+        netOpts,
+        async () => {
+          if (client.isConnected()) return;
+          // A reload drops the debugger and the shim with it.
+          client.close();
+          client = new MetroCdpClient();
+          await client.connect(connectOpts);
+          await client.evaluate<ShimResult>(INSTALL_SHIM_SCRIPT);
+        }
+      );
+      client.close();
+      return code;
+    }
     const result = await client.evaluate<{
       installed: boolean;
       entries?: NetEntry[];
@@ -204,14 +327,7 @@ export async function networkLogs(
           'No network entries captured yet. The shim is installed; reload the app and try again.'
         );
       }
-      for (const e of entries) {
-        const ts = new Date(e.start).toISOString().slice(11, 23);
-        const status = e.error ? `ERR ${e.error}` : e.status !== null ? String(e.status) : '...';
-        const dur = e.durationMs !== null ? `${e.durationMs}ms` : '-';
-        console.log(
-          `${ts}  ${status.padEnd(6)} ${e.method.padEnd(6)} ${e.url} (${dur}, ${e.kind})`
-        );
-      }
+      for (const e of entries) console.log(formatShimEntry(e));
     }
     return 0;
   } catch (err) {

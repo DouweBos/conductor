@@ -27,6 +27,19 @@ to pick a specific debugger target when several are connected.
 | `debug log-registry`             | Summary of recent Metro console output — counts by level and clustering.            |
 | `debug reload`                   | `Page.reload` over CDP. Same as `metro reload`.                                     |
 
+### React app state
+
+| Command                          | What it does                                                                       |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| `debug navigation [--full]`      | Find React Navigation's container ref (`NavigationContainerRefContext` on v6+, `BaseNavigationContainer`'s ref on v5) in the fiber tree and print the focused route, its params and the nested path. `--full` adds the whole state. expo-router is React Navigation underneath, so it works too. |
+| `debug navigate <route> [--params json]` | `navigate()` through that same container ref.                               |
+| `debug query-cache`              | Find the `QueryClient` (a `QueryClientProvider`'s `client` prop, or `globalThis.__TANSTACK_QUERY_CLIENT__` / `__CONDUCTOR_QUERY_CLIENT__`) and list its queries. `--key`, `--grep`, `--path`, `--summary`, `--data`. |
+| `debug store [name]`             | Redux via react-redux's `Provider` store; Zustand through the opt-in `globalThis.__CONDUCTOR_STORES__ = { name: useStore }`; and any bridge global exposing `listStores` / `getStore` / `setStore`. `--set` / `--dispatch` write. |
+| `debug bridge list` / `call <method> [args…]` | Generic passthrough to an app-provided global (`--bridge <name>`, default `__conductorBridge`). |
+| `debug watch <target>`           | Poll one of the above (or `expr <js>`) and print structural diffs; NDJSON with `--json`. |
+
+Values are serialized in the app (cycles, functions, `Map`/`Set`/`Date`/`Error`, depth cap) and capped at `--max-bytes`.
+
 **Caveats**
 
 - Requires Hermes (`__REACT_DEVTOOLS_GLOBAL_HOOK__` is registered on Hermes startup).
@@ -40,7 +53,7 @@ to pick a specific debugger target when several are connected.
 
 | Command                                         | What it does                                                                       |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `network logs [--limit n]`                      | Install a `fetch`/`XHR` shim into the running app (idempotent — only once per JS context) and read the captured entries. Each entry: `{ id, kind, method, url, status, durationMs, error, start }`. |
+| `network logs [--limit n] [--follow]`           | Install a `fetch`/`XHR` shim into the running app (idempotent — only once per JS context) and read the captured entries. Each entry: `{ id, kind, method, url, status, durationMs, error, start }`. |
 | `network request <url> [--method --body --header k=v]` | Issue an HTTP request from the app's network context. Honours the app's cookies, headers, and TLS pinning. |
 
 **Caveats**
@@ -66,6 +79,7 @@ to pick a specific debugger target when several are connected.
 | `profile react stop [--top n]`     | Stop both, save the profile, rank components by self time and summarise the CPU profile. `--json` carries the per-commit timeline; `--timeline` adds per-commit component detail. JS functions are mapped to their original `file:line` through Metro's source map (`--no-symbolicate` to skip). |
 | `profile react renders [<dir>]`    | Per-component render count, the commits each one rendered in, and **why** it rendered: `mount`, `props` (changed props named, with their type), `state` (changed hooks named), `parent` (a new props object whose values are all equal — `React.memo` would have skipped it — with the ancestor that actually changed as its root cause), `context` (contexts named) or `unknown`. Also marks React Compiler output and the component's source file:line. `--filter <regex>`, `--hosts`, `--project-root`. |
 | `profile react cpu [<dir>]`        | Hermes CPU hotspots by JS function — self/total ms, share, source location. `--components-only` keeps PascalCase (component) functions; `--stack <regex>` shows the caller chains through matching functions. |
+| `profile launch <appId> [--runs n]` | Cold-start timing. Android: `am start -W` TotalTime/WaitTime, `Displayed`, `am_activity_fully_drawn_time` and the process start from logcat; `--mode deeplink --url`. iOS/tvOS simulators: spawn time. On both, `--mark-regex` (with `name` and optional `time` groups) turns app log lines into a phase table, and `--until-mark` waits for one. |
 | `profile status`                   | What is recording now, whether the sampler and xctrace/simpleperf are alive, and whether the app still holds the commit hook. |
 | `profile analyze [<dir>]`          | Ranked findings across everything recorded in the profile: slow commits (≥16ms, with the JS that ran during them), commit bursts, wasted (`parent`) renders, unstable function/object props, render hotspots, long unvirtualized lists, JS hotspots, GC pressure, native hotspots and hangs. `--save-baseline <name\|path>` / `--diff <name\|path>` compare runs (±20%). |
 | `profile native start [<appId>]` / `native stop` | Native CPU sampling bracketing a flow. iOS/tvOS (simulators and physical devices) and macOS: `xctrace` Time Profiler attached to the app's pid, plus Leaks / Allocations with `--leaks` / `--allocations` (`--malloc-stack-logging` relaunches the app so leaks are attributed). Android: on-device `simpleperf record --app`, plus gfxinfo frame timing, ART GC and PSS over the same window. `stop` exports and ranks: per-thread split, hottest functions, deepest app frame per sample, main-thread hangs (iOS `potential-hangs`, lined up with React commits), leaks, live allocations, jank and memory growth. Writes into the active profile directory when a React profile is running. |

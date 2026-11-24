@@ -24,7 +24,8 @@
  */
 import http from 'http';
 import { LogEntry, LogSource, LEVEL_SEVERITY } from '../drivers/log-sources/types.js';
-import { IOSLogSource } from '../drivers/log-sources/ios.js';
+import { IOSLogSource, IOSDeviceLogSource, findIdevicesyslog } from '../drivers/log-sources/ios.js';
+import { findPhysicalDevice } from '../drivers/devicectl.js';
 import { AndroidLogSource } from '../drivers/log-sources/android.js';
 import { VegaLogSource } from '../drivers/log-sources/vega.js';
 import { MetroLogSource, fetchTargets } from '../drivers/log-sources/metro.js';
@@ -189,11 +190,18 @@ export class LogCollector {
 
     try {
       if (this.platform === 'ios' || this.platform === 'tvos' || this.platform === 'watchos') {
-        // `simctl spawn ... log stream` has no devicectl equivalent, so OS logs
-        // are simulator-only. Metro still streams over the network below, which
-        // is the useful source for React Native apps anyway.
-        if ((await detectDeviceKind(this.deviceId)) === 'physical') return;
-        this.source = new IOSLogSource(this.deviceId, this.appId);
+        if ((await detectDeviceKind(this.deviceId)) === 'physical') {
+          // devicectl has no log stream; idevicesyslog is optional, so without
+          // it only Metro logs are collected (no point retrying).
+          if (!findIdevicesyslog()) {
+            this.dlog?.('physical device logs need idevicesyslog: brew install libimobiledevice');
+            return;
+          }
+          const device = await findPhysicalDevice(this.deviceId);
+          this.source = new IOSDeviceLogSource(device?.udid ?? this.deviceId, this.appId);
+        } else {
+          this.source = new IOSLogSource(this.deviceId, this.appId);
+        }
       } else if (this.platform === 'macos') {
         // Unfiltered, the whole Mac's debug log would drown the buffer.
         if (!this.appId) return;

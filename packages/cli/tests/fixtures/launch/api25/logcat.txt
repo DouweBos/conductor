@@ -1,0 +1,53 @@
+--------- beginning of main
+--------- beginning of events
+09-01 20:20:00.000  1189  1300 I am_proc_start: [0,5450,10123,tv.plex.app.debug,activity,tv.plex.app.debug/.MainActivity]
+09-01 20:20:00.012  1189  1300 I ActivityManager: Start proc 5450:tv.plex.app.debug/u0a123 for activity
+09-01 20:20:00.340  5450  5450 I ReactNativeHost: loading bundle
+09-01 20:20:00.600  5450  5532 I ReactNativeJS: PERFMARK launch:index-entry 118.0 1756765200607 {}
+09-01 20:20:00.742  5450  5532 I ReactNativeJS: PERFMARK launch:polyfills-done 260.0 1756765200749 {"ms":142.0}
+09-01 20:20:00.760  5450  5532 I ReactNativeJS: PERFMARK launch:run-application 278.0 1756765200767 {}
+09-01 20:20:01.180  5450  5532 I ReactNativeJS: PERFMARK launch:app-module-evaluated 698.0 1756765201187 {"ms":420.3}
+09-01 20:20:01.200  5450  5532 I ReactNativeJS: PERFSTARTUP {"startTime":0.0,"endTime":1180.4,"initializeRuntimeStart":210.5,"initializeRuntimeEnd":515.2,"executeJavaScriptBundleEntryPointStart":517.0,"executeJavaScriptBundleEntryPointEnd":1176.8,"perfNow":718.0}
+09-01 20:20:01.310  5450  5532 I ReactNativeJS: PERFMARK launch:app-first-render 828.0 1756765201317 {}
+09-01 20:20:01.455  5450  5532 I ReactNativeJS: PERFMARK launch:splash-hidden 973.0 1756765201462 {}
+09-01 20:20:01.490  5450  5532 I ReactNativeJS: PERFMARK launch:nav-ready 1008.0 1756765201497 {"path":"/home"}
+09-01 20:20:01.512  5450  5532 I ReactNativeJS: PERFMARK home:mount 1030.0 1756765201519 {"path":"/home"}
+09-01 20:20:01.530  5450  5532 I ReactNativeJS: PERFMARK home:query-start 1048.0 1756765201537 {}
+09-01 20:20:01.531  5450  5532 I ReactNativeJS: PERFNET start r1 GET plex.tv/hubs/home 1049.0
+09-01 20:20:01.534  5450  5532 I ReactNativeJS: PERFNET start r2 GET plex.tv/user 1052.0
+09-01 20:20:01.720  5450  5532 I ReactNativeJS: PERFNET end r2 200 186.0 1238.0
+09-01 20:20:02.260  5450  5532 I ReactNativeJS: PERFNET end r1 200 729.0 1778.0 {"bytes":184320}
+09-01 20:20:02.265  5450  5532 I ReactNativeJS: PERFMARK home:response 1783.0 1756765202272 {"n":18}
+09-01 20:20:02.280  5450  5532 I ReactNativeJS: PERFMARK home:merge-start 1798.0 1756765202287 {}
+09-01 20:20:02.410  5450  5532 I ReactNativeJS: PERFMARK home:merge-end 1928.0 1756765202417 {"ms":130.1,"n":1}
+09-01 20:20:02.905  5450  5532 I ReactNativeJS: PERFMARK home:merge-end 2423.0 1756765202912 {"ms":94.0,"n":2}
+09-01 20:20:03.350  5450  5532 I ReactNativeJS: PERFMARK home:merge-end 2868.0 1756765203357 {"ms":88.2,"n":3}
+09-01 20:20:02.620  5450  5532 I ReactNativeJS: PERFMARK home:first-row-layout 2138.0 1756765202627 {}
+09-01 20:20:02.680  1189  1210 I ActivityManager: Displayed tv.plex.app.debug/tv.plex.app.MainActivity: +2s681ms
+09-01 20:20:02.681  1189  1300 I am_activity_launch_time: [0,203949472,tv.plex.app.debug/.MainActivity,2681,2681]
+09-01 20:20:03.210  5450  5532 I ReactNativeJS: PERFMARK home:first-image-loaded 2728.0 1756765203217 {"n":1}
+09-01 20:20:03.400  1189  1300 I am_activity_fully_drawn_time: [0,203949472,tv.plex.app.debug/.MainActivity,3402]
+09-01 20:20:15.400  6001  6001 I PERFHOST: press 1756765215407
+09-01 20:20:15.422  5450  5532 I ReactNativeJS: PERFMARK details:press 14940.0 1756765215429 {"path":"/show/z-nation"}
+09-01 20:20:15.470  5450  5532 I ReactNativeJS: PERFMARK details:mount 14988.0 1756765215477 {}
+09-01 20:20:15.488  5450  5532 I ReactNativeJS: PERFMARK details:query-start 15006.0 1756765215495 {}
+09-01 20:20:15.489  5450  5532 I ReactNativeJS: PERFNET start r7 GET plex.tv/library/metadata/1 15007.0
+09-01 20:20:15.921  5450  5532 I ReactNativeJS: PERFNET end r7 200 432.0 15439.0 {"bytes":40960}
+09-01 20:20:15.925  5450  5532 I ReactNativeJS: PERFMARK details:response 15443.0 1756765215932 {}
+09-01 20:20:16.010  5450  5532 I ReactNativeJS: PERFMARK details:merge-end 15528.0 1756765216017 {"n":1}
+09-01 20:20:16.060  5450  5532 I ReactNativeJS: PERFMARK details:header-layout 15578.0 1756765216067 {}
+09-01 20:20:16.140  5450  5532 I ReactNativeJS: PERFMARK details:first-row-layout 15658.0 1756765216147 {}
+09-01 20:20:16.290  5450  5532 I ReactNativeJS: PERFMARK details:transition-end 15808.0 1756765216297 {}
+09-01 20:20:16.700  5450  5532 I ReactNativeJS: PERFMARK details:sections-ready 16218.0 1756765216707 {"n":4}
+09-01 20:20:31.000  6002  6002 I PERFHOST: press 1756765231007
+09-01 20:20:31.018  5450  5532 I ReactNativeJS: PERFMARK details:press 30536.0 1756765231025 {"path":"/show/z-nation"}
+09-01 20:20:31.044  5450  5532 I ReactNativeJS: PERFMARK details:mount 30562.0 1756765231051 {}
+09-01 20:20:31.056  5450  5532 I ReactNativeJS: PERFMARK details:query-start 30574.0 1756765231063 {}
+09-01 20:20:31.210  5450  5532 I ReactNativeJS: PERFMARK details:response 30728.0 1756765231217 {}
+09-01 20:20:31.250  5450  5532 I ReactNativeJS: PERFMARK details:merge-end 30768.0 1756765231257 {"n":1}
+09-01 20:20:31.280  5450  5532 I ReactNativeJS: PERFMARK details:header-layout 30798.0 1756765231287 {}
+09-01 20:20:31.330  5450  5532 I ReactNativeJS: PERFMARK details:first-row-layout 30848.0 1756765231337 {}
+09-01 20:20:31.400  5450  5532 I ReactNativeJS: PERFMARK details:transition-end 30918.0 1756765231407 {}
+09-01 20:20:31.610  5450  5532 I ReactNativeJS: PERFMARK details:sections-ready 31128.0 1756765231617 {"n":4}
+09-01 20:20:02.000  1189  1189 I ThermalService: CPU temperatures: [33.9, 33.100002]
+09-01 20:20:02.100   295  1463 I Node    : dolby-audio-meter, AdapterPcmSystem: channel 0; audio level: 0.000
