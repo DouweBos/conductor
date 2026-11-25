@@ -1,2 +1,3 @@
 ---
 BUNDLE_PATH: "/Users/runner/work/conductor/conductor/apps/studio/vendor/bundle"
+BUNDLE_DEPLOYMENT: "true"

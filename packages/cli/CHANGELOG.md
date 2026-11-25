@@ -1,5 +1,22 @@
 # @houwert/conductor
 
+## 0.35.0
+
+### Minor Changes
+
+- 154030d: `launch-app` now fails when the app is already running instead of silently killing and relaunching it. Pass `--restart` to relaunch deliberately (`--clear-state`, `--clear-keychain` and `--no-stop-app` also skip the check).
+- 0be06d6: Profiling parity with Argent's profiler tools. `profile react start`/`stop` now record React commits and Hermes CPU samples together into a saved profile directory, and three new readers work on it offline: `profile react renders` (render counts, the commits each component rendered in, and why it rendered: mount, props, state, parent or context), `profile react cpu` (JS hotspots mapped to source through Metro's source map) and `profile analyze` (ranked findings, with `--save-baseline`/`--diff`). `profile native start`/`stop`/`analyze` add bracketed native CPU profiling (xctrace on iOS/tvOS simulators and macOS, simpleperf on Android), and `run-flow --profile` runs a flow inside a profile. Metro-attached commands take `--app`/`--page` and refuse to guess when several apps share Metro, and the Hermes sampler re-attaches when the debugger session drops (tvOS navigation).
+
+  Metro debugger connections now send an Origin header, so `debug`, `network`, `profile js` and `profile react` attach again on React Native 0.83+ / Expo SDK 55+ Metro, which rejected them (401, or a silent disconnect under Expo).
+
+  Render reasons also name the changed hooks and contexts, the root-cause ancestor of parent re-renders, and React Compiler output; findings carry component source locations and the conductor action that preceded each slow commit; native hangs list the React commits around them. `profile native` adds `--leaks`/`--allocations` on iOS, physical iOS devices, and frame timing, GC and memory on Android. `profile status` shows what is recording, and `profile react start` will not silently take over another session's recording (`--force`). `profile cpu` on iOS now attaches by pid, and `profile memory`'s ART GC window works again on Android.
+
+- caaa6c1: Read and change React app state over Metro, with nothing added to the app. `debug navigation` prints the focused React Navigation / expo-router route, its params and nested path (`--full` for the whole state), and `debug navigate` navigates through the app's container. `debug query-cache` lists the TanStack Query cache (status, observers, age), with `--key`, `--grep` to find a value, and `--path`/`--summary` to read the data. `debug store` reads Redux automatically, Zustand stores registered in `globalThis.__CONDUCTOR_STORES__`, and stores an app bridge exposes, and writes them with `--set`/`--dispatch`. `debug bridge list|call` calls methods on an app-provided bridge global (`--bridge`, default `__conductorBridge`). `debug watch` polls any of these, or a JS expression, and prints each change as a diff.
+
+  `network logs --follow` prints requests as they complete. `profile launch` measures cold or deep-link launches over `--runs`: on Android it reports `am start -W` times, `Displayed` and fully-drawn times from logcat, and on Android and iOS/tvOS simulators it turns app log marks (`--mark-regex`, `--until-mark`) into a phase table. Physical iPhones and Apple TVs now stream device logs through `idevicesyslog` when libimobiledevice is installed.
+
+- 20f186c: Add watchOS simulator support: `start-device --platform watchos`, a watchOS build of the XCTest driver, Digital Crown scrolling (`scroll`, `press-key "Digital Crown Up/Down"`), crown press (`press-key Home`), navigation `back`, Action Button / Double Tap, and text entry through the system input sheet.
+
 ## 0.34.6
 
 ### Patch Changes
