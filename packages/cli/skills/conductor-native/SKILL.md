@@ -51,7 +51,7 @@ pick an `id` → `native-view` for detail → `native-set` to edit live → see 
 the device. Re-inspect after relaunch (IDs reset).
 
 ```bash
-conductor launch-app com.example.app --inject
+conductor launch-app com.example.app --inject        # add --restart if it's already running
 conductor native-inspect                              # tree with ids, colors, fonts, absFrame
 conductor native-view 0x10280d0c0                     # full detail for a view
 conductor native-set 0x10280d0c0 backgroundColor '#FF3B30FF'   # live-edit, visible on device

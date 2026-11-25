@@ -34,7 +34,7 @@ conductor assert-visible "Dashboard"
 
 | Command | Purpose |
 |---|---|
-| `conductor launch-app <appId>` | Launch app (saved to session). `--no-stop-app` resumes; `--argument key=value` passes launch args |
+| `conductor launch-app <appId>` | Launch app (saved to session). **Fails if the app is already running** — check `foreground-app` and keep using it; `--restart` deliberately kills and relaunches. `--no-stop-app` resumes; `--argument key=value` passes launch args |
 | `conductor stop-app [<appId>]` | Stop the app |
 | `conductor tap-on <element>` | Tap by text, id, or `@eN`. `--long-press`, `--double-tap`, `--optional`, `--index <n>`, `--repeat <n> --delay <ms>`. macOS only: `--right-click`, `--hover`, `--modifiers cmd,shift` (e.g. ⌘-click) |
 | `conductor tap-on --at <x,y>` | Tap a raw coordinate (px `100,200`, percent `50%,50%`, or `0-1` fraction) — no element match |

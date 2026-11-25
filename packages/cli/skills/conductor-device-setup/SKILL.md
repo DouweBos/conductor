@@ -188,8 +188,8 @@ case-insensitive, exact first, then substring); `window focus --clear` follows
 the front window again. `set-viewport <w> <h>` resizes the driven window.
 All three need the background driver.
 
-App lifecycle: `launch-app <bundleId>` (launches or activates; `--argument`
-relaunches with launch arguments), `stop-app`, `list-apps` (apps in the
+App lifecycle: `launch-app <bundleId>` (launches; fails if already running
+unless `--restart`; `--argument` relaunches with launch arguments), `stop-app`, `list-apps` (apps in the
 Applications folders), `install-app <path.app>` (copies it into
 `~/Applications`), `open-link <url>`, and `clipboard` (your real clipboard).
 `logs` streams the app's unified log once an app id is known; `crashes` reads
@@ -243,7 +243,7 @@ logs` still gets **Metro** logs, which is the useful source for React Native).
 | Command                                               | Purpose                                                                |
 | ----------------------------------------------------- | ---------------------------------------------------------------------- |
 | `conductor install-app <path>`                        | Install .app / .ipa / .apk (macOS: copies the .app into ~/Applications) |
-| `conductor launch-app <appId>`                        | Launch app (saved to session); `--no-stop-app`, `--argument key=value`, `--inject` (enables the `native-*` in-process instrument — see `conductor-native`) |
+| `conductor launch-app <appId>`                        | Launch app (saved to session); fails if already running unless `--restart`; `--no-stop-app`, `--argument key=value`, `--inject` (enables the `native-*` in-process instrument — see `conductor-native`) |
 | `conductor stop-app [<appId>]`                        | Stop app                                                               |
 | `conductor uninstall-app <appId>`                     | Uninstall app                                                          |
 | `conductor copy-app <bundleId> --from <id> --to <id>` | Copy an installed app between iOS simulators                           |

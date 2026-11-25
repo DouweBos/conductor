@@ -324,6 +324,7 @@ async function main(): Promise<void> {
       'clear-state',
       'clear-keychain',
       'stop-app',
+      'restart',
       'long-press',
       'double-tap',
       'right-click',
@@ -642,6 +643,7 @@ async function main(): Promise<void> {
         clearState: argv['clear-state'] as boolean,
         clearKeychain: argv['clear-keychain'] as boolean,
         stopApp: argv['stop-app'] !== false,
+        restart: argv['restart'] as boolean,
         launchArgs,
         inject: argv['inject'] as boolean,
       });

@@ -207,6 +207,12 @@ export class AndroidDriver {
     });
   }
 
+  /** True when the package has a live process (foreground or background). */
+  async isAppRunning(packageName: string): Promise<boolean> {
+    const out = await this.adbOutput(['shell', `pidof ${packageName} || true`]);
+    return out.trim().length > 0;
+  }
+
   async getForegroundApp(): Promise<string> {
     const output = await this.adbOutput(['shell', 'dumpsys', 'activity', 'activities']);
     // API 28- prints `mResumedActivity:`; API 29+ uses `ResumedActivity:` /

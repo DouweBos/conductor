@@ -7,13 +7,16 @@ export const HELP = `  launch-app <appId>                  Launch app (saves to 
     --clear-keychain                  DESTRUCTIVE: wipe the device keychain before launching. Signs
                                       the user out of every app on the simulator. Cannot be undone
                                       without re-entering credentials.
+    --restart                         Kill and relaunch the app if it is already running. Without
+                                      this, launch-app fails when the app is already running — check
+                                      foreground-app first and keep using the running app instead.
     --no-stop-app                     Do not stop the app before launching (resume instead of restart)
     --argument key=value              Set launch argument (repeatable)
                                       macOS: "--argument flag" with no value passes "--flag"
     --inject                          iOS simulator only: inject the in-process control library
                                       (DYLD_INSERT_LIBRARIES) so native-* inspection commands work`;
 
-import { runDirect } from '../runner.js';
+import { runDirect, spawnCommand, type AnyDriver } from '../runner.js';
 import { updateSession } from '../session.js';
 import { printSuccess, printError, OutputOptions } from '../output.js';
 import { IOSDriver } from '../drivers/ios.js';
@@ -24,6 +27,35 @@ import { AndroidDriver } from '../drivers/android.js';
 import { WebDriver } from '../drivers/web.js';
 import { VegaDriver } from '../drivers/vega.js';
 import { RokuDriver } from '../drivers/roku.js';
+import { MacDriver, macAppPid } from '../drivers/macos.js';
+
+/** Whether appId is already running; undefined when the platform can't tell. */
+export async function isAppRunning(driver: AnyDriver, appId: string): Promise<boolean | undefined> {
+  if (driver instanceof MacDriver) return (await macAppPid(appId)) !== undefined;
+  if (driver instanceof IOSDriver) {
+    if (!driver.isPhysical && driver.deviceId) {
+      // launchctl lists suspended/background apps too, unlike XCUITest's foreground state.
+      const res = await spawnCommand('xcrun', [
+        'simctl',
+        'spawn',
+        driver.deviceId,
+        'launchctl',
+        'list',
+      ]);
+      if (!res.success) return undefined;
+      // Exited apps can linger with a "-" pid column.
+      return res.stdout
+        .split('\n')
+        .some((l) => /^\d+\s/.test(l) && l.includes(`UIKitApplication:${appId}[`));
+    }
+    return (await driver.runningApp([appId])) === appId;
+  }
+  if (driver instanceof AndroidDriver) return driver.isAppRunning(appId);
+  if (driver instanceof VegaDriver || driver instanceof RokuDriver) {
+    return (await driver.getForegroundApp()) === appId;
+  }
+  return undefined;
+}
 
 export async function launchApp(
   appId: string,
@@ -36,6 +68,7 @@ export async function launchApp(
     stopApp?: boolean;
     launchArgs?: Record<string, string>;
     inject?: boolean;
+    restart?: boolean;
   } = {}
 ): Promise<number> {
   if (!appId) {
@@ -55,6 +88,16 @@ export async function launchApp(
   let injectionNote = '';
 
   const result = await runDirect(async (driver) => {
+    // Agents tend to re-run launch-app assuming it's a no-op; it actually kills the app.
+    const explicitRelaunch =
+      flags.restart || flags.clearState || flags.clearKeychain || flags.stopApp === false;
+    if (!explicitRelaunch && (await isAppRunning(driver, appId).catch(() => undefined))) {
+      throw new Error(
+        `"${appId}" is already running. launch-app would kill it and lose its current state. ` +
+          'Keep working with the running app, or pass --restart to deliberately kill and relaunch it.'
+      );
+    }
+
     if (flags.clearKeychain) await driver.clearKeychain();
     if (flags.clearState) await driver.clearAppState(appId);
 
